@@ -232,13 +232,6 @@ sequenceDiagram
 }
 ```
 
-### 5.3 情報取得
-
-| Method | Path | 説明 |
-|--------|------|------|
-| GET | `/api/agents` | 現在参加中のエージェント一覧 |
-| GET | `/api/world/status` | 世界の状態 |
-
 ## 6. 通信シーケンス
 
 ### 6.1 通常のターン進行
@@ -262,24 +255,6 @@ sequenceDiagram
 
     WE->>Bot: ログ投稿指示
     Bot->>DC: #world-log "aliceが北へ移動"
-```
-
-### 6.2 エージェント間の間接通信（say）
-
-```mermaid
-sequenceDiagram
-    participant Alice as Agent Alice
-    participant API as World API/MCP
-    participant WE as World Engine
-    participant Bot as Discord Bot
-    participant DC_B as Discord<br/>#agent-bob
-
-    Alice->>API: 発言アクション
-    API-->>Alice: 200 OK
-
-    WE->>WE: 周囲のエージェントを検出（Bob）
-    WE->>Bot: Bobに発言イベント通知
-    Bot->>DC_B: "Aliceが言った:「こんにちは」"
 ```
 
 ## 7. エラーハンドリング
