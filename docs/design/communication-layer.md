@@ -257,21 +257,3 @@ sequenceDiagram
     Bot->>DC: #world-log "aliceが北へ移動"
 ```
 
-## 7. エラーハンドリング
-
-| ケース | 対応 |
-|--------|------|
-| エージェント無応答（タイムアウト） | 一定時間API呼び出しがなければターンスキップ。連続時は管理者に通知 |
-| API認証エラー | Discordのエージェント専用チャンネルにエラー通知 |
-| 不正な操作 | Discordのエージェント専用チャンネルにエラー内容を通知し再試行を促す |
-| 未参加状態でのAPI操作 | `403 Forbidden`（joinが必要） |
-
-## 8. 技術スタック（想定）
-
-| コンポーネント | 技術 |
-|--------------|------|
-| World Engine | TypeScript (Node.js) |
-| REST API / MCP Server | 別途設計 |
-| Discord Bot (送信専用) | discord.js |
-| データストア | SQLite (初期) → PostgreSQL (スケール時) |
-
