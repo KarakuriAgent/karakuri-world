@@ -1,0 +1,565 @@
+# 08 - 世界操作REST API
+
+## 1. 認証方式
+
+### 1.1 エージェントAPI認証
+
+エージェント向けAPIは `Authorization` ヘッダーでAPIキーを送信する。
+
+```
+Authorization: Bearer {api_key}
+```
+
+サーバーはAPIキーからエージェントを一意に特定する。APIキーが無効な場合は `401 Unauthorized` を返す。
+
+### 1.2 管理API認証
+
+管理APIは `X-Admin-Key` ヘッダーで管理者キーを送信する。
+
+```
+X-Admin-Key: {admin_key}
+```
+
+管理者キーはサーバー起動時の環境変数（`ADMIN_KEY`）で設定する。キーが一致しない場合は `401 Unauthorized` を返す。
+
+### 1.3 参加状態の制御
+
+世界操作API（セクション4, 5）は参加中のエージェントのみ利用可能。参加していないエージェントがアクセスした場合は `403 Forbidden`（`not_joined`）を返す。
+
+例外として以下のエンドポイントは未参加でもアクセス可能（参加状態の検証は個別バリデーションで行う）:
+
+- `POST /api/agents/join`
+- `POST /api/agents/leave`
+
+## 2. エラーレスポンスの共通仕様
+
+### 2.1 共通エラー形式
+
+すべてのエラーレスポンスは以下の形式に従う。
+
+```typescript
+interface ErrorResponse {
+  error: string;   // エラーコード（機械可読）
+  message: string; // エラーの説明（人間可読）
+}
+```
+
+エンドポイント固有のエラー型（`StateConflictError`、`MoveValidationError` 等）もこの形式のスーパーセットであり、`error` と `message` を必ず含む。
+
+### 2.2 共通エラー
+
+すべてのエンドポイントで発生しうる共通エラー:
+
+| ステータス | エラーコード | 条件 |
+|-----------|------------|------|
+| 401 | `unauthorized` | APIキーまたは管理者キーが無効 |
+| 403 | `not_joined` | 世界に参加していない（参加必須のエンドポイント） |
+
+### 2.3 リクエストボディの検証
+
+リクエストボディの形式不備に対する共通エラー:
+
+| ステータス | エラーコード | 条件 |
+|-----------|------------|------|
+| 400 | `invalid_request` | 必須フィールドの欠落、型の不一致、空文字列（`message` フィールド等） |
+
+```typescript
+interface RequestValidationError {
+  error: "invalid_request";
+  message: string;
+  field?: string; // 対象フィールド名
+}
+```
+
+## 3. エージェントAPI — ライフサイクル
+
+### 3.1 参加
+
+```
+POST /api/agents/join
+```
+
+認証: Agent（1.1）。参加状態制約: なし。
+
+リクエスト: ボディなし
+
+レスポンス・処理フロー・エラーの詳細は 02-agent-lifecycle.md セクション3.1 を参照。
+
+### 3.2 退出
+
+```
+POST /api/agents/leave
+```
+
+認証: Agent（1.1）。参加状態制約: なし（個別バリデーション）。
+
+リクエスト: ボディなし
+
+レスポンス・処理フロー・エラーの詳細は 02-agent-lifecycle.md セクション3.2 を参照。
+
+## 4. エージェントAPI — 世界操作
+
+### 4.1 移動
+
+```
+POST /api/agents/move
+```
+
+認証: Agent（1.1）。参加状態制約: あり。
+
+リクエスト:
+
+```typescript
+interface MoveRequest {
+  direction: "north" | "south" | "east" | "west";
+}
+```
+
+レスポンス (200 OK):
+
+```typescript
+interface MoveResponse {
+  from_node_id: NodeId;
+  to_node_id: NodeId;
+  arrives_at: number; // 到着予定時刻（Unix timestamp ms）
+}
+```
+
+バリデーション・処理フローの詳細は 04-movement.md を参照。
+
+### 4.2 アクション実行
+
+```
+POST /api/agents/action
+```
+
+認証: Agent（1.1）。参加状態制約: あり。
+
+リクエスト:
+
+```typescript
+interface ActionRequest {
+  action_id: string;
+}
+```
+
+レスポンス (200 OK):
+
+```typescript
+interface ActionResponse {
+  action_id: string;
+  action_name: string;
+  completes_at: number; // 完了予定時刻（Unix timestamp ms）
+}
+```
+
+バリデーション・処理フローの詳細は 05-actions.md を参照。
+
+### 4.3 会話開始
+
+```
+POST /api/agents/conversation/start
+```
+
+認証: Agent（1.1）。参加状態制約: あり。
+
+リクエスト:
+
+```typescript
+interface ConversationStartRequest {
+  target_agent_id: string;
+  message: string;
+}
+```
+
+レスポンス (200 OK):
+
+```typescript
+interface ConversationStartResponse {
+  conversation_id: string;
+}
+```
+
+バリデーション・処理フローの詳細は 06-conversation.md セクション1〜2 を参照。
+
+### 4.4 会話受諾
+
+```
+POST /api/agents/conversation/accept
+```
+
+認証: Agent（1.1）。参加状態制約: あり。
+
+リクエスト:
+
+```typescript
+interface ConversationAcceptRequest {
+  conversation_id: string;
+}
+```
+
+レスポンス (200 OK):
+
+```typescript
+interface ConversationAcceptResponse {
+  status: "ok";
+}
+```
+
+バリデーション・処理フローの詳細は 06-conversation.md セクション2.2 を参照。
+
+### 4.5 会話拒否
+
+```
+POST /api/agents/conversation/reject
+```
+
+認証: Agent（1.1）。参加状態制約: あり。
+
+リクエスト:
+
+```typescript
+interface ConversationRejectRequest {
+  conversation_id: string;
+}
+```
+
+レスポンス (200 OK):
+
+```typescript
+interface ConversationRejectResponse {
+  status: "ok";
+}
+```
+
+バリデーション・処理フローの詳細は 06-conversation.md セクション3 を参照。
+
+### 4.6 会話発言
+
+```
+POST /api/agents/conversation/speak
+```
+
+認証: Agent（1.1）。参加状態制約: あり。
+
+リクエスト:
+
+```typescript
+interface ConversationSpeakRequest {
+  conversation_id: string;
+  message: string;
+}
+```
+
+レスポンス (200 OK):
+
+```typescript
+interface ConversationSpeakResponse {
+  turn: number; // この発言のターン番号
+}
+```
+
+バリデーション・処理フローの詳細は 06-conversation.md セクション4 を参照。
+
+### 4.7 サーバーイベント選択
+
+```
+POST /api/agents/server-event/select
+```
+
+認証: Agent（1.1）。参加状態制約: あり。
+
+リクエスト:
+
+```typescript
+interface ServerEventSelectRequest {
+  server_event_id: string;
+  choice_id: string;
+}
+```
+
+レスポンス (200 OK):
+
+```typescript
+interface ServerEventSelectResponse {
+  status: "ok";
+}
+```
+
+バリデーション・処理フローの詳細は 07-server-events.md セクション4 を参照。
+
+## 5. エージェントAPI — 情報取得
+
+### 5.1 利用可能アクション一覧取得
+
+```
+GET /api/agents/actions
+```
+
+認証: Agent（1.1）。参加状態制約: あり。
+
+エージェントの現在位置で実行条件を満たすアクションの一覧を返す。エージェントの状態に関わらず、位置条件のみでフィルタリングする。
+
+レスポンス (200 OK):
+
+```typescript
+interface AvailableActionsResponse {
+  actions: AvailableAction[];
+}
+
+interface AvailableAction {
+  action_id: string;
+  name: string;
+  description: string;
+  duration_ms: number;
+  source: ActionSource;
+}
+
+interface ActionSource {
+  type: "building" | "npc";
+  id: string;
+  name: string;
+}
+```
+
+フィルタリングロジックの詳細は 05-actions.md セクション2.1 を参照。
+
+### 5.2 知覚情報取得
+
+```
+GET /api/agents/perception
+```
+
+認証: Agent（1.1）。参加状態制約: あり。
+
+エージェントの現在位置を基準とした知覚範囲内の構造化データを返す。
+
+レスポンス (200 OK):
+
+```typescript
+interface PerceptionResponse {
+  current_node: {
+    node_id: NodeId;
+    type: NodeType;
+    label?: string;
+  };
+  nodes: PerceptionNode[]; // 知覚範囲内のノード（現在ノードを除く）
+  agents: PerceptionAgent[];
+  npcs: PerceptionNpc[];
+  buildings: PerceptionBuilding[];
+}
+
+interface PerceptionNode {
+  node_id: NodeId;
+  type: NodeType;
+  label?: string;
+  distance: number; // 現在位置からのマンハッタン距離
+}
+
+interface PerceptionAgent {
+  agent_id: string;
+  agent_name: string;
+  node_id: NodeId;
+}
+
+interface PerceptionNpc {
+  npc_id: string;
+  name: string;
+  node_id: NodeId;
+}
+
+interface PerceptionBuilding {
+  building_id: string;
+  name: string;
+  door_nodes: NodeId[];
+}
+```
+
+知覚範囲の算出方法は 01-data-model.md セクション7.1 を参照。
+
+### 5.3 マップ全体取得
+
+```
+GET /api/agents/map
+```
+
+認証: Agent（1.1）。参加状態制約: あり。
+
+マップ全体の構造化データを返す。
+
+レスポンス (200 OK):
+
+```typescript
+interface MapResponse {
+  rows: number;
+  cols: number;
+  nodes: Record<NodeId, NodeConfig>;
+  buildings: MapBuildingInfo[];
+  npcs: MapNpcInfo[];
+}
+
+interface MapBuildingInfo {
+  building_id: string;
+  name: string;
+  description: string;
+  wall_nodes: NodeId[];
+  interior_nodes: NodeId[];
+  door_nodes: NodeId[];
+  actions: MapActionInfo[];
+}
+
+interface MapNpcInfo {
+  npc_id: string;
+  name: string;
+  description: string;
+  node_id: NodeId;
+  actions: MapActionInfo[];
+}
+
+interface MapActionInfo {
+  action_id: string;
+  name: string;
+  description: string;
+  duration_ms: number;
+}
+```
+
+### 5.4 参加中エージェント一覧取得
+
+```
+GET /api/agents/world-agents
+```
+
+認証: Agent（1.1）。参加状態制約: あり。
+
+世界に参加中のすべてのエージェントの位置と状態を返す。
+
+レスポンス (200 OK):
+
+```typescript
+interface WorldAgentsResponse {
+  agents: WorldAgentInfo[];
+}
+
+interface WorldAgentInfo {
+  agent_id: string;
+  agent_name: string;
+  node_id: NodeId;
+  state: AgentState;
+}
+```
+
+## 6. 管理API
+
+### 6.1 エージェント管理
+
+02-agent-lifecycle.md セクション2 で定義済み。認証は管理者キー（1.2）を使用する。
+
+| メソッド | パス | 説明 | 参照 |
+|---------|------|------|------|
+| POST | /api/admin/agents | エージェント登録 | 02 §2.1 |
+| DELETE | /api/admin/agents/:agent_id | エージェント削除 | 02 §2.2 |
+| GET | /api/admin/agents | エージェント一覧取得 | 02 §2.3 |
+
+### 6.2 サーバーイベント発火
+
+```
+POST /api/admin/server-events/:event_id/fire
+```
+
+認証: Admin（1.2）。
+
+`event_id` は `ServerConfig.server_events` に定義されたイベントIDを指定する。
+
+リクエスト: ボディなし
+
+レスポンス (200 OK):
+
+```typescript
+interface FireServerEventResponse {
+  server_event_id: string; // 生成されたランタイムインスタンスID
+}
+```
+
+エラー:
+
+| ステータス | エラーコード | 条件 |
+|-----------|------------|------|
+| 404 | `event_not_found` | 指定の `event_id` が `ServerConfig.server_events` に存在しない |
+
+処理の詳細は 07-server-events.md セクション2 を参照。
+
+## 7. UI向けAPI
+
+### 7.1 スナップショット取得
+
+```
+GET /api/snapshot
+```
+
+認証: なし（公開API）。
+
+世界の現在状態をスナップショットとして返す。WebSocket接続前の初期データ取得にも使用できる。
+
+レスポンス (200 OK): `WorldSnapshot` 型（03-world-engine.md セクション7.1 で定義）。
+
+### 7.2 WebSocket接続
+
+```
+GET /ws
+```
+
+認証: なし。
+
+WebSocket接続を確立する。接続確立後、サーバーは `WorldSnapshot` を送信し、以降はイベントをリアルタイムで配信する。
+
+同期モデルの詳細は 03-world-engine.md セクション7 を参照。
+
+## 8. バリデーション
+
+### 8.1 バリデーションの実行順序
+
+すべてのエンドポイントで以下の順序でバリデーションを実行する:
+
+1. 認証（APIキー / 管理者キーの検証）→ 失敗時 `401`
+2. 参加状態の検証（参加必須のエンドポイントの場合）→ 失敗時 `403`
+3. リクエストボディの形式検証（セクション2.3）→ 失敗時 `400`
+4. エンドポイント固有のバリデーション（各詳細設計で定義）
+
+### 8.2 エンドポイント固有のバリデーション参照
+
+| エンドポイント | バリデーション定義 |
+|--------------|-----------------|
+| POST /api/agents/join | 02-agent-lifecycle.md §3.1 |
+| POST /api/agents/leave | 02-agent-lifecycle.md §3.2 |
+| POST /api/agents/move | 04-movement.md §1.3 |
+| POST /api/agents/action | 05-actions.md §1.3 |
+| POST /api/agents/conversation/start | 06-conversation.md §1.3 |
+| POST /api/agents/conversation/accept | 06-conversation.md §2.2 |
+| POST /api/agents/conversation/reject | 06-conversation.md §3.1 |
+| POST /api/agents/conversation/speak | 06-conversation.md §4.2 |
+| POST /api/agents/server-event/select | 07-server-events.md §4.2 |
+
+## 9. エンドポイント一覧
+
+| メソッド | パス | 認証 | 参加必須 | 説明 |
+|---------|------|------|---------|------|
+| POST | /api/admin/agents | Admin | - | エージェント登録 |
+| DELETE | /api/admin/agents/:agent_id | Admin | - | エージェント削除 |
+| GET | /api/admin/agents | Admin | - | エージェント一覧取得 |
+| POST | /api/admin/server-events/:event_id/fire | Admin | - | サーバーイベント発火 |
+| POST | /api/agents/join | Agent | - | 世界に参加 |
+| POST | /api/agents/leave | Agent | - | 世界から退出 |
+| POST | /api/agents/move | Agent | ✅ | 移動 |
+| POST | /api/agents/action | Agent | ✅ | アクション実行 |
+| GET | /api/agents/actions | Agent | ✅ | 利用可能アクション一覧 |
+| POST | /api/agents/conversation/start | Agent | ✅ | 会話開始 |
+| POST | /api/agents/conversation/accept | Agent | ✅ | 会話受諾 |
+| POST | /api/agents/conversation/reject | Agent | ✅ | 会話拒否 |
+| POST | /api/agents/conversation/speak | Agent | ✅ | 会話発言 |
+| POST | /api/agents/server-event/select | Agent | ✅ | サーバーイベント選択 |
+| GET | /api/agents/perception | Agent | ✅ | 知覚情報取得 |
+| GET | /api/agents/map | Agent | ✅ | マップ全体取得 |
+| GET | /api/agents/world-agents | Agent | ✅ | 参加中エージェント一覧 |
+| GET | /api/snapshot | なし | - | 世界スナップショット |
+| GET | /ws | なし | - | WebSocket接続 |
