@@ -108,8 +108,8 @@ type Timer =
 | `movement` | エージェント位置を `to_node_id` に更新、状態を `idle` に遷移、`movement_completed` イベント発行 |
 | `action` | 状態を `idle` に遷移、`action_completed` イベント発行 |
 | `conversation_accept` | 受諾待ちを解除、`conversation_rejected` イベント発行（`reason: "timeout"`） |
-| `conversation_turn` | 会話を終了、両者を `idle` に遷移、`conversation_ended` イベント発行（`reason: "turn_timeout"`） |
-| `conversation_interval` | 次の発言者にDiscordで発言を配信、`conversation_turn` タイマーを生成 |
+| `conversation_turn` | `active` 状態: 会話を終了、両者を `idle` に遷移、`conversation_ended` イベント発行（`reason: "turn_timeout"`）。`closing` 状態: 終了あいさつ未送信として会話を終了、`conversation_ended` イベント発行（`reason` は終了理由に応じて `"max_turns"` または `"server_event"`）。詳細は 06-conversation.md セクション5.2、6.3、7.2 |
+| `conversation_interval` | `active` 状態: 次の発言者にDiscordで発言を配信、`conversation_turn` タイマーを生成。turn が `ConversationConfig.max_turns` に到達した場合は終了あいさつフェーズに移行。`closing` 状態: 終了あいさつを配信し会話を終了。詳細は 06-conversation.md セクション4.4、6.2 |
 | `server_event_timeout` | 詳細は 07-server-events.md で定義 |
 
 ## 2. イベントシステム
