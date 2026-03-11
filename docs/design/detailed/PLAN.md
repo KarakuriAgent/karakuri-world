@@ -26,12 +26,12 @@
 - [x] 知覚範囲の定義（範囲の算出方法、通知に含める情報、API/MCPで取得する広域情報との境界）
 
 ### 02-agent-lifecycle.md — エージェントライフサイクル
-- [ ] エージェント登録のデータ構造（agent_id、api_key、discord_bot_id等）
-- [ ] 管理系APIエンドポイント定義（登録/削除/一覧）
-- [ ] 参加/退出APIエンドポイント定義（join/leave）
-- [ ] 状態遷移の詳細仕様（idle/moving/in_action/in_conversation）
-- [ ] 各状態での受付可能操作とバリデーションルール
-- [ ] 再join時の挙動（スポーン地点配置、状態リセット）
+- [x] エージェント登録のデータ構造（agent_id、api_key、discord_bot_id等）
+- [x] 管理系APIエンドポイント定義（登録/削除/一覧）
+- [x] 参加/退出APIエンドポイント定義（join/leave）
+- [x] 状態遷移の詳細仕様（idle/moving/in_action/in_conversation）
+- [x] 各状態での受付可能操作とバリデーションルール
+- [x] 再join時の挙動（スポーン地点配置、状態リセット）
 
 ### 03-world-engine.md — ワールドエンジン
 - [ ] タイマー管理の仕組み（生成、キャンセル、発火時処理）
