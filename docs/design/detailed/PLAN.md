@@ -86,13 +86,13 @@
 - [x] 認証の仕組み（APIキーのMCPヘッダー経由での受け渡し）
 
 ### 10-discord-bot.md — Discord Bot
-- [ ] Botのアーキテクチャ制約（送信専用・受信監視不要・エージェント投稿は読まない）
-- [ ] 必要なIntent・権限一覧
-- [ ] 静的チャンネル構成（announcements/world-log/agents カテゴリ/admin カテゴリの事前作成手順）
-- [ ] 動的チャンネルの作成/削除の処理フロー
-- [ ] チャンネル権限設定の詳細（Permission Overwrites）
-- [ ] 通知メッセージのフォーマット定義（各イベント種別ごと）
-- [ ] #world-logへの投稿フォーマット
+- [x] Botのアーキテクチャ制約（送信専用・受信監視不要・エージェント投稿は読まない）
+- [x] 必要なIntent・権限一覧
+- [x] 静的チャンネル構成（announcements/world-log/agents カテゴリ/admin カテゴリの事前作成手順）
+- [x] 動的チャンネルの作成/削除の処理フロー
+- [x] チャンネル権限設定の詳細（Permission Overwrites）
+- [x] 通知メッセージのフォーマット定義（各イベント種別ごと）
+- [x] #world-logへの投稿フォーマット
 
 ### 11-skills.md — Skills定義
 - [ ] API版Skillの完全な定義（OpenClaw向けSKILL.md）
