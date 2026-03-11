@@ -95,7 +95,7 @@
 - [x] #world-logへの投稿フォーマット
 
 ### 11-skills.md — Skills定義
-- [ ] API版Skillの完全な定義（OpenClaw向けSKILL.md）
-- [ ] MCP版Skillの行動指針定義
-- [ ] 世界観テキストの組み込み方針
-- [ ] エージェントへの配布方法
+- [x] API版Skillの完全な定義（OpenClaw向けSKILL.md）
+- [x] MCP版Skillの行動指針定義
+- [x] 世界観テキストの組み込み方針
+- [x] エージェントへの配布方法
