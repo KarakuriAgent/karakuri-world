@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+*.swp
+coverage/
+config/*
+!config/example.yaml
