@@ -380,7 +380,7 @@ WorldEngineのコンストラクタでTimerManager.onFire()を各タイマー種
 `src/index.ts` — 起動フロー:
 1. YAML設定読み込み + バリデーション
 2. Discord Bot初期化 (DISCORD_TOKENがあれば。未設定時は警告ログを出力しDiscordなしモードで起動)
-3. Discord Bot初期化時: DISCORD_GUILD_ID 必須チェック、静的チャンネル (#world-log, agents/admin カテゴリ) の存在検証。不備があればfail-fast
+3. Discord Bot初期化時: DISCORD_GUILD_ID 必須チェック、不足リソース (ロール・カテゴリ・チャンネル) を自動作成
 4. WorldEngine初期化
 5. Hono + WebSocketサーバー起動
 6. Discord EventHandler登録

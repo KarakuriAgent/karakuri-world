@@ -38,13 +38,15 @@
 
 ## 3. Bot をサーバーへ招待する
 
-Developer Portal の **OAuth2** -> **URL Generator** を使います。
+Developer Portal の **Installation** ページを開きます。
 
-### OAuth2 scope
+### Default Install Settings の設定
 
-使う scope は次です。
-
-- `bot`
+1. **Installation Contexts** で **Guild Install** が有効になっていることを確認する
+2. **Guild Install** セクションの **Scopes** に `bot` を追加する
+3. `bot` を選択すると **Permissions** メニューが表示されるので、下記の権限を選択する
+4. 変更を保存する。ページ上部に **Install Link** が生成される
+5. そのリンクをブラウザで開き、Bot をサーバーに招待する
 
 現在の Karakuri World は slash commands を使わないので、`applications.commands` は不要です。
 
@@ -54,23 +56,23 @@ Developer Portal の **OAuth2** -> **URL Generator** を使います。
 
 | 権限 | 値 | このリポジトリで必要な理由 |
 | --- | --- | --- |
-| `Manage Channels` | `0x00000010` (`16`) | エージェント専用チャンネルの作成・削除と通常の channel overwrite 設定 |
-| `View Channels` | `0x00000400` (`1024`) | 必須の静的チャンネルと動的に作るチャンネルへアクセスするため |
-| `Send Messages` | `0x00000800` (`2048`) | 世界からの通知を投稿するため |
-| `Read Message History` | `0x00010000` (`65536`) | World Bot / admin / agent bot 向けの overwrite モデルに合わせるため |
+| チャンネルの管理 | `0x00000010` (`16`) | エージェント専用チャンネルの作成・削除と通常の channel overwrite 設定 |
+| ロールの管理 | `0x10000000` (`268435456`) | admin ロールの自動作成およびチャンネル permission overwrite の設定 |
+| チャンネルを見る | `0x00000400` (`1024`) | 必須の静的チャンネルと動的に作るチャンネルへアクセスするため |
+| メッセージを送信 | `0x00000800` (`2048`) | 世界からの通知を投稿するため |
+| メッセージ履歴を読む | `0x00010000` (`65536`) | World Bot / admin / agent bot 向けの overwrite モデルに合わせるため |
 
-招待 URL 用の permission integer は `68624` です。
+Permission integer は `268504080` です。
 
-例:
+手動で招待 URL を作成することもできます:
 
 ```text
-https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&scope=bot&permissions=68624
+https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&scope=bot&permissions=268504080
 ```
 
 補足:
 
 - `Administrator` は不要で、基本的には付けないほうが安全です。
-- 現在の実装は guild ロール自体を編集しないので、`Manage Roles` は必須ではありません。
 - Bot を招待するサーバーは、あとで `DISCORD_GUILD_ID` に入れるサーバーと一致させてください。
 
 ## 4. Guild ID を取得する
@@ -82,20 +84,20 @@ https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&scope=bot&per
 5. **Copy Server ID** を選ぶ
 6. その値を `.env` の `DISCORD_GUILD_ID` に入れる
 
-## 5. 必要な guild 構成を用意する
+## 5. 必要な guild 構成（自動作成）
 
-Karakuri World は起動時に次のリソースを名前で検証します。
+Karakuri World は起動時に不足リソースを自動作成します。手動で事前に作成する必要はありません。
 
-| 必須リソース | 種別 | 補足 |
+| リソース | 種別 | 補足 |
 | --- | --- | --- |
-| `#announcements` | テキストチャンネル | 現在の実装では主に `#world-log` と agent channel を使いますが、起動時検証では必要です |
+| `#announcements` | テキストチャンネル | 人間向けお知らせ用 |
 | `#world-log` | テキストチャンネル | 世界全体のログ送信用 |
 | `agents` | カテゴリ | 動的に作られる `#agent-{name}` の親カテゴリ |
 | `admin` | カテゴリ | 管理者向けチャンネルの親カテゴリ |
-| `#system-control` | テキストチャンネル | `admin` カテゴリ配下に必要 |
-| `admin` または `@admin` | ロール | エージェント専用チャンネルと管理領域に入れる管理者ロール |
+| `#system-control` | テキストチャンネル | `admin` カテゴリ配下に作成 |
+| `admin` | ロール | エージェント専用チャンネルと管理領域に入れる管理者ロール |
 
-1 つでも足りないと、`Discord guild is missing #world-log.` のような明示的エラーで起動失敗します。
+Bot が作成したリソースはコンソールにログ出力されます。Bot の権限不足でリソース作成に失敗した場合、起動エラーになります。
 
 ## 6. 推奨するチャンネル可視性モデル
 
@@ -142,8 +144,8 @@ DISCORD_GUILD_ID=123456789012345678
   - 起動時に即エラーになります。両方入れるか、両方外してください。
 - Guild ID が間違っている、または別サーバーに Bot を招待した
   - login 自体は通っても guild の取得や初期化に失敗します。
-- 必須チャンネル、カテゴリ、ロールが足りない
-  - どのリソースが無いかを示すエラーメッセージで起動失敗します。
+- チャンネル、カテゴリ、admin ロールの自動作成に失敗する
+  - Bot に `Manage Channels` と `Manage Roles` の権限があるか、サーバー設定で確認してください。
 - Token が漏えいした
   - Developer Portal で直ちに再生成し、古い値を全て置き換えてください。
 - `.env.example` をそのまま使った

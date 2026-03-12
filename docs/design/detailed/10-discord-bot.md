@@ -119,12 +119,8 @@ Permission Overwriteの値の凡例: Allow / Deny / —（未設定）
 ### 4.3 セットアップ手順
 
 1. Discordサーバーを作成する
-2. `@admin` ロールを作成する
-3. World Botをセクション2.2の権限で招待する
-4. `agents` カテゴリを作成し、Permission Overwrites（セクション4.2）を設定する
-5. `admin` カテゴリを作成し、Permission Overwrites（セクション4.2）を設定する
-6. `#announcements`、`#world-log` を作成し、Permission Overwrites（セクション4.2）を設定する
-7. `#system-control` を `admin` カテゴリ配下に作成する
+2. World Botをセクション2.2の権限で招待する
+3. Karakuri Worldを起動する。不足しているロール・カテゴリ・チャンネルは自動作成される
 
 ## 5. 動的チャンネルの作成/削除
 

@@ -20,14 +20,6 @@ function combinePermissions(...permissions: bigint[]): bigint {
   return permissions.reduce((combined, permission) => combined | permission, 0n);
 }
 
-function requireValue<T>(value: T | undefined, message: string): T {
-  if (value === undefined) {
-    throw new Error(message);
-  }
-
-  return value;
-}
-
 export function sanitizeAgentChannelName(agentName: string): string {
   const normalized = agentName
     .trim()
@@ -49,36 +41,117 @@ export class ChannelManager {
       return this.staticChannels;
     }
 
+    const worldBotId = this.requireWorldBotUserId();
     const channels = await this.guild.channels.fetch();
     const availableChannels = [...channels.values()].filter((channel): channel is NonNullable<typeof channel> => channel !== null);
-    const adminRoleId = this.findAdminRoleId();
 
-    const announcements = availableChannels.find(
-      (channel) => channel.type === ChannelType.GuildText && channel.name === 'announcements',
-    );
-    const worldLog = availableChannels.find(
-      (channel) => channel.type === ChannelType.GuildText && channel.name === 'world-log',
-    );
-    const agentsCategory = availableChannels.find(
+    // 1. admin ロール: fetch してから検索、無ければ作成
+    const roles = await this.guild.roles.fetch();
+    let adminRole = [...roles.values()].find((role) => role.name === 'admin' || role.name === '@admin');
+    if (!adminRole) {
+      console.log('Creating missing admin role...');
+      adminRole = await this.guild.roles.create({ name: 'admin' });
+    }
+
+    const restrictedOverwrites: OverwriteResolvable[] = [
+      {
+        id: this.guild.roles.everyone.id,
+        type: OverwriteType.Role,
+        deny: PermissionFlagsBits.ViewChannel,
+      },
+      {
+        id: worldBotId,
+        type: OverwriteType.Member,
+        allow: combinePermissions(
+          PermissionFlagsBits.ViewChannel,
+          PermissionFlagsBits.SendMessages,
+          PermissionFlagsBits.ReadMessageHistory,
+        ),
+      },
+      {
+        id: adminRole.id,
+        type: OverwriteType.Role,
+        allow: combinePermissions(
+          PermissionFlagsBits.ViewChannel,
+          PermissionFlagsBits.SendMessages,
+          PermissionFlagsBits.ReadMessageHistory,
+        ),
+      },
+    ];
+
+    // 2. agents カテゴリ
+    let agentsCategory = availableChannels.find(
       (channel) => channel.type === ChannelType.GuildCategory && channel.name === 'agents',
     );
-    const adminCategory = availableChannels.find(
+    if (!agentsCategory) {
+      console.log('Creating missing agents category...');
+      agentsCategory = await this.guild.channels.create({
+        name: 'agents',
+        type: ChannelType.GuildCategory,
+        permissionOverwrites: restrictedOverwrites,
+      });
+    }
+
+    // 3. admin カテゴリ
+    let adminCategory = availableChannels.find(
       (channel) => channel.type === ChannelType.GuildCategory && channel.name === 'admin',
     );
-    const systemControl = availableChannels.find(
+    if (!adminCategory) {
+      console.log('Creating missing admin category...');
+      adminCategory = await this.guild.channels.create({
+        name: 'admin',
+        type: ChannelType.GuildCategory,
+        permissionOverwrites: restrictedOverwrites,
+      });
+    }
+
+    // 4. #announcements
+    let announcements = availableChannels.find(
+      (channel) => channel.type === ChannelType.GuildText && channel.name === 'announcements',
+    );
+    if (!announcements) {
+      console.log('Creating missing #announcements channel...');
+      announcements = await this.guild.channels.create({
+        name: 'announcements',
+        type: ChannelType.GuildText,
+      });
+    }
+
+    // 5. #world-log
+    let worldLog = availableChannels.find(
+      (channel) => channel.type === ChannelType.GuildText && channel.name === 'world-log',
+    );
+    if (!worldLog) {
+      console.log('Creating missing #world-log channel...');
+      worldLog = await this.guild.channels.create({
+        name: 'world-log',
+        type: ChannelType.GuildText,
+      });
+    }
+
+    // 6. #system-control (admin カテゴリ配下)
+    let systemControl = availableChannels.find(
       (channel) =>
         channel.type === ChannelType.GuildText &&
         channel.name === 'system-control' &&
-        channel.parentId === adminCategory?.id,
+        channel.parentId === adminCategory.id,
     );
+    if (!systemControl) {
+      console.log('Creating missing #system-control channel...');
+      systemControl = await this.guild.channels.create({
+        name: 'system-control',
+        type: ChannelType.GuildText,
+        parent: adminCategory.id,
+      });
+    }
 
     this.staticChannels = {
-      announcements_id: requireValue(announcements?.id, 'Discord guild is missing #announcements.'),
-      world_log_id: requireValue(worldLog?.id, 'Discord guild is missing #world-log.'),
-      agents_category_id: requireValue(agentsCategory?.id, 'Discord guild is missing the agents category.'),
-      admin_category_id: requireValue(adminCategory?.id, 'Discord guild is missing the admin category.'),
-      system_control_id: requireValue(systemControl?.id, 'Discord guild is missing #system-control under admin.'),
-      admin_role_id: requireValue(adminRoleId, 'Discord guild is missing the admin role.'),
+      announcements_id: announcements.id,
+      world_log_id: worldLog.id,
+      agents_category_id: agentsCategory.id,
+      admin_category_id: adminCategory.id,
+      system_control_id: systemControl.id,
+      admin_role_id: adminRole.id,
     };
 
     return this.staticChannels;
@@ -162,7 +235,4 @@ export class ChannelManager {
     return userId;
   }
 
-  private findAdminRoleId(): string | undefined {
-    return [...this.guild.roles.cache.values()].find((role) => role.name === 'admin' || role.name === '@admin')?.id;
-  }
 }

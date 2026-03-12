@@ -30,7 +30,7 @@ export class DiscordBot implements DiscordNotificationAdapter {
 
     await client.login(options.token);
     if (!client.isReady()) {
-      await once(client, 'ready');
+      await once(client, 'clientReady');
     }
 
     const guild = await client.guilds.fetch(options.guildId);

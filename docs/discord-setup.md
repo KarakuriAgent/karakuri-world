@@ -37,15 +37,17 @@ The current implementation is intentionally outbound-only.
 
 ## 3. Invite the bot to your server
 
-Use **OAuth2** -> **URL Generator** in the Developer Portal.
+Open the **Installation** page in the Developer Portal.
 
-### OAuth2 scope
+### Configure Default Install Settings
 
-Use this scope:
+1. Under **Installation Contexts**, make sure **Guild Install** is enabled.
+2. In the **Guild Install** section, add `bot` to the **Scopes**.
+3. Once `bot` is selected, a **Permissions** menu appears. Select the permissions listed below.
+4. Save changes. The portal generates an **Install Link** at the top of the page.
+5. Open that link in a browser to invite the bot to your server.
 
-- `bot`
-
-You do not need slash commands for the current Karakuri World implementation, so `applications.commands` is not required.
+You do not need `applications.commands` because the current Karakuri World implementation does not use slash commands.
 
 ### Recommended minimum bot permissions
 
@@ -54,22 +56,22 @@ These permissions match the current code path in `src/discord/channel-manager.ts
 | Permission | Value | Why this repository needs it |
 | --- | --- | --- |
 | `Manage Channels` | `0x00000010` (`16`) | Create and delete per-agent channels and apply standard channel overwrites |
+| `Manage Roles` | `0x10000000` (`268435456`) | Auto-create the admin role at startup and set channel permission overwrites |
 | `View Channels` | `0x00000400` (`1024`) | Access required static channels and the channels the server creates |
 | `Send Messages` | `0x00000800` (`2048`) | Post world notifications |
 | `Read Message History` | `0x00010000` (`65536`) | Matches the overwrite model used for world/admin/agent channel access |
 
-Permission integer for the invite URL: `68624`.
+Permission integer: `268504080`.
 
-Example invite URL:
+You can also build a manual invite URL if needed:
 
 ```text
-https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&scope=bot&permissions=68624
+https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&scope=bot&permissions=268504080
 ```
 
 Notes:
 
 - `Administrator` is not required and is best avoided.
-- `Manage Roles` is not required by the current implementation because it creates channels and standard permission overwrites, but it does not edit guild roles.
 - Invite the bot to the same server whose ID you later store in `DISCORD_GUILD_ID`.
 
 ## 4. Get the guild ID
@@ -81,20 +83,20 @@ Notes:
 5. Click **Copy Server ID**.
 6. Store that value in `.env` as `DISCORD_GUILD_ID`.
 
-## 5. Prepare the required guild structure
+## 5. Required guild structure (auto-created)
 
-Karakuri World validates these resources by name during startup:
+Karakuri World automatically creates the following resources at startup if they are missing. Manual creation is not required.
 
-| Required resource | Type | Notes |
+| Resource | Type | Notes |
 | --- | --- | --- |
-| `#announcements` | Text channel | Required by startup validation even though the current runtime mainly posts to agent channels and `#world-log` |
+| `#announcements` | Text channel | Human-facing announcements |
 | `#world-log` | Text channel | Receives world-level activity logs |
 | `agents` | Category | Parent category for dynamically created `#agent-{name}` channels |
 | `admin` | Category | Parent category for admin-only channels |
-| `#system-control` | Text channel | Must exist under the `admin` category |
-| `admin` or `@admin` | Role | Users with this role can access agent channels and the admin area |
+| `#system-control` | Text channel | Created under the `admin` category |
+| `admin` | Role | Users with this role can access agent channels and the admin area |
 
-If any of these are missing, startup fails with an explicit error such as `Discord guild is missing #world-log.`
+The bot logs each resource it creates to the console. If resource creation fails (e.g. due to missing bot permissions), startup fails with an error.
 
 ## 6. Recommended channel visibility model
 
@@ -141,8 +143,8 @@ DISCORD_GUILD_ID=123456789012345678
   - Startup fails immediately. Set both or clear both.
 - The guild ID is wrong or the bot was invited to a different server.
   - Login may succeed, but guild fetch or initialization fails.
-- A required channel, category, or role is missing.
-  - Startup fails with a message that tells you which resource is missing.
+- Auto-creation of channels, categories, or the admin role fails.
+  - The bot needs `Manage Channels` and `Manage Roles` permissions. Verify the bot's permissions in your server settings.
 - The token was leaked.
   - Reset the token in the Developer Portal and replace the old value everywhere.
 - `.env.example` was copied unchanged.
