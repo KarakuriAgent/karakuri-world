@@ -292,11 +292,16 @@ type WorldEvent =
 | 会話拒否通知 | `conversation_rejected` | #agent-{initiator} | 理由（拒否/タイムアウト/相手退出）、知覚情報、行動促進 |
 | 会話開始ログ | `conversation_accepted` | #world-log | 参加者名 |
 | 会話メッセージ通知 | `conversation_interval` タイマー発火 | #agent-{listener} | 発言者名、発言内容、返答の指示 |
-| 会話終了通知 | `conversation_ended` | #agent-{双方} | 終了理由、知覚情報、行動促進 |
+| 終了あいさつ指示通知 | 終了あいさつフェーズ移行時 | #agent-{対象} ※5 | 終了あいさつ送信の指示 |
+| 会話終了通知 | `conversation_ended` | #agent-{双方} ※4 | 終了理由、知覚情報、行動促進 |
 | 会話終了ログ | `conversation_ended` | #world-log | 参加者名 |
 | サーバーイベント通知 | `server_event_fired` | #agent-{対象全員} | イベント名、説明文、選択肢一覧、選択/無視の指示 |
 | サーバーイベント遅延通知 | `movement_completed`（保留あり） | #agent-{name} | 保留中のサーバーイベント情報（選択肢含む） |
+| サーバーイベント選択後通知 | `server_event_selected`（`in_action` からの遷移時） | #agent-{name} | 選択したイベント名・選択肢、知覚情報、行動促進 |
 | サーバーイベントログ | `server_event_fired` | #world-log | イベント名、説明文 |
+
+- ※4 `reason: "partner_left"` の場合、会話終了通知は送信しない。代わりに `agent_left` をトリガーとする会話強制終了通知が残された側にのみ送信される（10-discord-bot.md セクション6.4 #10参照）
+- ※5 `max_turns` 到達時は最終ターンの聞き手へ、サーバーイベント選択時は選択したエージェントへ送信（06-conversation.md セクション6.2、7.1参照）
 
 ### 3.2 知覚情報の含め方
 
@@ -359,13 +364,15 @@ type WorldEvent =
 | `conversation_accepted` | ✅ 発信側 | ✅ | ✅ | ✅ |
 | `conversation_rejected` | ✅ 発信側 | - | ✅ | ✅ |
 | `conversation_message` | ✅ 聞き手 ※2 | - | ✅ | ✅ |
-| `conversation_ended` | ✅ 双方 | ✅ | ✅ | ✅ |
+| `conversation_ended` | ✅ 双方 ※4 | ✅ | ✅ | ✅ |
 | `server_event_fired` | ✅ 対象全員 ※3 | ✅ | ✅ | ✅ |
-| `server_event_selected` | - | - | ✅ | ✅ |
+| `server_event_selected` | ✅ 当該 ※5 | - | ✅ | ✅ |
 
 - ※1 `in_conversation` 中のleaveの場合のみ。会話相手に強制終了通知を送信
 - ※2 Discord配信は `conversation_interval` タイマー発火後（セクション3.3参照）
 - ※3 `moving` 状態のエージェントには移動完了後に遅延通知（セクション3.4参照）
+- ※4 `reason: "partner_left"` の場合は会話終了通知を送信しない。残された側への通知は `agent_left`（※1）の会話強制終了通知で行う
+- ※5 `in_action` から選択した場合のみ。`idle` での選択は状態遷移がないため通知なし。`in_conversation` での選択は終了あいさつフェーズ完了時の会話終了通知で行う（07-server-events.md セクション4.6参照）
 
 ### 4.3 配信フロー
 
