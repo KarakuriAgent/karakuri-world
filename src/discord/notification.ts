@@ -166,6 +166,10 @@ export function formatWorldLogMovement(agentName: string, nodeId: string, label?
   return `${agentName} が ${destination} に到着しました`;
 }
 
+export function formatWorldLogActionStarted(agentName: string, actionName: string): string {
+  return `${agentName} が「${actionName}」を開始しました`;
+}
+
 export function formatWorldLogAction(agentName: string, actionName: string): string {
   return `${agentName} が「${actionName}」を実行しました`;
 }

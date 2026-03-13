@@ -22,6 +22,7 @@ import {
   formatServerEventSelectedMessage,
   formatWaitCompletedMessage,
   formatWorldLogAction,
+  formatWorldLogActionStarted,
   formatWorldLogConversationEnded,
   formatWorldLogConversationStarted,
   formatWorldLogJoined,
@@ -131,7 +132,9 @@ export class DiscordEventHandler {
         await this.handleServerEventSelected(event);
         return;
       case 'movement_started':
+        return;
       case 'action_started':
+        await this.handleActionStarted(event.agent_name, event.action_name);
         return;
     }
   }
@@ -178,6 +181,10 @@ export class DiscordEventHandler {
       await this.sendToAgent(agentId, formatMovementCompletedMessage(toNodeId, label, perceptionText, this.skillName));
       await this.bot.sendWorldLog(formatWorldLogMovement(agentName, toNodeId, label));
     }
+  }
+
+  private async handleActionStarted(agentName: string, actionName: string): Promise<void> {
+    await this.bot.sendWorldLog(formatWorldLogActionStarted(agentName, actionName));
   }
 
   private async handleActionCompleted(

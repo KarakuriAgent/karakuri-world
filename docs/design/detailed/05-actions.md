@@ -90,7 +90,7 @@ interface ActionSource {
 
 1. エージェント状態を `in_action` に遷移
 2. `ActionTimer` を生成（03-world-engine.md セクション1.2参照。`fires_at = 現在時刻 + ActionConfig.duration_ms`）
-3. `ActionStartedEvent` を発行（03-world-engine.md セクション2.2参照）。配信先は WebSocket・ログのみ（Discord通知なし。03-world-engine.md セクション4.2参照）
+3. `ActionStartedEvent` を発行（03-world-engine.md セクション2.2参照）。配信先は WebSocket・ログ・Discord #world-log（03-world-engine.md セクション4.2参照）
 4. レスポンスを返却
 
 ```typescript

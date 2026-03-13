@@ -319,6 +319,7 @@ type WorldEvent =
 | 会話強制終了通知 | `agent_left`（`in_conversation` 中の場合） | #agent-{partner} | 退出エージェント名、知覚情報、行動促進 |
 | 移動完了通知 | `movement_completed` | #agent-{name} | 到着ノード、知覚情報、行動促進 |
 | 到着ログ | `movement_completed` | #world-log | エージェント名、到着ノード |
+| アクション開始ログ | `action_started` | #world-log | エージェント名、アクション名 |
 | アクション完了通知 | `action_completed` | #agent-{name} | `result_description`、知覚情報、行動促進 |
 | アクション完了ログ | `action_completed` | #world-log | エージェント名、アクション名 |
 | 待機完了通知 | `wait_completed` | #agent-{name} | 待機時間、知覚情報、行動促進 |
@@ -394,7 +395,7 @@ type WorldEvent =
 | `agent_left` | ✅ 会話相手 ※1 | ✅ | ✅ | ✅ |
 | `movement_started` | - | - | ✅ | ✅ |
 | `movement_completed` | ✅ 当該 | ✅ | ✅ | ✅ |
-| `action_started` | - | - | ✅ | ✅ |
+| `action_started` | - | ✅ | ✅ | ✅ |
 | `action_completed` | ✅ 当該 | ✅ | ✅ | ✅ |
 | `wait_started` | - | - | ✅ | ✅ |
 | `wait_completed` | ✅ 当該 | ✅ | ✅ | ✅ |
