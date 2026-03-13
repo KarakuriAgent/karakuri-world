@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -68,6 +69,14 @@ export class McpServerManager {
   async handleRequest(req: IncomingMessage, res: ServerResponse, parsedBody?: unknown): Promise<void> {
     try {
       const registration = authenticateMcpRequest(this.engine, req.headers.authorization);
+
+      // No Mcp-Session-Id header indicates a new client initialization.
+      // Destroy the existing session so a fresh one can be created.
+      const sessionIdHeader = req.headers['mcp-session-id'];
+      if (!sessionIdHeader && this.sessions.has(registration.agent_id)) {
+        await this.destroySession(registration.agent_id);
+      }
+
       const session = await this.getSession(registration.agent_id);
       await session.transport.handleRequest(req, res, parsedBody);
     } catch (error) {
@@ -82,12 +91,30 @@ export class McpServerManager {
   }
 
   async close(): Promise<void> {
-    const sessions = await Promise.all([...this.sessions.values()]);
+    const sessions = await Promise.allSettled([...this.sessions.values()]);
     this.sessions.clear();
 
+    const resolved = sessions
+      .filter((result): result is PromiseFulfilledResult<McpSession> => result.status === 'fulfilled')
+      .map((result) => result.value);
+
     await Promise.allSettled(
-      sessions.flatMap((session) => [session.server.close(), session.transport.close()]),
+      resolved.flatMap((session) => [session.server.close(), session.transport.close()]),
     );
+  }
+
+  private async destroySession(agentId: string): Promise<void> {
+    const sessionPromise = this.sessions.get(agentId);
+    this.sessions.delete(agentId);
+
+    if (sessionPromise) {
+      try {
+        const session = await sessionPromise;
+        await Promise.allSettled([session.server.close(), session.transport.close()]);
+      } catch {
+        // Session creation may have failed; nothing to clean up.
+      }
+    }
   }
 
   private getSession(agentId: string): Promise<McpSession> {
@@ -106,7 +133,7 @@ export class McpServerManager {
   private async createSession(agentId: string): Promise<McpSession> {
     const server = createMcpServer(this.engine, agentId);
     const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
+      sessionIdGenerator: () => randomUUID(),
     });
 
     await server.connect(transport);
