@@ -4,6 +4,8 @@
 
 Skills定義はプロジェクトルートの `skills/` ディレクトリに静的ファイルとして配置する。API版・MCP版それぞれのスキル定義を提供する。各SKILL.mdはClaude Codeのスキル形式（YAMLフロントマター + マークダウン本文）に準拠する。
 
+API版・MCP版ともにフロントマターの `name` は `karakuri-world` に統一する。Discord通知の行動促進テキスト（10-discord-bot.md §6.2）がこのスキル名を参照するため、`WorldConfig.skill_name` と一致させる必要がある。
+
 ```
 skills/
 ├── mcp/
@@ -26,7 +28,7 @@ YAMLフロントマター:
 
 ```yaml
 ---
-name: karakuri-world-api
+name: karakuri-world
 description: karakuri-worldのAPI版エージェントスキル。Discord通知を起点にkarakuri.shスクリプトを実行して仮想世界内で行動する。
 allowed-tools: Bash(karakuri.sh *)
 ---
@@ -71,7 +73,7 @@ YAMLフロントマター:
 
 ```yaml
 ---
-name: karakuri-world-mcp
+name: karakuri-world
 description: karakuri-worldのMCP版エージェントスキル。Discord通知を起点にMCPツールを呼び出して仮想世界内で行動する。
 ---
 ```

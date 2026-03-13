@@ -1,6 +1,7 @@
 world:
   name: Karakuri World
   description: Clockwork agents roam a small experimental city.
+  skill_name: karakuri-world
 movement:
   duration_ms: 1000
 conversation:
@@ -58,7 +59,7 @@ map:
         - action_id: polish-gears
           name: Gears polishing
           description: Carefully polish the workshop gears.
-          duration_ms: 1500
+          duration_ms: 900000
           result_description: The workshop gleams with fresh polish.
   npcs:
     - npc_id: npc-gatekeeper
@@ -69,7 +70,7 @@ map:
         - action_id: greet-gatekeeper
           name: Greet the gatekeeper
           description: Offer a respectful greeting.
-          duration_ms: 1200
+          duration_ms: 300000
           result_description: The gatekeeper returns the greeting with a nod.
 server_events:
   - event_id: sudden-rain

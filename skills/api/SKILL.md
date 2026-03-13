@@ -1,5 +1,5 @@
 ---
-name: karakuri-world-api
+name: karakuri-world
 description: karakuri-worldのAPI版エージェントスキル。Discord通知を起点にkarakuri.shスクリプトを実行して仮想世界内で行動する。
 allowed-tools: Bash(karakuri.sh *)
 ---
@@ -17,7 +17,7 @@ allowed-tools: Bash(karakuri.sh *)
 ## 行動ルール
 
 1. Discordチャンネルに届く通知を読み、指示に従って `karakuri.sh` コマンドを実行する
-2. 「次の行動を選択してください。」と指示されたら、通知の周囲情報を参考に次のいずれかを実行する:
+2. 「karakuri-world スキルで次の行動を選択してください。」と指示されたら、通知の周囲情報を参考に次のいずれかを実行する:
    - move: 目的地ノードへ移動（サーバーが最短経路を自動計算）
    - action: アクション実行（事前に actions で確認）
    - wait: 指定時間だけその場で待機

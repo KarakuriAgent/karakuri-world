@@ -39,11 +39,14 @@ interface PendingForcedConversationEnd {
 export class DiscordEventHandler {
   private unsubscribe: (() => void) | null = null;
   private readonly pendingForcedConversationEnds = new Map<string, PendingForcedConversationEnd>();
+  private readonly skillName: string;
 
   constructor(
     private readonly engine: WorldEngine,
     private readonly bot: DiscordNotificationAdapter,
-  ) {}
+  ) {
+    this.skillName = this.engine.config.world.skill_name;
+  }
 
   register(): () => void {
     if (this.unsubscribe) {
@@ -151,7 +154,7 @@ export class DiscordEventHandler {
   private async handleAgentJoined(agentId: string, agentName: string, _nodeId: NodeId): Promise<void> {
     const perceptionText = this.getPerceptionText(agentId);
     if (perceptionText) {
-      await this.sendToAgent(agentId, formatAgentJoinedMessage(perceptionText));
+      await this.sendToAgent(agentId, formatAgentJoinedMessage(perceptionText, this.skillName));
     }
 
     await this.bot.sendWorldLog(formatWorldLogJoined(agentName));
@@ -161,7 +164,7 @@ export class DiscordEventHandler {
     for (const partnerId of this.consumeForcedConversationPartners(agentId)) {
       const perceptionText = this.getPerceptionText(partnerId);
       if (perceptionText) {
-        await this.sendToAgent(partnerId, formatConversationForcedEndedMessage(agentName, perceptionText));
+        await this.sendToAgent(partnerId, formatConversationForcedEndedMessage(agentName, perceptionText, this.skillName));
       }
     }
 
@@ -172,7 +175,7 @@ export class DiscordEventHandler {
     const perceptionText = this.getPerceptionText(agentId);
     if (perceptionText) {
       const label = this.engine.getMap().nodes[toNodeId]?.label;
-      await this.sendToAgent(agentId, formatMovementCompletedMessage(toNodeId, label, perceptionText));
+      await this.sendToAgent(agentId, formatMovementCompletedMessage(toNodeId, label, perceptionText, this.skillName));
       await this.bot.sendWorldLog(formatWorldLogMovement(agentName, toNodeId, label));
     }
   }
@@ -185,7 +188,7 @@ export class DiscordEventHandler {
   ): Promise<void> {
     const perceptionText = this.getPerceptionText(agentId);
     if (perceptionText) {
-      await this.sendToAgent(agentId, formatActionCompletedMessage(actionName, resultDescription, perceptionText));
+      await this.sendToAgent(agentId, formatActionCompletedMessage(actionName, resultDescription, perceptionText, this.skillName));
     }
 
     await this.bot.sendWorldLog(formatWorldLogAction(agentName, actionName));
@@ -194,7 +197,7 @@ export class DiscordEventHandler {
   private async handleWaitCompleted(agentId: string, agentName: string, durationMs: number): Promise<void> {
     const perceptionText = this.getPerceptionText(agentId);
     if (perceptionText) {
-      await this.sendToAgent(agentId, formatWaitCompletedMessage(durationMs, perceptionText));
+      await this.sendToAgent(agentId, formatWaitCompletedMessage(durationMs, perceptionText, this.skillName));
     }
 
     await this.bot.sendWorldLog(formatWorldLogWait(agentName, durationMs));
@@ -232,7 +235,7 @@ export class DiscordEventHandler {
       return;
     }
 
-    await this.sendToAgent(initiatorAgentId, formatConversationRejectedMessage(targetName, reason, perceptionText));
+    await this.sendToAgent(initiatorAgentId, formatConversationRejectedMessage(targetName, reason, perceptionText, this.skillName));
   }
 
   private async handleConversationMessage(
@@ -273,7 +276,7 @@ export class DiscordEventHandler {
         continue;
       }
 
-      await this.sendToAgent(participantId, formatConversationEndedMessage(event.reason, perceptionText));
+      await this.sendToAgent(participantId, formatConversationEndedMessage(event.reason, perceptionText, this.skillName));
     }
 
     await this.bot.sendWorldLog(
@@ -298,7 +301,7 @@ export class DiscordEventHandler {
       if (perceptionText) {
         await this.sendToAgent(
           event.agent_id,
-          formatServerEventSelectedMessage(event.name, event.choice_label, perceptionText),
+          formatServerEventSelectedMessage(event.name, event.choice_label, perceptionText, this.skillName),
         );
       }
       return;

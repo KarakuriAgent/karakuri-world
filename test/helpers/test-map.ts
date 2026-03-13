@@ -58,6 +58,7 @@ export function createTestConfig(overrides: Partial<ServerConfig> = {}): ServerC
     world: {
       name: 'Karakuri Test World',
       description: 'A compact map used by automated tests.',
+      skill_name: 'test-skill',
     },
     movement: {
       duration_ms: 1000,

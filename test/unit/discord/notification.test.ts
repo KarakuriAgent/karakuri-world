@@ -8,11 +8,11 @@ import {
 
 describe('discord notifications', () => {
   it('formats actionable messages with the action prompt', () => {
-    const message = formatActionCompletedMessage('調べる', '古い歯車を見つけました。', '現在地: 2-2');
+    const message = formatActionCompletedMessage('調べる', '古い歯車を見つけました。', '現在地: 2-2', 'karakuri-world');
 
     expect(message).toContain('「調べる」が完了しました。');
     expect(message).toContain('古い歯車を見つけました。');
-    expect(message).toContain('次の行動を選択してください。');
+    expect(message).toContain('karakuri-world スキルで次の行動を選択してください。');
   });
 
   it('formats conversation and server event messages', () => {

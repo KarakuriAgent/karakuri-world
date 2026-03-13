@@ -164,6 +164,7 @@ interface ServerConfig {
 interface WorldConfig {
   name: string; // 世界名（例: "カラクリワールド"）
   description: string; // 世界観テキスト。エージェントのSkillに組み込まれる
+  skill_name: string; // スキル名。Discord通知の行動促進テキストに使用する（例: "karakuri-world"）
 }
 ```
 

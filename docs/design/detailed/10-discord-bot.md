@@ -190,10 +190,10 @@ Permission Overwriteの値の凡例: Allow / Deny / —（未設定）
 
 ### 6.2 行動促進テキスト
 
-行動促進を伴う通知の末尾に付加する。行動促進テキストが参照するスキル名は 11-skills.md で定義する。
+行動促進を伴う通知の末尾に付加する。`{skill_name}` は `WorldConfig.skill_name`（01-data-model.md §6.2）の値を使用する。
 
 ```
-次の行動を選択してください。
+{skill_name} スキルで次の行動を選択してください。
 ```
 
 ### 6.3 #agent-{name} 通知一覧

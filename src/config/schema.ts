@@ -77,6 +77,7 @@ export const serverConfigSchema = z
       .object({
         name: z.string().min(1),
         description: z.string().min(1),
+        skill_name: z.string().min(1),
       })
       .strict(),
     movement: z

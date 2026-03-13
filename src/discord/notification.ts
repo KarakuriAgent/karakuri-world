@@ -3,7 +3,9 @@ import type { PerceptionResponse } from '../types/api.js';
 import type { ConversationClosureReason, ConversationRejectionReason } from '../types/conversation.js';
 import type { ServerEventChoiceConfig } from '../types/server-event.js';
 
-export const ACTION_PROMPT_TEXT = '次の行動を選択してください。';
+export function formatActionPrompt(skillName: string): string {
+  return `${skillName} スキルで次の行動を選択してください。`;
+}
 
 function joinSections(...sections: Array<string | undefined>): string {
   return sections
@@ -42,27 +44,28 @@ export function formatPerceptionMessage(perception: PerceptionResponse): string 
   return buildPerceptionText(perception);
 }
 
-export function formatAgentJoinedMessage(perceptionText: string): string {
-  return joinSections('世界に参加しました。', perceptionText, ACTION_PROMPT_TEXT);
+export function formatAgentJoinedMessage(perceptionText: string, skillName: string): string {
+  return joinSections('世界に参加しました。', perceptionText, formatActionPrompt(skillName));
 }
 
-export function formatMovementCompletedMessage(toNodeId: string, label: string | undefined, perceptionText: string): string {
+export function formatMovementCompletedMessage(toNodeId: string, label: string | undefined, perceptionText: string, skillName: string): string {
   const destination = label ? `${toNodeId} (${label})` : toNodeId;
-  return joinSections(`${destination} に到着しました。`, perceptionText, ACTION_PROMPT_TEXT);
+  return joinSections(`${destination} に到着しました。`, perceptionText, formatActionPrompt(skillName));
 }
 
 export function formatActionCompletedMessage(
   actionName: string,
   resultDescription: string,
   perceptionText: string,
+  skillName: string,
 ): string {
-  return joinSections(`「${actionName}」が完了しました。`, resultDescription, perceptionText, ACTION_PROMPT_TEXT);
+  return joinSections(`「${actionName}」が完了しました。`, resultDescription, perceptionText, formatActionPrompt(skillName));
 }
 
-export function formatWaitCompletedMessage(durationMs: number, perceptionText: string): string {
+export function formatWaitCompletedMessage(durationMs: number, perceptionText: string, skillName: string): string {
   const minutes = Math.floor(durationMs / 60000);
   const durationText = minutes >= 1 ? `${minutes}分間待機しました。` : `${Math.floor(durationMs / 1000)}秒間待機しました。`;
-  return joinSections(durationText, perceptionText, ACTION_PROMPT_TEXT);
+  return joinSections(durationText, perceptionText, formatActionPrompt(skillName));
 }
 
 export function formatConversationRequestedMessage(
@@ -85,8 +88,9 @@ export function formatConversationRejectedMessage(
   targetName: string,
   reason: ConversationRejectionReason,
   perceptionText: string,
+  skillName: string,
 ): string {
-  return joinSections(formatReasonMessage(targetName, reason), perceptionText, ACTION_PROMPT_TEXT);
+  return joinSections(formatReasonMessage(targetName, reason), perceptionText, formatActionPrompt(skillName));
 }
 
 export function formatConversationReplyPromptMessage(
@@ -119,12 +123,13 @@ export function formatConversationServerEventClosingPromptMessage(eventName: str
 export function formatConversationEndedMessage(
   reason: Exclude<ConversationClosureReason, 'partner_left'>,
   perceptionText: string,
+  skillName: string,
 ): string {
-  return joinSections(`会話が終了しました。（${formatClosureReason(reason)}）`, perceptionText, ACTION_PROMPT_TEXT);
+  return joinSections(`会話が終了しました。（${formatClosureReason(reason)}）`, perceptionText, formatActionPrompt(skillName));
 }
 
-export function formatConversationForcedEndedMessage(partnerName: string, perceptionText: string): string {
-  return joinSections(`${partnerName} が世界から退出したため、会話が強制終了されました。`, perceptionText, ACTION_PROMPT_TEXT);
+export function formatConversationForcedEndedMessage(partnerName: string, perceptionText: string, skillName: string): string {
+  return joinSections(`${partnerName} が世界から退出したため、会話が強制終了されました。`, perceptionText, formatActionPrompt(skillName));
 }
 
 export function formatServerEventMessage(
@@ -140,11 +145,11 @@ export function formatServerEventMessage(
   );
 }
 
-export function formatServerEventSelectedMessage(eventName: string, choiceLabel: string, perceptionText: string): string {
+export function formatServerEventSelectedMessage(eventName: string, choiceLabel: string, perceptionText: string, skillName: string): string {
   return joinSections(
     `サーバーイベント「${eventName}」で「${choiceLabel}」を選択しました。\n実行中の操作はキャンセルされました。`,
     perceptionText,
-    ACTION_PROMPT_TEXT,
+    formatActionPrompt(skillName),
   );
 }
 

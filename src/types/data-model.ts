@@ -55,6 +55,7 @@ export interface MapConfig {
 export interface WorldConfig {
   name: string;
   description: string;
+  skill_name: string;
 }
 
 export interface MovementConfig {
