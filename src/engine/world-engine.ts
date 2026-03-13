@@ -63,16 +63,25 @@ export interface DiscordRuntimeAdapter {
   deleteAgentChannel(channelId: string): Promise<void>;
 }
 
+export interface WorldEngineOptions {
+  initialRegistrations?: AgentRegistration[];
+  onRegistrationChanged?: (agents: AgentRegistration[]) => void;
+}
+
 export class WorldEngine {
   readonly timerManager = new TimerManager();
   readonly eventBus = new EventBus();
   readonly state: WorldState;
+  private readonly onRegistrationChanged?: (agents: AgentRegistration[]) => void;
+  private readonly joiningAgentIds = new Set<string>();
 
   constructor(
     readonly config: ServerConfig,
     readonly discordBot: DiscordRuntimeAdapter | null,
+    options: WorldEngineOptions = {},
   ) {
-    this.state = new WorldState(config);
+    this.state = new WorldState(config, options.initialRegistrations);
+    this.onRegistrationChanged = options.onRegistrationChanged;
     this.timerManager.onFire('movement', (timer) => {
       handleMovementCompleted(this, timer);
     });
@@ -107,14 +116,24 @@ export class WorldEngine {
       created_at: Date.now(),
     };
 
+    this.persistRegistrations([...this.state.list(), registration]);
     return this.state.register(registration);
   }
 
   async deleteAgent(agentId: string): Promise<boolean> {
+    if (this.joiningAgentIds.has(agentId)) {
+      throw new WorldError(409, 'state_conflict', `Agent is currently joining: ${agentId}`);
+    }
+
     if (this.state.isJoined(agentId)) {
       throw new WorldError(409, 'state_conflict', `Agent is currently joined: ${agentId}`);
     }
 
+    if (!this.state.getById(agentId)) {
+      return false;
+    }
+
+    this.persistRegistrations(this.state.list().filter((agent) => agent.agent_id !== agentId));
     return this.state.delete(agentId) !== null;
   }
 
@@ -145,6 +164,10 @@ export class WorldEngine {
       throw new WorldError(404, 'not_found', `Agent not found: ${agentId}`);
     }
 
+    if (this.joiningAgentIds.has(agentId)) {
+      throw new WorldError(409, 'state_conflict', `Agent is already joining: ${agentId}`);
+    }
+
     if (this.state.isJoined(agentId)) {
       throw new WorldError(409, 'state_conflict', `Agent is already joined: ${agentId}`);
     }
@@ -153,25 +176,37 @@ export class WorldEngine {
       throw new WorldError(500, 'invalid_config', 'Spawn nodes are not configured.');
     }
 
-    const channelId = this.discordBot ? await this.discordBot.createAgentChannel(agent.agent_name, agent.discord_bot_id) : '';
-    const joinedAgent = this.state.join({
-      agent_id: agentId,
-      node_id: this.config.spawn.nodes[randomInt(this.config.spawn.nodes.length)],
-      discord_channel_id: channelId,
-    });
+    this.joiningAgentIds.add(agentId);
+    let channelId = '';
 
-    this.emitEvent({
-      type: 'agent_joined',
-      agent_id: joinedAgent.agent_id,
-      agent_name: joinedAgent.agent_name,
-      node_id: joinedAgent.node_id,
-      discord_channel_id: joinedAgent.discord_channel_id,
-    });
+    try {
+      channelId = this.discordBot ? await this.discordBot.createAgentChannel(agent.agent_name, agent.discord_bot_id) : '';
+      const joinedAgent = this.state.join({
+        agent_id: agentId,
+        node_id: this.config.spawn.nodes[randomInt(this.config.spawn.nodes.length)],
+        discord_channel_id: channelId,
+      });
 
-    return {
-      channel_id: channelId,
-      node_id: joinedAgent.node_id,
-    };
+      this.emitEvent({
+        type: 'agent_joined',
+        agent_id: joinedAgent.agent_id,
+        agent_name: joinedAgent.agent_name,
+        node_id: joinedAgent.node_id,
+        discord_channel_id: joinedAgent.discord_channel_id,
+      });
+
+      return {
+        channel_id: channelId,
+        node_id: joinedAgent.node_id,
+      };
+    } catch (error) {
+      if (channelId && this.discordBot) {
+        await this.discordBot.deleteAgentChannel(channelId);
+      }
+      throw error;
+    } finally {
+      this.joiningAgentIds.delete(agentId);
+    }
   }
 
   async leaveAgent(agentId: string): Promise<LeaveResponse> {
@@ -312,6 +347,10 @@ export class WorldEngine {
       })),
       generated_at: now,
     };
+  }
+
+  private persistRegistrations(agents: AgentRegistration[]): void {
+    this.onRegistrationChanged?.(agents);
   }
 
   emitEvent(event: EmittableWorldEvent): void {

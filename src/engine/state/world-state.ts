@@ -10,9 +10,14 @@ import { ServerEventStateStore } from './server-event-state.js';
 export class WorldState {
   readonly conversations = new ConversationStateStore();
   readonly serverEvents = new ServerEventStateStore();
-  private readonly agents = new AgentStateStore();
+  private readonly agents: AgentStateStore;
 
-  constructor(private readonly config: ServerConfig) {}
+  constructor(
+    private readonly config: ServerConfig,
+    initialRegistrations: AgentRegistration[] = [],
+  ) {
+    this.agents = new AgentStateStore(initialRegistrations);
+  }
 
   register(registration: AgentRegistration): AgentRegistration {
     return this.agents.register(registration);

@@ -1,4 +1,5 @@
 import { createServer, type Server } from 'node:http';
+import { join } from 'node:path';
 
 import { getRequestListener } from '@hono/node-server';
 
@@ -8,10 +9,12 @@ import { DiscordBot } from './discord/bot.js';
 import { DiscordEventHandler } from './discord/event-handler.js';
 import { WorldEngine } from './engine/world-engine.js';
 import { McpServerManager } from './mcp/server.js';
+import { loadAgents, saveAgents } from './storage/agent-storage.js';
 
 export interface RuntimeOptions {
   adminKey: string;
   configPath: string;
+  dataDir: string;
   port: number;
   publicBaseUrl: string;
   discordToken?: string;
@@ -55,6 +58,7 @@ export function resolveRuntimeOptions(env: NodeJS.ProcessEnv = process.env): Run
   return {
     adminKey: getRequiredEnv('ADMIN_KEY', env.ADMIN_KEY),
     configPath: getOptionalEnv(env.CONFIG_PATH) ?? './config/example.yaml',
+    dataDir: getOptionalEnv(env.DATA_DIR) ?? './data',
     port,
     publicBaseUrl: getOptionalEnv(env.PUBLIC_BASE_URL) ?? `http://127.0.0.1:${port}`,
     discordToken,
@@ -64,6 +68,8 @@ export function resolveRuntimeOptions(env: NodeJS.ProcessEnv = process.env): Run
 
 export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
   const config = await loadConfig(options.configPath);
+  const agentsFilePath = join(options.dataDir, 'agents.json');
+  const initialRegistrations = loadAgents(agentsFilePath);
   const discordBot =
     options.discordToken && options.discordGuildId
       ? await DiscordBot.create({
@@ -71,7 +77,10 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
           guildId: options.discordGuildId,
         })
       : null;
-  const engine = new WorldEngine(config, discordBot);
+  const engine = new WorldEngine(config, discordBot, {
+    initialRegistrations,
+    onRegistrationChanged: (agents) => saveAgents(agentsFilePath, agents),
+  });
   const discordEventHandler = discordBot ? new DiscordEventHandler(engine, discordBot) : null;
   const { app, injectWebSocket, websocketManager } = createApp(engine, {
     adminKey: options.adminKey,

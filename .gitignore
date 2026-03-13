@@ -3,5 +3,6 @@ dist/
 .env
 *.swp
 coverage/
+data/
 config/*
 !config/example.yaml

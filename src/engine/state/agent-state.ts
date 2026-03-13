@@ -12,6 +12,12 @@ export class AgentStateStore {
   private readonly registrationsByApiKey = new Map<string, AgentRegistration>();
   private readonly joinedAgents = new Map<string, JoinedAgent>();
 
+  constructor(initialRegistrations: AgentRegistration[] = []) {
+    for (const registration of initialRegistrations) {
+      this.register(registration);
+    }
+  }
+
   register(registration: AgentRegistration): AgentRegistration {
     this.registrations.set(registration.agent_id, registration);
     this.registrationsByApiKey.set(registration.api_key, registration);

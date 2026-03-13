@@ -20,6 +20,47 @@ interface AgentRegistration {
 - `discord_bot_id` はDiscordのSnowflake形式（数字文字列）
 - `api_key` はサーバーが自動生成し、登録レスポンスでのみ返却する（以降は再取得不可）
 
+### 1.3 永続化
+
+エージェント登録情報はバージョン管理付きJSONファイルに永続化する。ランタイム状態（`JoinedAgent`）は永続化しない。
+
+**ファイルパス:** `{DATA_DIR}/agents.json`
+
+ファイルが存在しない場合は空の初期データで自動作成する。
+
+**ファイル形式:**
+
+```json
+{
+  "version": 1,
+  "agents": [
+    {
+      "agent_id": "agent-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+      "agent_name": "example-agent",
+      "api_key": "karakuri_xxx",
+      "discord_bot_id": "123456789",
+      "created_at": 1710000000000
+    }
+  ]
+}
+```
+
+`discord_bot_id` は省略可能（未設定の場合はフィールド自体を省略）。
+
+**読み込み・書き込みタイミング:**
+
+| タイミング | 操作 |
+|-----------|------|
+| サーバー起動時 | ファイルから読み込み（Zodでスキーマ検証、`agent_id`・`agent_name`・`api_key` の一意性を検証） |
+| エージェント登録時 | ファイルに書き込み |
+| エージェント削除時 | ファイルに書き込み |
+
+書き込みはtmpファイルに書き出してから `renameSync` で置き換える（atomic write）。
+
+**マイグレーション:**
+
+起動時に `version` を確認し、現行バージョンより古い場合は変換処理を実行して書き戻す。
+
 ## 2. 管理系APIエンドポイント
 
 管理系APIの認証方式は 08-rest-api.md で定義する。
