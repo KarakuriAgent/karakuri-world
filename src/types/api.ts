@@ -61,7 +61,7 @@ export interface AdminAgentSummary {
 
 export interface AdminRegisterAgentRequest {
   agent_name: string;
-  discord_bot_id?: string;
+  discord_bot_id: string;
 }
 
 export interface AdminRegisterAgentResponse {

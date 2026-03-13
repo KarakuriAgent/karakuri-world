@@ -4,7 +4,6 @@ import { createTestWorld } from '../../helpers/test-world.js';
 
 async function setupConversationWorld(options?: { max_turns?: number }) {
   const { engine } = createTestWorld({
-    withDiscord: false,
     config: {
       conversation: {
         max_turns: options?.max_turns ?? 2,
@@ -14,8 +13,8 @@ async function setupConversationWorld(options?: { max_turns?: number }) {
       },
     },
   });
-  const alice = engine.registerAgent({ agent_name: 'alice' });
-  const bob = engine.registerAgent({ agent_name: 'bob' });
+  const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
+  const bob = engine.registerAgent({ agent_name: 'bob', discord_bot_id: 'bot-bob' });
   await engine.joinAgent(alice.agent_id);
   await engine.joinAgent(bob.agent_id);
   engine.state.setNode(bob.agent_id, '3-2');

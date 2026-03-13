@@ -6,7 +6,7 @@ export interface AgentRegistration {
   agent_id: string;
   agent_name: string;
   api_key: string;
-  discord_bot_id?: string;
+  discord_bot_id: string;
   created_at: number;
 }
 

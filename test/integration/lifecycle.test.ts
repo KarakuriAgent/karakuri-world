@@ -15,6 +15,7 @@ function createRegistration(overrides: Partial<AgentRegistration> = {}): AgentRe
     agent_id: 'agent-1',
     agent_name: 'alice',
     api_key: 'karakuri_deadbeef',
+    discord_bot_id: 'bot-alice',
     created_at: 1,
     ...overrides,
   };
@@ -24,7 +25,7 @@ class DeferredDiscordBot implements DiscordRuntimeAdapter {
   readonly deletedChannels: string[] = [];
   private pendingChannel: { channelId: string; resolve: (channelId: string) => void } | null = null;
 
-  createAgentChannel(agentName: string): Promise<string> {
+  createAgentChannel(agentName: string, _discordBotId: string): Promise<string> {
     return new Promise((resolve) => {
       this.pendingChannel = {
         channelId: `channel-${agentName}`,
@@ -82,9 +83,9 @@ describe('WorldEngine lifecycle', () => {
   });
 
   it('lists agents and prevents deleting joined registrations', async () => {
-    const { engine } = createTestWorld({ withDiscord: false });
-    const alice = engine.registerAgent({ agent_name: 'alice' });
-    const bob = engine.registerAgent({ agent_name: 'bob' });
+    const { engine } = createTestWorld();
+    const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
+    const bob = engine.registerAgent({ agent_name: 'bob', discord_bot_id: 'bot-bob' });
 
     expect(engine.listAgents().map((agent) => agent.agent_name)).toEqual(['alice', 'bob']);
 
@@ -104,15 +105,14 @@ describe('WorldEngine lifecycle', () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'karakuri-world-lifecycle-'));
     const filePath = join(dataDir, 'agents.json');
     const { engine } = createTestWorld({
-      withDiscord: false,
       engineOptions: {
         onRegistrationChanged: (agents) => saveAgents(filePath, agents),
       },
     });
 
     try {
-      const alice = engine.registerAgent({ agent_name: 'alice' });
-      const bob = engine.registerAgent({ agent_name: 'bob' });
+      const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
+      const bob = engine.registerAgent({ agent_name: 'bob', discord_bot_id: 'bot-bob' });
 
       expect(loadAgents(filePath)).toEqual([
         alice,
@@ -129,7 +129,6 @@ describe('WorldEngine lifecycle', () => {
   it('does not mutate in-memory registrations when persistence fails', async () => {
     const failure = new Error('save failed');
     const registerWorld = createTestWorld({
-      withDiscord: false,
       engineOptions: {
         onRegistrationChanged: () => {
           throw failure;
@@ -137,12 +136,11 @@ describe('WorldEngine lifecycle', () => {
       },
     });
 
-    expect(() => registerWorld.engine.registerAgent({ agent_name: 'alice' })).toThrowError(failure);
+    expect(() => registerWorld.engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' })).toThrowError(failure);
     expect(registerWorld.engine.listAgents()).toEqual([]);
 
     const persistedAlice = createRegistration();
     const deleteWorld = createTestWorld({
-      withDiscord: false,
       engineOptions: {
         initialRegistrations: [persistedAlice],
         onRegistrationChanged: () => {
@@ -158,7 +156,7 @@ describe('WorldEngine lifecycle', () => {
   it('prevents deleting an agent while join is in progress', async () => {
     const discordBot = new DeferredDiscordBot();
     const engine = new WorldEngine(createTestConfig(), discordBot);
-    const alice = engine.registerAgent({ agent_name: 'alice' });
+    const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
     const joinPromise = engine.joinAgent(alice.agent_id);
 
     await expect(engine.deleteAgent(alice.agent_id)).rejects.toMatchObject({

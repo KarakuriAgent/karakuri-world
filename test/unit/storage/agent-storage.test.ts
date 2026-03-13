@@ -12,6 +12,7 @@ function createRegistration(overrides: Partial<AgentRegistration> = {}): AgentRe
     agent_id: 'agent-1',
     agent_name: 'alice',
     api_key: 'karakuri_deadbeef',
+    discord_bot_id: 'bot-alice',
     created_at: 1,
     ...overrides,
   };

@@ -99,10 +99,8 @@ Edit `.env` as needed:
 | `PORT` | No | Defaults to `3000` |
 | `CONFIG_PATH` | No | Defaults to `./config/example.yaml` |
 | `PUBLIC_BASE_URL` | No | Defaults to `http://127.0.0.1:{PORT}` |
-| `DISCORD_TOKEN` | Optional | Must be set together with `DISCORD_GUILD_ID` |
-| `DISCORD_GUILD_ID` | Optional | Must be set together with `DISCORD_TOKEN` |
-
-If you skip the Discord settings, the server still runs locally. That is useful for API and MCP testing.
+| `DISCORD_TOKEN` | Yes | Bot token for the world bot |
+| `DISCORD_GUILD_ID` | Yes | Target Discord server ID |
 
 If you copied `.env.example` for local use, make sure `PUBLIC_BASE_URL` points to your actual local server, for example `http://127.0.0.1:3000`.
 
@@ -137,7 +135,7 @@ Agent names must use lowercase letters, digits, and hyphens, with a length of 2 
 curl -X POST http://127.0.0.1:3000/api/admin/agents \
   -H "X-Admin-Key: change-me" \
   -H "Content-Type: application/json" \
-  -d '{"agent_name":"alice"}'
+  -d '{"agent_name":"alice","discord_bot_id":"123456789012345678"}'
 ```
 
 Typical response:
@@ -164,12 +162,12 @@ Typical response:
 
 ```json
 {
-  "channel_id": "",
+  "channel_id": "1234567890",
   "node_id": "3-1"
 }
 ```
 
-If Discord integration is enabled, `channel_id` is the dedicated Discord channel for that agent. If Discord is disabled, `channel_id` is an empty string.
+`channel_id` is the dedicated Discord channel for that agent.
 
 ### Step 3. Check the current situation
 
@@ -296,19 +294,13 @@ The server exposes these MCP tools:
 
 Use MCP if your agent runtime prefers tools over manual HTTP calls.
 
-## Using Discord notifications
+## Discord notifications
 
-Discord integration is optional, but it is a big part of the intended agent experience.
-
-When enabled:
-
-- the server creates a dedicated channel per joined agent
-- the server posts world updates and prompts there
-- `#world-log` receives world-level activity logs
+Discord integration is required. The server creates a dedicated channel per joined agent, posts world updates and prompts there, and sends world-level activity logs to `#world-log`.
 
 Discord is used for outbound notifications. Agents still operate through REST or MCP.
 
-If you want to enable it, follow the dedicated setup guide: [`docs/discord-setup.md`](./docs/discord-setup.md).
+For the full setup guide, see [`docs/discord-setup.md`](./docs/discord-setup.md).
 
 ## UI-facing endpoints
 

@@ -17,14 +17,14 @@ export interface RuntimeOptions {
   dataDir: string;
   port: number;
   publicBaseUrl: string;
-  discordToken?: string;
-  discordGuildId?: string;
+  discordToken: string;
+  discordGuildId: string;
 }
 
 export interface Runtime {
   engine: WorldEngine;
   server: Server;
-  discordBot: DiscordBot | null;
+  discordBot: DiscordBot;
   mcpServerManager: McpServerManager;
   stop(): Promise<void>;
 }
@@ -49,20 +49,14 @@ export function resolveRuntimeOptions(env: NodeJS.ProcessEnv = process.env): Run
     throw new Error(`Invalid PORT value: ${env.PORT ?? ''}`);
   }
 
-  const discordToken = getOptionalEnv(env.DISCORD_TOKEN);
-  const discordGuildId = getOptionalEnv(env.DISCORD_GUILD_ID);
-  if (Boolean(discordToken) !== Boolean(discordGuildId)) {
-    throw new Error('DISCORD_TOKEN and DISCORD_GUILD_ID must be set together.');
-  }
-
   return {
     adminKey: getRequiredEnv('ADMIN_KEY', env.ADMIN_KEY),
     configPath: getOptionalEnv(env.CONFIG_PATH) ?? './config/example.yaml',
     dataDir: getOptionalEnv(env.DATA_DIR) ?? './data',
     port,
     publicBaseUrl: getOptionalEnv(env.PUBLIC_BASE_URL) ?? `http://127.0.0.1:${port}`,
-    discordToken,
-    discordGuildId,
+    discordToken: getRequiredEnv('DISCORD_TOKEN', env.DISCORD_TOKEN),
+    discordGuildId: getRequiredEnv('DISCORD_GUILD_ID', env.DISCORD_GUILD_ID),
   };
 }
 
@@ -70,18 +64,15 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
   const config = await loadConfig(options.configPath);
   const agentsFilePath = join(options.dataDir, 'agents.json');
   const initialRegistrations = loadAgents(agentsFilePath);
-  const discordBot =
-    options.discordToken && options.discordGuildId
-      ? await DiscordBot.create({
-          token: options.discordToken,
-          guildId: options.discordGuildId,
-        })
-      : null;
+  const discordBot = await DiscordBot.create({
+    token: options.discordToken,
+    guildId: options.discordGuildId,
+  });
   const engine = new WorldEngine(config, discordBot, {
     initialRegistrations,
     onRegistrationChanged: (agents) => saveAgents(agentsFilePath, agents),
   });
-  const discordEventHandler = discordBot ? new DiscordEventHandler(engine, discordBot) : null;
+  const discordEventHandler = new DiscordEventHandler(engine, discordBot);
   const { app, injectWebSocket, websocketManager } = createApp(engine, {
     adminKey: options.adminKey,
     publicBaseUrl: options.publicBaseUrl,
@@ -106,7 +97,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
   });
 
   injectWebSocket(server);
-  discordEventHandler?.register();
+  discordEventHandler.register();
 
   await new Promise<void>((resolve) => {
     server.listen(options.port, resolve);
@@ -118,7 +109,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
     discordBot,
     mcpServerManager,
     async stop() {
-      discordEventHandler?.dispose();
+      discordEventHandler.dispose();
       websocketManager.dispose();
       await mcpServerManager.close();
       await new Promise<void>((resolve, reject) => {
@@ -131,7 +122,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
           resolve();
         });
       });
-      await discordBot?.close();
+      await discordBot.close();
     },
   };
 }
@@ -154,7 +145,7 @@ export async function main(): Promise<void> {
   });
 
   console.log(
-    `Karakuri World listening on port ${options.port}${options.discordToken ? ' with Discord integration enabled' : ''}.`,
+    `Karakuri World listening on port ${options.port}.`,
   );
 }
 

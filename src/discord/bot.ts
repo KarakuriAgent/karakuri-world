@@ -40,7 +40,7 @@ export class DiscordBot implements DiscordNotificationAdapter {
     return new DiscordBot(client, guild, channelManager);
   }
 
-  async createAgentChannel(agentName: string, discordBotId?: string): Promise<string> {
+  async createAgentChannel(agentName: string, discordBotId: string): Promise<string> {
     return this.channelManager.createAgentChannel(agentName, discordBotId);
   }
 

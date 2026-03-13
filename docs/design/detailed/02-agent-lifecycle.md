@@ -45,8 +45,6 @@ interface AgentRegistration {
 }
 ```
 
-`discord_bot_id` は省略可能（未設定の場合はフィールド自体を省略）。
-
 **読み込み・書き込みタイミング:**
 
 | タイミング | 操作 |
@@ -56,10 +54,6 @@ interface AgentRegistration {
 | エージェント削除時 | ファイルに書き込み |
 
 書き込みはtmpファイルに書き出してから `renameSync` で置き換える（atomic write）。
-
-**マイグレーション:**
-
-起動時に `version` を確認し、現行バージョンより古い場合は変換処理を実行して書き戻す。
 
 ## 2. 管理系APIエンドポイント
 

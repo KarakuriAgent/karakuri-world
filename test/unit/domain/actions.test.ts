@@ -16,8 +16,8 @@ describe('actions domain', () => {
   });
 
   it('lists and executes building actions', async () => {
-    const { engine } = createTestWorld({ withDiscord: false });
-    const alice = engine.registerAgent({ agent_name: 'alice' });
+    const { engine } = createTestWorld();
+    const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
     await engine.joinAgent(alice.agent_id);
     engine.state.setNode(alice.agent_id, '2-4');
 
@@ -44,8 +44,8 @@ describe('actions domain', () => {
   });
 
   it('supports NPC actions and rejects invalid/unavailable actions', async () => {
-    const { engine } = createTestWorld({ withDiscord: false });
-    const alice = engine.registerAgent({ agent_name: 'alice' });
+    const { engine } = createTestWorld();
+    const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
     await engine.joinAgent(alice.agent_id);
     engine.state.setNode(alice.agent_id, '1-1');
 

@@ -39,12 +39,12 @@ describe('movement domain', () => {
 
   it('starts multi-step movement and completes it after path-length duration', async () => {
     const { engine } = createTestWorld({
-      withDiscord: false,
+
       config: {
         spawn: { nodes: ['3-1'] },
       },
     });
-    const alice = engine.registerAgent({ agent_name: 'alice' });
+    const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
     await engine.joinAgent(alice.agent_id);
 
     const response = engine.move(alice.agent_id, { target_node_id: '2-4' });
@@ -75,13 +75,13 @@ describe('movement domain', () => {
 
   it('rejects same-node and unreachable moves', async () => {
     const { engine } = createTestWorld({
-      withDiscord: false,
+
       config: {
         spawn: { nodes: ['1-1'] },
         map: isolatedMap,
       },
     });
-    const alice = engine.registerAgent({ agent_name: 'alice' });
+    const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
     await engine.joinAgent(alice.agent_id);
 
     try {
@@ -101,12 +101,12 @@ describe('movement domain', () => {
 
   it('tracks in-flight positions and uses them when leaving mid-move', async () => {
     const { engine } = createTestWorld({
-      withDiscord: false,
+
       config: {
         spawn: { nodes: ['3-1'] },
       },
     });
-    const alice = engine.registerAgent({ agent_name: 'alice' });
+    const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
     await engine.joinAgent(alice.agent_id);
 
     const events: Array<{ type: string; node_id?: string }> = [];
@@ -145,8 +145,8 @@ describe('movement domain', () => {
   });
 
   it('rejects impassable moves and moves while a conversation is pending', async () => {
-    const { engine } = createTestWorld({ withDiscord: false });
-    const alice = engine.registerAgent({ agent_name: 'alice' });
+    const { engine } = createTestWorld();
+    const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
     await engine.joinAgent(alice.agent_id);
     engine.state.setNode(alice.agent_id, '1-1');
 

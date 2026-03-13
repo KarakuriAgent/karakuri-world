@@ -15,8 +15,8 @@ describe('server event domain', () => {
   });
 
   it('fires and selects an event immediately for idle agents', async () => {
-    const { engine } = createTestWorld({ withDiscord: false });
-    const alice = engine.registerAgent({ agent_name: 'alice' });
+    const { engine } = createTestWorld();
+    const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
     await engine.joinAgent(alice.agent_id);
 
     const fired = engine.fireServerEvent('sudden-rain');
@@ -32,8 +32,8 @@ describe('server event domain', () => {
   });
 
   it('delays event delivery while moving and releases it on arrival', async () => {
-    const { engine } = createTestWorld({ withDiscord: false });
-    const alice = engine.registerAgent({ agent_name: 'alice' });
+    const { engine } = createTestWorld();
+    const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
     await engine.joinAgent(alice.agent_id);
     engine.state.setNode(alice.agent_id, '3-1');
 

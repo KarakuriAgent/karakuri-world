@@ -20,8 +20,8 @@ function parseToolText(result: CallToolResult): unknown {
 
 describe('MCP tools', () => {
   it('exposes the documented tool set', () => {
-    const { engine } = createTestWorld({ withDiscord: false });
-    const agent = engine.registerAgent({ agent_name: 'Alice' });
+    const { engine } = createTestWorld();
+    const agent = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
 
     const definitions = createMcpToolDefinitions(engine, agent.agent_id);
 
@@ -43,8 +43,8 @@ describe('MCP tools', () => {
   });
 
   it('returns tool errors for not_joined and successful JSON payloads after join', async () => {
-    const { engine } = createTestWorld({ withDiscord: false });
-    const agent = engine.registerAgent({ agent_name: 'Alice' });
+    const { engine } = createTestWorld();
+    const agent = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
     const definitions = createMcpToolDefinitions(engine, agent.agent_id);
     const getPerception = definitions.find((definition) => definition.name === 'get_perception');
     const join = definitions.find((definition) => definition.name === 'join');
@@ -65,7 +65,7 @@ describe('MCP tools', () => {
     const joinPayload = parseToolText(joined) as { channel_id: string; node_id: string };
     expect(joinPayload).toEqual(
       expect.objectContaining({
-        channel_id: '',
+        channel_id: 'channel-Alice',
         node_id: expect.stringMatching(/3-[12]/),
       }),
     );
@@ -82,12 +82,11 @@ describe('MCP tools', () => {
 
   it('accepts target_node_id for move and returns movement responses', async () => {
     const { engine } = createTestWorld({
-      withDiscord: false,
       config: {
         spawn: { nodes: ['3-1'] },
       },
     });
-    const agent = engine.registerAgent({ agent_name: 'Alice' });
+    const agent = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
     const definitions = createMcpToolDefinitions(engine, agent.agent_id);
     const join = definitions.find((definition) => definition.name === 'join');
     const move = definitions.find((definition) => definition.name === 'move');
@@ -111,8 +110,8 @@ describe('MCP tools', () => {
   });
 
   it('returns tool errors for invalid move inputs', async () => {
-    const { engine } = createTestWorld({ withDiscord: false });
-    const agent = engine.registerAgent({ agent_name: 'Alice' });
+    const { engine } = createTestWorld();
+    const agent = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
     const definitions = createMcpToolDefinitions(engine, agent.agent_id);
     const move = definitions.find((definition) => definition.name === 'move');
 
@@ -128,8 +127,8 @@ describe('MCP tools', () => {
   });
 
   it('authenticates bearer tokens for MCP requests', () => {
-    const { engine } = createTestWorld({ withDiscord: false });
-    const agent = engine.registerAgent({ agent_name: 'Alice' });
+    const { engine } = createTestWorld();
+    const agent = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
 
     expect(authenticateMcpRequest(engine, `Bearer ${agent.api_key}`)).toMatchObject({
       agent_id: agent.agent_id,

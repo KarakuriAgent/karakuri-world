@@ -19,7 +19,7 @@ const agentRegistrationSchema = z.object({
   agent_id: z.string().min(1),
   agent_name: z.string().min(2).max(32).regex(agentNamePattern),
   api_key: z.string().regex(apiKeyPattern),
-  discord_bot_id: z.string().min(1).optional(),
+  discord_bot_id: z.string().min(1),
   created_at: z.number().int().nonnegative(),
 });
 
@@ -49,25 +49,19 @@ export function saveAgents(filePath: string, agents: AgentRegistration[]): void 
 
 function validateAgentsFileData(value: unknown): AgentsFileData {
   const parsed = agentsFileSchema.parse(value);
-  const normalized = normalizeAgentsFileData(parsed);
 
-  validateUnique(normalized.agents, 'agent_id', (agent) => agent.agent_id);
-  validateUnique(normalized.agents, 'agent_name', (agent) => agent.agent_name);
-  validateUnique(normalized.agents, 'api_key', (agent) => agent.api_key);
+  if (parsed.version !== CURRENT_VERSION) {
+    throw new Error(`Unsupported agents file version: ${parsed.version}`);
+  }
+
+  validateUnique(parsed.agents, 'agent_id', (agent) => agent.agent_id);
+  validateUnique(parsed.agents, 'agent_name', (agent) => agent.agent_name);
+  validateUnique(parsed.agents, 'api_key', (agent) => agent.api_key);
 
   return {
     version: CURRENT_VERSION,
-    agents: sortRegistrations(normalized.agents),
+    agents: sortRegistrations(parsed.agents),
   };
-}
-
-function normalizeAgentsFileData(fileData: AgentsFileData): AgentsFileData {
-  switch (fileData.version) {
-    case CURRENT_VERSION:
-      return fileData;
-    default:
-      throw new Error(`Unsupported agents file version: ${fileData.version}`);
-  }
 }
 
 function validateUnique(

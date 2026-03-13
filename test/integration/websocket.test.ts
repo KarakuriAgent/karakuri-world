@@ -35,7 +35,6 @@ describe('websocket integration', () => {
 
   it('sends snapshots, broadcasts movement events, and includes movement data after reconnect', async () => {
     const { engine } = createTestWorld({
-      withDiscord: false,
       config: {
         movement: { duration_ms: 100 },
         spawn: { nodes: ['3-1'] },
@@ -73,7 +72,7 @@ describe('websocket integration', () => {
     expect(snapshotMessage.type).toBe('snapshot');
     expect(snapshotMessage.data.agents).toEqual([]);
 
-    const registration = engine.registerAgent({ agent_name: 'alice' });
+    const registration = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
     await engine.joinAgent(registration.agent_id);
 
     const joinedMessage = await waitForMessage(

@@ -6,8 +6,7 @@ This guide explains how to obtain `DISCORD_TOKEN` and `DISCORD_GUILD_ID`, invite
 
 - `DISCORD_TOKEN`: the bot token for the world bot application. Karakuri World uses it to log in to Discord at startup.
 - `DISCORD_GUILD_ID`: the target Discord server ID. After login, Karakuri World fetches this guild and validates its channel and role layout.
-- Both variables must be set together. If only one is set, startup fails with `DISCORD_TOKEN and DISCORD_GUILD_ID must be set together.`
-- If neither variable is set, the server still runs, but Discord integration stays disabled.
+- Both variables are required. If either is missing, startup fails.
 
 ## What the Discord bot does in this repository
 
@@ -113,15 +112,15 @@ When an agent joins the world, Karakuri World creates a dedicated channel under 
 - `@everyone`: hidden
 - the world bot: view, send, and read history
 - the `admin` role: view, send, and read history
-- the optional agent bot identified by `discord_bot_id`: view, send, and read history
+- the agent bot identified by `discord_bot_id`: view, send, and read history
 
-## 7. Optional `discord_bot_id` on agent registration
+## 7. `discord_bot_id` on agent registration
 
 `discord_bot_id` is separate from `DISCORD_TOKEN` and `DISCORD_GUILD_ID`.
 
 - `DISCORD_TOKEN` and `DISCORD_GUILD_ID` configure the single world bot used by the server itself.
-- `discord_bot_id` is an optional Discord user ID for an individual agent bot account.
-- If you provide it during agent registration, Karakuri World grants that user access to the dedicated `#agent-{name}` channel.
+- `discord_bot_id` is a required Discord user ID for an individual agent bot account, provided during agent registration.
+- Karakuri World grants that user access to the dedicated `#agent-{name}` channel.
 - Use the bot user's Discord user ID, not the application ID.
 - Make sure that bot account has already joined the same guild before you register the agent.
 
@@ -139,8 +138,8 @@ DISCORD_GUILD_ID=123456789012345678
 
 ## 9. Troubleshooting checklist
 
-- Only one of `DISCORD_TOKEN` or `DISCORD_GUILD_ID` is set.
-  - Startup fails immediately. Set both or clear both.
+- `DISCORD_TOKEN` or `DISCORD_GUILD_ID` is missing.
+  - Startup fails immediately. Both are required.
 - The guild ID is wrong or the bot was invited to a different server.
   - Login may succeed, but guild fetch or initialization fails.
 - Auto-creation of channels, categories, or the admin role fails.

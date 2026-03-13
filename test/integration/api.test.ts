@@ -32,7 +32,7 @@ async function requestJson(app: FetchableApp, path: string, init?: RequestInit):
   return { response, data };
 }
 
-async function registerAgent(app: FetchableApp, agentName: string, discordBotId?: string): Promise<JsonResult> {
+async function registerAgent(app: FetchableApp, agentName: string, discordBotId = `bot-${agentName}`): Promise<JsonResult> {
   return requestJson(app, '/api/admin/agents', {
     method: 'POST',
     headers: { 'X-Admin-Key': ADMIN_KEY },
@@ -54,7 +54,7 @@ describe('REST API', () => {
   });
 
   it('supports admin registration, lifecycle routes, info routes, and deletion', async () => {
-    const { engine } = createTestWorld({ withDiscord: false });
+    const { engine } = createTestWorld();
     const { app } = createApp(engine, { adminKey: ADMIN_KEY, publicBaseUrl: PUBLIC_BASE_URL });
 
     const registered = await registerAgent(app, 'alice', 'discord-alice');
@@ -81,7 +81,7 @@ describe('REST API', () => {
       headers: { Authorization: `Bearer ${registered.data.api_key}` },
     });
     expect(joined.response.status).toBe(200);
-    expect(joined.data.channel_id).toBe('');
+    expect(joined.data.channel_id).toBe('channel-alice');
     expect(['3-1', '3-2']).toContain(joined.data.node_id);
 
     const listedAfterJoin = await requestJson(app, '/api/admin/agents', {
@@ -135,7 +135,7 @@ describe('REST API', () => {
   });
 
   it('returns 401, 403, 400, and 409 errors in representative cases', async () => {
-    const { engine } = createTestWorld({ withDiscord: false });
+    const { engine } = createTestWorld();
     const { app } = createApp(engine, { adminKey: ADMIN_KEY, publicBaseUrl: PUBLIC_BASE_URL });
     const registered = await registerAgent(app, 'alice');
     const invalidAgentName = await registerAgent(app, 'Alice');
@@ -197,7 +197,7 @@ describe('REST API', () => {
   });
 
   it('wires action, conversation, and server event endpoints', async () => {
-    const { engine } = createTestWorld({ withDiscord: false });
+    const { engine } = createTestWorld();
     const { app } = createApp(engine, { adminKey: ADMIN_KEY, publicBaseUrl: PUBLIC_BASE_URL });
 
     const alice = await registerAgent(app, 'alice');

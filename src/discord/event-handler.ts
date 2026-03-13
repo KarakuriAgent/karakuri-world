@@ -314,7 +314,7 @@ export class DiscordEventHandler {
 
   private async sendToAgent(agentId: string, content: string): Promise<void> {
     const joinedAgent = this.engine.state.getJoined(agentId);
-    if (!joinedAgent?.discord_channel_id) {
+    if (!joinedAgent) {
       return;
     }
 

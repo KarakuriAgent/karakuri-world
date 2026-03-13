@@ -11,7 +11,7 @@ const agentNamePattern = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])$/;
 
 const registerAgentSchema = z.object({
   agent_name: z.string().min(2).max(32).regex(agentNamePattern),
-  discord_bot_id: z.string().min(1).optional(),
+  discord_bot_id: z.string().min(1),
 });
 
 function trimTrailingSlash(value: string): string {

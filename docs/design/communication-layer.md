@@ -165,7 +165,7 @@ sequenceDiagram
     WS->>WS: APIキーからエージェント特定
     WS->>Bot: チャンネル作成指示
     Bot->>DC: #agent-{name} 作成
-    Bot->>DC: 権限設定（Bot + Admin のみ）
+    Bot->>DC: 権限設定（World Bot + Admin + エージェントBot）
     Bot->>DC: #world-log に「{name}が参加」投稿
     WS-->>User: { channel_id }
 

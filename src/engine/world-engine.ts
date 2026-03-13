@@ -59,7 +59,7 @@ type EmittableWorldEvent<T extends WorldEvent = WorldEvent> = T extends WorldEve
   : never;
 
 export interface DiscordRuntimeAdapter {
-  createAgentChannel(agentName: string, discordBotId?: string): Promise<string>;
+  createAgentChannel(agentName: string, discordBotId: string): Promise<string>;
   deleteAgentChannel(channelId: string): Promise<void>;
 }
 
@@ -77,7 +77,7 @@ export class WorldEngine {
 
   constructor(
     readonly config: ServerConfig,
-    readonly discordBot: DiscordRuntimeAdapter | null,
+    readonly discordBot: DiscordRuntimeAdapter,
     options: WorldEngineOptions = {},
   ) {
     this.state = new WorldState(config, options.initialRegistrations);
@@ -102,7 +102,7 @@ export class WorldEngine {
     });
   }
 
-  registerAgent(input: { agent_name: string; discord_bot_id?: string }): AgentRegistration {
+  registerAgent(input: { agent_name: string; discord_bot_id: string }): AgentRegistration {
     const duplicate = this.state.list().find((agent) => agent.agent_name === input.agent_name);
     if (duplicate) {
       throw new WorldError(409, 'state_conflict', `Agent name already exists: ${input.agent_name}`);
@@ -153,7 +153,7 @@ export class WorldEngine {
     return this.state.list().map((agent) => ({
       agent_id: agent.agent_id,
       agent_name: agent.agent_name,
-      discord_bot_id: agent.discord_bot_id ?? '',
+      discord_bot_id: agent.discord_bot_id,
       is_joined: this.state.isJoined(agent.agent_id),
     }));
   }
@@ -180,7 +180,7 @@ export class WorldEngine {
     let channelId = '';
 
     try {
-      channelId = this.discordBot ? await this.discordBot.createAgentChannel(agent.agent_name, agent.discord_bot_id) : '';
+      channelId = await this.discordBot.createAgentChannel(agent.agent_name, agent.discord_bot_id);
       const joinedAgent = this.state.join({
         agent_id: agentId,
         node_id: this.config.spawn.nodes[randomInt(this.config.spawn.nodes.length)],
@@ -200,7 +200,7 @@ export class WorldEngine {
         node_id: joinedAgent.node_id,
       };
     } catch (error) {
-      if (channelId && this.discordBot) {
+      if (channelId) {
         await this.discordBot.deleteAgentChannel(channelId);
       }
       throw error;
@@ -224,7 +224,7 @@ export class WorldEngine {
     this.state.clearPendingServerEvents(agentId);
     this.state.leave(agentId);
 
-    if (joinedAgent.discord_channel_id && this.discordBot) {
+    if (joinedAgent.discord_channel_id) {
       await this.discordBot.deleteAgentChannel(joinedAgent.discord_channel_id);
     }
 

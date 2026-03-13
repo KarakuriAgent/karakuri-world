@@ -60,7 +60,6 @@ describe('movement integration', () => {
 
   it('reports intermediate positions and movement paths while an agent is traveling', async () => {
     const { engine } = createTestWorld({
-      withDiscord: false,
       config: {
         spawn: { nodes: ['3-1'] },
         map: createActionOnPathMap(),
@@ -70,7 +69,7 @@ describe('movement integration', () => {
       adminKey: 'admin',
       publicBaseUrl: 'http://localhost:3000',
     });
-    const alice = engine.registerAgent({ agent_name: 'alice' });
+    const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
     await engine.joinAgent(alice.agent_id);
 
     const move = engine.move(alice.agent_id, { target_node_id: '1-1' });

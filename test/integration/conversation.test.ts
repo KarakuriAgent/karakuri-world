@@ -16,7 +16,6 @@ describe('conversation integration', () => {
 
   it('allows an agent in action to accept a conversation and cancels the action', async () => {
     const { engine } = createTestWorld({
-      withDiscord: false,
       config: {
         conversation: {
           max_turns: 4,
@@ -26,8 +25,8 @@ describe('conversation integration', () => {
         },
       },
     });
-    const alice = engine.registerAgent({ agent_name: 'alice' });
-    const bob = engine.registerAgent({ agent_name: 'bob' });
+    const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
+    const bob = engine.registerAgent({ agent_name: 'bob', discord_bot_id: 'bot-bob' });
     await engine.joinAgent(alice.agent_id);
     await engine.joinAgent(bob.agent_id);
 

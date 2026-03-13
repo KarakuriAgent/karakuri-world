@@ -22,12 +22,12 @@ describe('DiscordEventHandler', () => {
   });
 
   it('sends join notifications and world logs', async () => {
-    const { engine } = createTestWorld({ withDiscord: true });
+    const { engine } = createTestWorld();
     const bot = new RecordingDiscordBot();
     const handler = new DiscordEventHandler(engine, bot as never);
     handler.register();
 
-    const alice = engine.registerAgent({ agent_name: 'Alice' });
+    const alice = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
     await engine.joinAgent(alice.agent_id);
 
     await vi.waitFor(() => {
@@ -43,13 +43,13 @@ describe('DiscordEventHandler', () => {
   });
 
   it('notifies the remaining participant when a conversation is forced to end by leave', async () => {
-    const { engine } = createTestWorld({ withDiscord: true });
+    const { engine } = createTestWorld();
     const bot = new RecordingDiscordBot();
     const handler = new DiscordEventHandler(engine, bot as never);
     handler.register();
 
-    const alice = engine.registerAgent({ agent_name: 'Alice' });
-    const bob = engine.registerAgent({ agent_name: 'Bob' });
+    const alice = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
+    const bob = engine.registerAgent({ agent_name: 'Bob', discord_bot_id: 'bot-bob' });
     await engine.joinAgent(alice.agent_id);
     await engine.joinAgent(bob.agent_id);
     await vi.waitFor(() => {
@@ -86,7 +86,6 @@ describe('DiscordEventHandler', () => {
 
   it('uses movement_completed.node_id for arrival notifications', async () => {
     const { engine } = createTestWorld({
-      withDiscord: true,
       config: {
         spawn: { nodes: ['3-1'] },
       },
@@ -95,7 +94,7 @@ describe('DiscordEventHandler', () => {
     const handler = new DiscordEventHandler(engine, bot as never);
     handler.register();
 
-    const alice = engine.registerAgent({ agent_name: 'Alice' });
+    const alice = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
     await engine.joinAgent(alice.agent_id);
     await vi.waitFor(() => {
       expect(bot.worldLogMessages).toHaveLength(1);

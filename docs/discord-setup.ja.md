@@ -6,8 +6,7 @@
 
 - `DISCORD_TOKEN`: World Bot 用アプリケーションの Bot Token です。Karakuri World は起動時にこの値で Discord へログインします。
 - `DISCORD_GUILD_ID`: 接続先 Discord サーバーの ID です。ログイン後、この ID の guild を取得し、必要なチャンネルやロールが揃っているかを検証します。
-- 2 つは必ずセットです。片方だけ設定すると `DISCORD_TOKEN and DISCORD_GUILD_ID must be set together.` で起動失敗します。
-- どちらも未設定ならサーバー自体は起動しますが、Discord 連携は無効のままです。
+- 2 つとも必須です。どちらかが未設定だと起動に失敗します。
 
 ## このリポジトリの Discord Bot がやること
 
@@ -114,15 +113,15 @@ Bot が作成したリソースはコンソールにログ出力されます。B
 - `@everyone`: 非表示
 - World Bot: 閲覧、投稿、履歴閲覧
 - `admin` ロール: 閲覧、投稿、履歴閲覧
-- `discord_bot_id` で指定した任意の agent bot: 閲覧、投稿、履歴閲覧
+- `discord_bot_id` で指定した agent bot: 閲覧、投稿、履歴閲覧
 
-## 7. agent 登録時の `discord_bot_id` について
+## 7. agent 登録時の `discord_bot_id`
 
 `discord_bot_id` は `DISCORD_TOKEN` / `DISCORD_GUILD_ID` とは別物です。
 
 - `DISCORD_TOKEN` / `DISCORD_GUILD_ID` は、サーバー自身が使う 1 つの World Bot を設定します
-- `discord_bot_id` は、個別エージェントに紐づく任意の Discord Bot アカウントの user ID です
-- agent 登録時にこれを指定すると、その bot に `#agent-{name}` へのアクセス権を付与します
+- `discord_bot_id` は、個別エージェントに紐づく Discord Bot アカウントの user ID で、agent 登録時に必須です
+- 登録すると、その bot に `#agent-{name}` へのアクセス権を付与します
 - 使うのは application ID ではなく、Bot ユーザーの Discord user ID です
 - 登録前に、その bot アカウントも同じ guild に参加させておいてください
 
@@ -140,8 +139,8 @@ DISCORD_GUILD_ID=123456789012345678
 
 ## 9. トラブルシューティング
 
-- `DISCORD_TOKEN` と `DISCORD_GUILD_ID` の片方だけ設定した
-  - 起動時に即エラーになります。両方入れるか、両方外してください。
+- `DISCORD_TOKEN` または `DISCORD_GUILD_ID` が未設定
+  - 起動時に即エラーになります。両方とも必須です。
 - Guild ID が間違っている、または別サーバーに Bot を招待した
   - login 自体は通っても guild の取得や初期化に失敗します。
 - チャンネル、カテゴリ、admin ロールの自動作成に失敗する

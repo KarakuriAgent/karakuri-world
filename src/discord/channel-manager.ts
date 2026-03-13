@@ -157,7 +157,7 @@ export class ChannelManager {
     return this.staticChannels;
   }
 
-  async createAgentChannel(agentName: string, discordBotId?: string): Promise<string> {
+  async createAgentChannel(agentName: string, discordBotId: string): Promise<string> {
     const staticChannels = await this.ensureStaticChannels();
     const worldBotPermissions = combinePermissions(
       PermissionFlagsBits.ViewChannel,
@@ -182,13 +182,11 @@ export class ChannelManager {
       },
     ];
 
-    if (discordBotId) {
-      permissionOverwrites.push({
-        id: discordBotId,
-        type: OverwriteType.Member,
-        allow: worldBotPermissions,
-      });
-    }
+    permissionOverwrites.push({
+      id: discordBotId,
+      type: OverwriteType.Member,
+      allow: worldBotPermissions,
+    });
 
     const channel = await this.guild.channels.create({
       name: sanitizeAgentChannelName(agentName),

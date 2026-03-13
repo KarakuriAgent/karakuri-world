@@ -16,7 +16,6 @@ describe('server events integration', () => {
 
   it('moves a conversation into closing when an event is selected', async () => {
     const { engine } = createTestWorld({
-      withDiscord: false,
       config: {
         conversation: {
           max_turns: 4,
@@ -26,8 +25,8 @@ describe('server events integration', () => {
         },
       },
     });
-    const alice = engine.registerAgent({ agent_name: 'alice' });
-    const bob = engine.registerAgent({ agent_name: 'bob' });
+    const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
+    const bob = engine.registerAgent({ agent_name: 'bob', discord_bot_id: 'bot-bob' });
     await engine.joinAgent(alice.agent_id);
     await engine.joinAgent(bob.agent_id);
     engine.state.setNode(bob.agent_id, '3-2');
