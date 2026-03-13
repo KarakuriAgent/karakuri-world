@@ -5,6 +5,7 @@ import type { JoinedAgent } from '../types/agent.js';
 import type { ActionConfig, BuildingConfig, NpcConfig } from '../types/data-model.js';
 import type { ActionTimer } from '../types/timer.js';
 import { findAdjacentNpcs, findBuildingByInteriorNode } from './map-utils.js';
+import { getAgentCurrentNode } from './movement.js';
 
 type ActionSource =
   | {
@@ -54,7 +55,8 @@ export function getAvailableActionSources(engine: WorldEngine, agentId: string):
   }
 
   const sources: ActionSource[] = [];
-  const building = findBuildingByInteriorNode(agent.node_id, engine.config.map);
+  const currentNodeId = getAgentCurrentNode(engine, agent);
+  const building = findBuildingByInteriorNode(currentNodeId, engine.config.map);
   if (building) {
     sources.push(
       ...building.actions.map((action) => ({
@@ -67,7 +69,7 @@ export function getAvailableActionSources(engine: WorldEngine, agentId: string):
   }
 
   sources.push(
-    ...findAdjacentNpcs(agent.node_id, engine.config.map).flatMap((npc) =>
+    ...findAdjacentNpcs(currentNodeId, engine.config.map).flatMap((npc) =>
       npc.actions.map((action) => ({
         type: 'npc' as const,
         id: npc.npc_id,

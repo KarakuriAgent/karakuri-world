@@ -59,17 +59,17 @@ MCPサーバーは、エージェント向けREST API（08-rest-api.md セクシ
 ```json
 {
   "name": "move",
-  "description": "指定方向の隣接ノードへ移動する。idle状態でのみ実行可能。",
+  "description": "指定した目的地ノードへ移動する。サーバーがBFSで最短経路を計算し、経路のマス数に応じた移動時間で一括移動する。idle状態でのみ実行可能。",
   "inputSchema": {
     "type": "object",
     "properties": {
-      "direction": {
+      "target_node_id": {
         "type": "string",
-        "enum": ["north", "south", "east", "west"],
-        "description": "移動方向"
+        "pattern": "^\\d+-\\d+$",
+        "description": "目的地のノードID（例: \"1-2\"）"
       }
     },
-    "required": ["direction"]
+    "required": ["target_node_id"]
   }
 }
 ```

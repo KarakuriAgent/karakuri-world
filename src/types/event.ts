@@ -1,4 +1,4 @@
-import type { Direction, NodeId } from './data-model.js';
+import type { NodeId } from './data-model.js';
 import type { ConversationClosureReason, ConversationRejectionReason } from './conversation.js';
 import type { ServerEventChoiceConfig } from './server-event.js';
 
@@ -42,9 +42,9 @@ export interface MovementStartedEvent extends EventBase {
   type: 'movement_started';
   agent_id: string;
   agent_name: string;
-  direction: Direction;
   from_node_id: NodeId;
   to_node_id: NodeId;
+  path: NodeId[];
   arrives_at: number;
 }
 
@@ -52,9 +52,7 @@ export interface MovementCompletedEvent extends EventBase {
   type: 'movement_completed';
   agent_id: string;
   agent_name: string;
-  direction: Direction;
-  from_node_id: NodeId;
-  to_node_id: NodeId;
+  node_id: NodeId;
   delivered_server_event_ids: string[];
 }
 

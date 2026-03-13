@@ -2,6 +2,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 
 import type { WorldEngine } from '../engine/world-engine.js';
+import type { NodeId } from '../types/data-model.js';
 import { WorldError, toErrorResponse } from '../types/api.js';
 
 export interface McpToolDefinition {
@@ -12,7 +13,12 @@ export interface McpToolDefinition {
 }
 
 const emptySchema = z.object({}).strict();
-const directionSchema = z.enum(['north', 'south', 'east', 'west']);
+const nodeIdSchema = z.custom<NodeId>((value): value is NodeId => typeof value === 'string' && /^\d+-\d+$/.test(value));
+const moveSchema = z
+  .object({
+    target_node_id: nodeIdSchema,
+  })
+  .strict();
 
 function toToolSuccess(payload: unknown): CallToolResult {
   return {
@@ -45,6 +51,10 @@ function wrapTool<TArguments>(
     try {
       return toToolSuccess(await handler(schema.parse(arguments_)));
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return toToolError(new WorldError(400, 'invalid_request', 'Request validation failed.', error.flatten()));
+      }
+
       if (error instanceof WorldError) {
         return toToolError(error);
       }
@@ -70,20 +80,10 @@ export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): 
     },
     {
       name: 'move',
-      description: '指定方向の隣接ノードへ移動する。idle状態でのみ実行可能。',
-      inputSchema: z
-        .object({
-          direction: directionSchema,
-        })
-        .strict(),
-      execute: wrapTool(
-        z
-          .object({
-            direction: directionSchema,
-          })
-          .strict(),
-        async (arguments_) => engine.move(agentId, arguments_),
-      ),
+      description:
+        '指定した目的地ノードへ移動する。サーバーがBFSで最短経路を計算し、経路のマス数に応じた移動時間で一括移動する。idle状態でのみ実行可能。',
+      inputSchema: moveSchema,
+      execute: wrapTool(moveSchema, async (arguments_) => engine.move(agentId, arguments_)),
     },
     {
       name: 'action',

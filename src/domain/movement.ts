@@ -2,8 +2,9 @@ import type { WorldEngine } from '../engine/world-engine.js';
 import type { MoveRequest, MoveResponse } from '../types/api.js';
 import { WorldError } from '../types/api.js';
 import type { JoinedAgent } from '../types/agent.js';
+import type { NodeId } from '../types/data-model.js';
 import type { MovementTimer } from '../types/timer.js';
-import { getAdjacentNodeId, getNodeConfig, isPassable } from './map-utils.js';
+import { findPath, getNodeConfig, isNodeWithinBounds, isPassable } from './map-utils.js';
 import { handlePendingServerEvents } from './server-events.js';
 
 function requireMoveReadyAgent(engine: WorldEngine, agentId: string): JoinedAgent {
@@ -12,8 +13,12 @@ function requireMoveReadyAgent(engine: WorldEngine, agentId: string): JoinedAgen
     throw new WorldError(403, 'not_joined', `Agent is not joined: ${agentId}`);
   }
 
-  if (agent.state !== 'idle' || agent.pending_conversation_id) {
+  if (agent.state !== 'idle') {
     throw new WorldError(409, 'state_conflict', 'Agent cannot move in the current state.');
+  }
+
+  if (agent.pending_conversation_id) {
+    throw new WorldError(409, 'state_conflict', 'Agent cannot move while a conversation request is pending.');
   }
 
   return agent;
@@ -21,28 +26,38 @@ function requireMoveReadyAgent(engine: WorldEngine, agentId: string): JoinedAgen
 
 export function validateMove(engine: WorldEngine, agentId: string, request: MoveRequest): {
   agent: JoinedAgent;
-  to_node_id: `${number}-${number}`;
+  to_node_id: NodeId;
+  path: NodeId[];
 } {
   const agent = requireMoveReadyAgent(engine, agentId);
-  const destinationNodeId = getAdjacentNodeId(agent.node_id, request.direction, engine.config.map);
-  if (!destinationNodeId) {
+  if (!isNodeWithinBounds(request.target_node_id, engine.config.map)) {
     throw new WorldError(400, 'out_of_bounds', 'Destination is outside the map.');
   }
 
-  const destinationNode = getNodeConfig(destinationNodeId, engine.config.map);
+  const destinationNode = getNodeConfig(request.target_node_id, engine.config.map);
   if (!isPassable(destinationNode.type)) {
     throw new WorldError(400, 'impassable_node', 'Destination node is not passable.');
   }
 
+  if (request.target_node_id === agent.node_id) {
+    throw new WorldError(400, 'same_node', 'Destination node must differ from the current node.');
+  }
+
+  const path = findPath(agent.node_id, request.target_node_id, engine.config.map);
+  if (!path) {
+    throw new WorldError(400, 'no_path', 'No path exists to the destination node.');
+  }
+
   return {
     agent,
-    to_node_id: destinationNodeId,
+    to_node_id: request.target_node_id,
+    path,
   };
 }
 
 export function executeMove(engine: WorldEngine, agentId: string, request: MoveRequest): MoveResponse {
-  const { agent, to_node_id } = validateMove(engine, agentId, request);
-  const arrivesAt = Date.now() + engine.config.movement.duration_ms;
+  const { agent, to_node_id, path } = validateMove(engine, agentId, request);
+  const arrivesAt = Date.now() + path.length * engine.config.movement.duration_ms;
 
   engine.timerManager.cancelByType(agentId, 'movement');
   engine.state.setState(agentId, 'moving');
@@ -50,9 +65,9 @@ export function executeMove(engine: WorldEngine, agentId: string, request: MoveR
     type: 'movement',
     agent_ids: [agentId],
     agent_id: agentId,
-    direction: request.direction,
     from_node_id: agent.node_id,
     to_node_id,
+    path: [...path],
     fires_at: arrivesAt,
   });
 
@@ -60,9 +75,9 @@ export function executeMove(engine: WorldEngine, agentId: string, request: MoveR
     type: 'movement_started',
     agent_id: agent.agent_id,
     agent_name: agent.agent_name,
-    direction: request.direction,
     from_node_id: agent.node_id,
     to_node_id,
+    path: [...path],
     arrives_at: arrivesAt,
   });
 
@@ -71,6 +86,51 @@ export function executeMove(engine: WorldEngine, agentId: string, request: MoveR
     to_node_id,
     arrives_at: arrivesAt,
   };
+}
+
+export function getMovementTimer(engine: WorldEngine, agentId: string): MovementTimer | null {
+  return (
+    engine.timerManager.find(
+      (candidate): candidate is MovementTimer => candidate.type === 'movement' && candidate.agent_id === agentId,
+    ) ?? null
+  );
+}
+
+export function getCurrentMovementPosition(timer: MovementTimer, durationMs: number, now: number): NodeId {
+  if (durationMs <= 0 || timer.path.length === 0) {
+    return timer.to_node_id;
+  }
+
+  const startedAt = timer.fires_at - timer.path.length * durationMs;
+  const elapsed = Math.max(0, now - startedAt);
+  const stepsCompleted = Math.floor(elapsed / durationMs);
+
+  if (stepsCompleted <= 0) {
+    return timer.from_node_id;
+  }
+
+  if (stepsCompleted >= timer.path.length) {
+    return timer.to_node_id;
+  }
+
+  return timer.path[stepsCompleted - 1];
+}
+
+export function getAgentCurrentNode(
+  engine: WorldEngine,
+  agent: Pick<JoinedAgent, 'agent_id' | 'node_id' | 'state'>,
+  now = Date.now(),
+): NodeId {
+  if (agent.state !== 'moving') {
+    return agent.node_id;
+  }
+
+  const movementTimer = getMovementTimer(engine, agent.agent_id);
+  if (!movementTimer) {
+    return agent.node_id;
+  }
+
+  return getCurrentMovementPosition(movementTimer, engine.config.movement.duration_ms, now);
 }
 
 export function handleMovementCompleted(engine: WorldEngine, timer: MovementTimer): void {
@@ -87,9 +147,7 @@ export function handleMovementCompleted(engine: WorldEngine, timer: MovementTime
     type: 'movement_completed',
     agent_id: agent.agent_id,
     agent_name: agent.agent_name,
-    direction: timer.direction,
-    from_node_id: timer.from_node_id,
-    to_node_id: timer.to_node_id,
+    node_id: timer.to_node_id,
     delivered_server_event_ids: deliveredServerEventIds,
   });
 }

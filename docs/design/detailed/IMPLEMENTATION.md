@@ -422,3 +422,137 @@ Discord Botは全テストでモック化。
 3. **タイマーとリクエストの競合**: 処理時点の状態で判定 (03§5.3)
 4. **leave時クリーンアップ**: 全タイマーキャンセル + 会話相手通知 + 保留リストクリア (03§6)
 5. **Discord API制限**: discord.jsビルトインのレートリミット対応を利用
+
+---
+
+## フェーズ6: 移動システム変更（方向指定 → 目的地ノード指定）
+
+**設計書参照: 04-movement.md（改訂版）**
+
+### 背景
+
+フェーズ3-Aで実装した移動は `direction` で1マスずつ移動する方式だが、LLMエージェントのトークンを無駄に消費する。目的地ノードIDを指定し、サーバーがBFSで最短経路を計算して一括移動する方式に変更する。
+
+### 6-A: 型定義の変更
+
+`src/types/api.ts`
+- `MoveRequest`: `direction: Direction` → `target_node_id: NodeId`
+- `ApiErrorCode`: `same_node`、`no_path` を追加
+
+`src/types/timer.ts`
+- `MovementTimer`: `direction: Direction` 削除、`path: NodeId[]` 追加
+
+`src/types/event.ts`
+- `MovementStartedEvent`: `direction` 削除、`path: NodeId[]` 追加
+- `MovementCompletedEvent`: `direction`・`from_node_id` 削除、`to_node_id` → `node_id` に改名（03-world-engine.md セクション2.2準拠）
+
+`src/types/snapshot.ts`
+- `AgentSnapshot`: `movement?` オブジェクトに `path: NodeId[]` を追加（03-world-engine.md セクション7.1準拠）
+
+`src/types/data-model.ts`
+- `Direction` 型は残す（`getAdjacentNodeId`、`config/validation.ts` が内部利用）
+
+### 6-B: ドメインロジックの変更
+
+`src/domain/map-utils.ts`
+- `findPath(from, to, mapConfig)` 追加 — BFS最短経路探索。`getAdjacentNodeId` で4方向（north/south/east/west）展開、`isPassable` でフィルタ。到達不能時はnull。戻り値はfromを含まずtoを含むNodeId配列
+
+`src/domain/movement.ts`
+- `validateMove` — 目的地の範囲内・移動可能・現在地でない・BFS経路存在チェック
+- `executeMove` — `path.length × duration_ms` で移動時間算出、path付きMovementTimer生成
+- `handleMovementCompleted` — `direction` 参照を削除
+- `getCurrentMovementPosition(timer, durationMs, now)` 追加 — MovementTimerと現在時刻から経路上の現在位置を算出（04-movement.md セクション4.1）
+
+`src/domain/perception.ts`
+- 移動中エージェントの位置を `getCurrentMovementPosition` で算出した値に差し替え
+
+`src/domain/actions.ts`
+- `get_available_actions` の位置判定で移動中エージェントの現在位置を `getCurrentMovementPosition` で算出
+
+`src/engine/world-engine.ts`
+- `getWorldAgents`: 移動中エージェントの位置を `getCurrentMovementPosition` で算出
+- `getSnapshot`: スナップショット内の移動中エージェントの `node_id` に `getCurrentMovementPosition` の結果を設定。`movement` オブジェクトに `path` を含める（03-world-engine.md セクション7.1準拠）
+- leave処理: 移動中のleave時、`AgentLeftEvent.node_id` に `getCurrentMovementPosition` の結果を設定
+
+`src/discord/event-handler.ts`
+- `movement_completed` ハンドラ: `event.to_node_id` → `event.node_id` に変更
+
+### 6-C: API / MCP / Skills の変更
+
+`src/api/routes/agent-actions.ts`
+- moveSchema: `direction` enum → `target_node_id` regex (`/^\d+-\d+$/`)
+
+`src/mcp/tools.ts`
+- moveツール: inputSchema・description を `target_node_id` 方式に変更
+
+`src/skills/template.ts`
+- API版/MCP版テンプレートのmoveコマンド記述を `target_node_id` 方式に変更
+
+### 6-D: 変更不要なファイル
+
+- `src/discord/notification.ts` — `direction` 不使用
+- `src/config/schema.ts` — `direction` 関連なし
+
+### テスト
+
+`test/unit/domain/map-utils.test.ts`
+- `findPath` テスト追加: 隣接移動(path長1)、複数マス経路、壁迂回、到達不能(null)
+
+`test/unit/domain/movement.test.ts`
+- リクエスト形式を `{ direction }` → `{ target_node_id }` に変更
+- 新テスト追加: 複数マス移動(移動時間=path.length×duration_ms)、same_node(400)、no_path(400)
+- `getCurrentMovementPosition` テスト: 出発直後(steps_completed=0)、経路途中、到着直前
+- 移動中のleaveで現在位置が正しく設定されることを検証
+
+`test/integration/movement.test.ts`
+- リクエスト形式変更
+- 移動中に `get_perception` / `get_world_agents` / `get_available_actions` を呼び出し、経路上の中間位置に基づく結果が返ることを検証
+- 移動中に `GET /api/snapshot` を呼び出し、`AgentSnapshot.node_id` が算出位置、`movement.path` が経路情報を含むことを検証
+
+`test/integration/api.test.ts`
+- 移動エンドポイントのリクエスト形式変更
+
+`test/unit/domain/server-events.test.ts`
+- `engine.move()` 呼び出しのリクエスト形式変更
+
+`test/unit/engine/timer-manager.test.ts`
+- MovementTimerデータの `direction` → `path` 変更
+
+`test/unit/discord/event-handler.test.ts`
+- `movement_completed` ハンドラのテスト: `event.node_id` フィールドを使用していることを検証
+
+`test/unit/skills/template.test.ts`
+- テンプレート出力のmoveコマンド記述検証更新
+
+### 完了基準
+- `npm run typecheck` 通過
+- `npm test` 全テストパス
+- 手動確認: `{ "target_node_id": "1-2" }` でmoveリクエスト → BFS経路計算 → 経路マス数×duration_ms 後に到着通知
+
+---
+
+## フェーズ7: テストカバレッジ改善（WebSocket・MCP移動テスト）
+
+### 概要
+
+WebSocket経由のイベントブロードキャストとMCPツール経由の移動操作について、既存テストでカバーされていない部分を補完する。
+
+### 7-A: WebSocket移動イベントテスト
+
+`test/integration/websocket.test.ts`
+- エージェント参加後に移動を実行し、`movement_started` および `movement_completed` イベントがWebSocket経由でブロードキャストされることを検証
+- `movement_started` のフィールド検証: `type`、`agent_id`、`from_node_id`、`to_node_id`、`path`（NodeId配列）、`arrives_at`
+- `movement_completed` のフィールド検証: `type`、`agent_id`、`node_id`（`to_node_id` ではないことを確認）
+- 移動中にWebSocket再接続し、スナップショットの `AgentSnapshot.movement.path` が経路情報を含むことを検証
+
+### 7-B: MCPツール移動テスト
+
+`test/unit/mcp/tools.test.ts`
+- moveツールの `inputSchema` が `target_node_id` を受け付けることを検証
+- moveツール実行で移動レスポンス（`from_node_id`、`to_node_id`、`arrives_at`）が返ることを検証
+- 無効な `target_node_id` でツールエラー（`isError: true`）が返ることを検証
+
+### 完了基準
+- `npm test` 全テストパス
+- 上記テストケースがすべて追加されていること
+

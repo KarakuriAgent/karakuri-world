@@ -2,13 +2,14 @@ import type { Hono } from 'hono';
 import { z } from 'zod';
 
 import type { WorldEngine } from '../../engine/world-engine.js';
+import type { NodeId } from '../../types/data-model.js';
 import type { ApiEnv } from '../context.js';
 import { agentAuth } from '../middleware/auth.js';
 import { requireJoined } from '../middleware/joined.js';
 import { validateBody } from '../middleware/validate.js';
 
 const moveSchema = z.object({
-  direction: z.enum(['north', 'south', 'east', 'west']),
+  target_node_id: z.custom<NodeId>((value): value is NodeId => typeof value === 'string' && /^\d+-\d+$/.test(value)),
 });
 
 const actionSchema = z.object({

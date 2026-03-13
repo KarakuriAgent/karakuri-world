@@ -81,7 +81,7 @@ export class DiscordEventHandler {
         await this.handleAgentLeft(event.agent_id, event.agent_name);
         return;
       case 'movement_completed':
-        await this.handleMovementCompleted(event.agent_id, event.agent_name, event.to_node_id);
+        await this.handleMovementCompleted(event.agent_id, event.agent_name, event.node_id);
         return;
       case 'action_completed':
         await this.handleActionCompleted(event.agent_id, event.agent_name, event.action_name, event.result_description);

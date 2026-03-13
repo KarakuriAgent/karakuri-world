@@ -80,6 +80,53 @@ describe('MCP tools', () => {
     );
   });
 
+  it('accepts target_node_id for move and returns movement responses', async () => {
+    const { engine } = createTestWorld({
+      withDiscord: false,
+      config: {
+        spawn: { nodes: ['3-1'] },
+      },
+    });
+    const agent = engine.registerAgent({ agent_name: 'Alice' });
+    const definitions = createMcpToolDefinitions(engine, agent.agent_id);
+    const join = definitions.find((definition) => definition.name === 'join');
+    const move = definitions.find((definition) => definition.name === 'move');
+
+    expect(join).toBeDefined();
+    expect(move).toBeDefined();
+    expect(move!.inputSchema.safeParse({ target_node_id: '3-4' }).success).toBe(true);
+    expect(move!.inputSchema.safeParse({ direction: 'east' }).success).toBe(false);
+
+    await join!.execute({});
+    const moved = await move!.execute({ target_node_id: '3-4' });
+
+    expect(moved.isError).not.toBe(true);
+    expect(parseToolText(moved)).toEqual(
+      expect.objectContaining({
+        from_node_id: '3-1',
+        to_node_id: '3-4',
+        arrives_at: expect.any(Number),
+      }),
+    );
+  });
+
+  it('returns tool errors for invalid move inputs', async () => {
+    const { engine } = createTestWorld({ withDiscord: false });
+    const agent = engine.registerAgent({ agent_name: 'Alice' });
+    const definitions = createMcpToolDefinitions(engine, agent.agent_id);
+    const move = definitions.find((definition) => definition.name === 'move');
+
+    expect(move).toBeDefined();
+
+    const invalid = await move!.execute({ target_node_id: 'east' });
+    expect(invalid.isError).toBe(true);
+    expect(parseToolText(invalid)).toEqual(
+      expect.objectContaining({
+        error: 'invalid_request',
+      }),
+    );
+  });
+
   it('authenticates bearer tokens for MCP requests', () => {
     const { engine } = createTestWorld({ withDiscord: false });
     const agent = engine.registerAgent({ agent_name: 'Alice' });

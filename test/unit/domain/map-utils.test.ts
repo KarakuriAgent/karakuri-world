@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
+import type { MapConfig } from '../../../src/types/data-model.js';
 import { createTestMapConfig } from '../../helpers/test-map.js';
 import {
+  findPath,
   findAdjacentNpcs,
   findBuildingByInteriorNode,
   findBuildingsInNodes,
@@ -15,6 +17,18 @@ import {
 } from '../../../src/domain/map-utils.js';
 
 const mapConfig = createTestMapConfig();
+const isolatedMap = {
+  rows: 3,
+  cols: 3,
+  nodes: {
+    '1-2': { type: 'wall' },
+    '2-1': { type: 'wall' },
+    '2-3': { type: 'wall' },
+    '3-2': { type: 'wall' },
+  },
+  buildings: [],
+  npcs: [],
+} satisfies MapConfig;
 
 describe('map-utils', () => {
   it('parses and serializes node ids', () => {
@@ -26,6 +40,16 @@ describe('map-utils', () => {
     expect(getAdjacentNodeId('2-4', 'north', mapConfig)).toBe('1-4');
     expect(getAdjacentNodeId('1-1', 'north', mapConfig)).toBeNull();
     expect(getAdjacentNodeId('3-5', 'east', mapConfig)).toBeNull();
+  });
+
+  it('finds shortest paths across adjacent and multi-step routes', () => {
+    expect(findPath('3-1', '3-2', mapConfig)).toEqual(['3-2']);
+    expect(findPath('3-1', '3-3', mapConfig)).toEqual(['3-2', '3-3']);
+  });
+
+  it('finds detours around walls and reports unreachable destinations', () => {
+    expect(findPath('3-1', '2-4', mapConfig)).toEqual(['3-2', '3-3', '3-4', '2-4']);
+    expect(findPath('1-1', '2-2', isolatedMap)).toBeNull();
   });
 
   it('returns default normal node config when node is undefined', () => {

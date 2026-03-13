@@ -8,14 +8,19 @@ import WebSocket from 'ws';
 import { createApp } from '../../src/api/app.js';
 import { createTestWorld } from '../helpers/test-world.js';
 
-async function waitForMessages(messages: any[], count: number): Promise<void> {
+async function waitForCondition(predicate: () => boolean): Promise<void> {
   const startedAt = Date.now();
-  while (messages.length < count) {
+  while (!predicate()) {
     if (Date.now() - startedAt > 2000) {
-      throw new Error(`Timed out waiting for ${count} websocket messages.`);
+      throw new Error('Timed out waiting for websocket condition.');
     }
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
+}
+
+async function waitForMessage(messages: any[], predicate: (message: any) => boolean): Promise<any> {
+  await waitForCondition(() => messages.some(predicate));
+  return messages.find(predicate);
 }
 
 describe('websocket integration', () => {
@@ -28,8 +33,14 @@ describe('websocket integration', () => {
     vi.restoreAllMocks();
   });
 
-  it('sends an initial snapshot and broadcasts events', async () => {
-    const { engine } = createTestWorld({ withDiscord: false });
+  it('sends snapshots, broadcasts movement events, and includes movement data after reconnect', async () => {
+    const { engine } = createTestWorld({
+      withDiscord: false,
+      config: {
+        movement: { duration_ms: 100 },
+        spawn: { nodes: ['3-1'] },
+      },
+    });
     const { app, injectWebSocket, websocketManager } = createApp(engine, {
       adminKey: 'admin',
       publicBaseUrl: 'http://localhost:3000',
@@ -58,21 +69,80 @@ describe('websocket integration', () => {
     });
     await once(ws, 'open');
 
-    await waitForMessages(messages, 1);
-    const snapshotMessage = messages[0];
+    const snapshotMessage = await waitForMessage(messages, (message) => message.type === 'snapshot');
     expect(snapshotMessage.type).toBe('snapshot');
     expect(snapshotMessage.data.agents).toEqual([]);
 
     const registration = engine.registerAgent({ agent_name: 'alice' });
     await engine.joinAgent(registration.agent_id);
 
-    await waitForMessages(messages, 2);
-    const eventMessage = messages[1];
-    expect(eventMessage.type).toBe('event');
-    expect(eventMessage.data.type).toBe('agent_joined');
+    const joinedMessage = await waitForMessage(
+      messages,
+      (message) => message.type === 'event' && message.data.type === 'agent_joined',
+    );
+    expect(joinedMessage.data).toMatchObject({
+      type: 'agent_joined',
+      agent_id: registration.agent_id,
+      node_id: '3-1',
+    });
+
+    const move = engine.move(registration.agent_id, { target_node_id: '3-4' });
+
+    const startedMessage = await waitForMessage(
+      messages,
+      (message) => message.type === 'event' && message.data.type === 'movement_started',
+    );
+    expect(startedMessage.data).toMatchObject({
+      type: 'movement_started',
+      agent_id: registration.agent_id,
+      from_node_id: '3-1',
+      to_node_id: '3-4',
+      path: ['3-2', '3-3', '3-4'],
+      arrives_at: move.arrives_at,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 120));
+
+    const reconnectingWs = new WebSocket(`ws://127.0.0.1:${serverInfo.port}/ws`);
+    const reconnectMessages: any[] = [];
+    reconnectingWs.on('message', (raw) => {
+      reconnectMessages.push(JSON.parse(raw.toString()));
+    });
+    reconnectingWs.on('error', (error) => {
+      throw error;
+    });
+    await once(reconnectingWs, 'open');
+
+    const reconnectSnapshot = await waitForMessage(reconnectMessages, (message) => message.type === 'snapshot');
+    expect(reconnectSnapshot.data.agents).toEqual([
+      expect.objectContaining({
+        agent_id: registration.agent_id,
+        node_id: '3-2',
+        state: 'moving',
+        movement: {
+          from_node_id: '3-1',
+          to_node_id: '3-4',
+          path: ['3-2', '3-3', '3-4'],
+          arrives_at: move.arrives_at,
+        },
+      }),
+    ]);
+
+    const completedMessage = await waitForMessage(
+      messages,
+      (message) => message.type === 'event' && message.data.type === 'movement_completed',
+    );
+    expect(completedMessage.data).toMatchObject({
+      type: 'movement_completed',
+      agent_id: registration.agent_id,
+      node_id: '3-4',
+    });
+    expect(completedMessage.data.to_node_id).toBeUndefined();
 
     ws.close();
     await once(ws, 'close');
+    reconnectingWs.close();
+    await once(reconnectingWs, 'close');
     websocketManager.dispose();
     await new Promise<void>((resolve, reject) => {
       server.close((error) => {

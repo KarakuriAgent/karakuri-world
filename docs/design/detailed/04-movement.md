@@ -4,26 +4,35 @@
 
 ### 1.1 前提条件
 
-移動リクエストは方向（`north` / `south` / `east` / `west`）を指定する。方向指定により移動先は常に隣接ノードとなるため、隣接チェックは入力モデルで担保される。
+移動リクエストは目的地ノードID（`target_node_id`）を指定する。サーバーがBFS（幅優先探索）で現在地から目的地への最短経路を計算し、経路のマス数に応じた移動時間で一括移動する。
 
 ```typescript
-type Direction = "north" | "south" | "east" | "west";
-
 interface MoveRequest {
-  direction: Direction;
+  target_node_id: NodeId;
 }
 ```
 
-### 1.2 方向からノードIDの解決
+### 1.2 BFS経路探索
 
-エージェントの現在位置 `r-c` に対し、方向から移動先ノードIDを算出する。
+現在地から目的地への最短経路をBFS（幅優先探索）で算出する。
 
-| 方向 | 移動先 |
-|------|--------|
-| `north` | `(r-1)-c` |
-| `south` | `(r+1)-c` |
-| `east` | `r-(c+1)` |
-| `west` | `r-(c-1)` |
+#### アルゴリズム
+
+1. 現在地をキューに追加し、visited集合に登録する
+2. キューからノードを取り出し、4方向（north / south / east / west）の隣接ノードを展開する
+3. 隣接ノードが通行可能（`isPassable`、01-data-model.md セクション2.1参照）かつ未訪問であればキューに追加する
+4. 目的地に到達したら経路を復元して返却する
+5. キューが空になった場合は到達不能（`null`）とする
+
+#### 関数仕様
+
+```typescript
+findPath(from: NodeId, to: NodeId, mapConfig: MapConfig): NodeId[] | null
+```
+
+- **引数**: 現在地（`from`）、目的地（`to`）、マップ設定
+- **戻り値**: `from` を含まず `to` を含むノードID配列。到達不能の場合は `null`
+- 隣接ノードの展開には既存の `getAdjacentNodeId` を使用し、通行可否判定には `isPassable` を使用する
 
 ### 1.3 バリデーションルール
 
@@ -32,18 +41,20 @@ interface MoveRequest {
 | # | 検証内容 | エラー |
 |---|---------|--------|
 | 1 | エージェントが `idle` 状態であり、かつ受諾待ち（02-agent-lifecycle.md セクション4.4）でないこと | `409 Conflict` (`state_conflict`) |
-| 2 | 移動先ノードがグリッド範囲内であること（`1 ≤ row ≤ rows` かつ `1 ≤ col ≤ cols`） | `400 Bad Request` (`out_of_bounds`) |
-| 3 | 移動先ノードが移動可能であること（01-data-model.md セクション2.1参照） | `400 Bad Request` (`impassable_node`) |
+| 2 | 目的地ノードがグリッド範囲内であること（`1 ≤ row ≤ rows` かつ `1 ≤ col ≤ cols`） | `400 Bad Request` (`out_of_bounds`) |
+| 3 | 目的地ノードが移動可能であること（01-data-model.md セクション2.1参照） | `400 Bad Request` (`impassable_node`) |
+| 4 | 目的地ノードが現在地と異なること | `400 Bad Request` (`same_node`) |
+| 5 | BFS経路が存在すること（到達可能であること） | `400 Bad Request` (`no_path`) |
 
 移動先ノードに他エージェントが存在するかどうかはバリデーション対象外とする（エージェント同士は同一ノードに重なることができる）。
 
 バリデーション #1 の形式は 02-agent-lifecycle.md セクション5.2 の `StateConflictError` に従う。受諾待ち中の場合も `StateConflictError` を返す（`current_state: "idle"`、`message` で受諾待ちである旨を伝える）。
 
-バリデーション #2, #3 のエラー形式:
+バリデーション #2〜#5 のエラー形式:
 
 ```typescript
 interface MoveValidationError {
-  error: "out_of_bounds" | "impassable_node";
+  error: "out_of_bounds" | "impassable_node" | "same_node" | "no_path";
   message: string;
 }
 ```
@@ -54,10 +65,11 @@ interface MoveValidationError {
 
 バリデーション通過後の処理:
 
-1. エージェント状態を `moving` に遷移
-2. `MovementTimer` を生成（03-world-engine.md セクション1.2参照。`fires_at = 現在時刻 + MovementConfig.duration_ms`（01-data-model.md セクション6.3））
-3. `MovementStartedEvent` を発行（03-world-engine.md セクション2.2参照）。配信先は WebSocket・ログのみ（Discord通知なし。03-world-engine.md セクション4.2参照）
-4. レスポンスを返却
+1. BFS経路探索で最短経路（`path`）を算出
+2. エージェント状態を `moving` に遷移
+3. `MovementTimer` を生成（03-world-engine.md セクション1.2参照。`fires_at = 現在時刻 + path.length × MovementConfig.duration_ms`（01-data-model.md セクション6.3））
+4. `MovementStartedEvent` を発行（03-world-engine.md セクション2.2参照）。配信先は WebSocket・ログのみ（Discord通知なし。03-world-engine.md セクション4.2参照）
+5. レスポンスを返却
 
 ```typescript
 interface MoveResponse {
@@ -70,14 +82,15 @@ interface MoveResponse {
 ### 2.2 シーケンス
 
 ```
-Agent → API: POST /api/agents/move { direction: "north" }
-  API: バリデーション（状態チェック、隣接・移動可能チェック）
+Agent → API: POST /api/agents/move { target_node_id: "1-2" }
+  API: バリデーション（状態チェック、範囲内・移動可能・同一ノード・到達可能チェック）
+  API: BFS経路探索 → path = ["2-1", "1-1", "1-2"]（例: 3ステップ）
   API: 状態を moving に遷移
-  API: MovementTimer を生成
+  API: MovementTimer を生成（fires_at = now + 3 × duration_ms）
   API: movement_started イベント発行
 API → Agent: 200 OK { from_node_id, to_node_id, arrives_at }
 
-  ... MovementConfig.duration_ms 経過 ...
+  ... path.length × MovementConfig.duration_ms 経過 ...
 
 Timer 発火:
   Engine: エージェント位置を to_node_id に更新
@@ -131,13 +144,37 @@ Timer 発火:
 
 `movement_completed` イベントをブロードキャストする。
 
-## 4. 移動中のleave処理
+## 4. 移動中のエージェント位置
+
+移動中（`moving` 状態）のエージェントの位置は、内部状態（`JoinedAgent.node_id`）を直接更新するのではなく、タイマー情報から参照時に算出する。中間地点への到着に対するDiscord通知・WebSocketイベントは発行しない（`movement_started` は移動開始時に発行される）。
+
+### 4.1 位置の算出
+
+移動中のエージェントの現在位置は、タイマーの情報から算出する:
+
+```
+started_at = MovementTimer.fires_at - path.length × MovementConfig.duration_ms
+elapsed = 現在時刻 - started_at
+steps_completed = floor(elapsed / MovementConfig.duration_ms)
+```
+
+- `steps_completed = 0`: 出発地点（`from_node_id`）に位置する
+- `1 ≤ steps_completed < path.length`: `path[steps_completed - 1]` に位置する
+- `steps_completed ≥ path.length`: 目的地（`to_node_id`）に位置する（タイマー発火直前）
+
+### 4.2 影響範囲
+
+- `get_perception` / `get_world_agents` / `get_available_actions` は移動中でもセクション4.1に基づく現在位置を返す
+- スナップショット（`GET /api/snapshot`、WebSocket初回送信）も同様にセクション4.1に基づく現在位置を返す
+- サーバーイベントは移動完了後に遅延通知される（03-world-engine.md セクション3.4参照）
+
+## 5. 移動中のleave処理
 
 `moving` 状態のエージェントがleaveした場合、03-world-engine.md セクション6 のクリーンアップの一部として以下が実行される:
 
-1. `movement` タイマーをキャンセル（位置更新は行わない）
+1. `movement` タイマーをキャンセル
 2. サーバーイベント保留リストを破棄
 
 leave処理の全体フローは 02-agent-lifecycle.md セクション3.2を参照。
 
-移動中のleaveでは位置更新を行わないため、`AgentLeftEvent.node_id` には移動開始前のノード（`MovementTimer.from_node_id`）が設定される。
+`AgentLeftEvent.node_id` にはセクション4.1に基づく現在位置が設定される。

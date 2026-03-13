@@ -1,4 +1,4 @@
-import type { Direction, NodeId } from './data-model.js';
+import type { NodeId } from './data-model.js';
 
 export type TimerType =
   | 'movement'
@@ -19,9 +19,9 @@ export interface TimerBase {
 export interface MovementTimer extends TimerBase {
   type: 'movement';
   agent_id: string;
-  direction: Direction;
   from_node_id: NodeId;
   to_node_id: NodeId;
+  path: NodeId[];
 }
 
 export interface ActionTimer extends TimerBase {

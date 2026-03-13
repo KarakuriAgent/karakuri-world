@@ -22,8 +22,8 @@ import {
   handleServerEventTimeout,
   selectServerEvent as selectRuntimeServerEvent,
 } from '../domain/server-events.js';
-import { executeMove, handleMovementCompleted } from '../domain/movement.js';
-import { buildPerceptionData } from '../domain/perception.js';
+import { executeMove, getAgentCurrentNode, getMovementTimer, handleMovementCompleted } from '../domain/movement.js';
+import { getPerceptionData } from '../domain/perception.js';
 import { WorldError } from '../types/api.js';
 import type {
   ActionRequest,
@@ -180,6 +180,7 @@ export class WorldEngine {
       throw new WorldError(409, 'state_conflict', `Agent is not joined: ${agentId}`);
     }
 
+    const leftNodeId = getAgentCurrentNode(this, joinedAgent);
     cancelPendingConversation(this, agentId);
     forceEndConversation(this, agentId);
     this.timerManager.cancelByAgent(agentId);
@@ -196,7 +197,7 @@ export class WorldEngine {
       type: 'agent_left',
       agent_id: joinedAgent.agent_id,
       agent_name: joinedAgent.agent_name,
-      node_id: joinedAgent.node_id,
+      node_id: leftNodeId,
     });
 
     return { status: 'ok' };
@@ -239,12 +240,7 @@ export class WorldEngine {
   }
 
   getPerception(agentId: string): PerceptionResponse {
-    const joinedAgent = this.state.getJoined(agentId);
-    if (!joinedAgent) {
-      throw new WorldError(403, 'not_joined', `Agent is not joined: ${agentId}`);
-    }
-
-    return buildPerceptionData(joinedAgent, this.state.listJoined(), this.config.map, this.config.perception.range);
+    return getPerceptionData(this, agentId);
   }
 
   getMap(): MapConfig {
@@ -252,18 +248,70 @@ export class WorldEngine {
   }
 
   getWorldAgents(): WorldAgentsResponse {
+    const now = Date.now();
     return {
       agents: this.state.listJoined().map((agent) => ({
         agent_id: agent.agent_id,
         agent_name: agent.agent_name,
-        node_id: agent.node_id,
+        node_id: getAgentCurrentNode(this, agent, now),
         state: agent.state,
       })),
     };
   }
 
   getSnapshot(): WorldSnapshot {
-    return this.state.getSnapshot();
+    const now = Date.now();
+
+    return {
+      world: {
+        name: this.config.world.name,
+        description: this.config.world.description,
+      },
+      map: {
+        rows: this.config.map.rows,
+        cols: this.config.map.cols,
+      },
+      agents: this.state.listJoined().map((agent) => {
+        const movementTimer = agent.state === 'moving' ? getMovementTimer(this, agent.agent_id) : null;
+
+        return {
+          agent_id: agent.agent_id,
+          agent_name: agent.agent_name,
+          node_id: getAgentCurrentNode(this, agent, now),
+          state: agent.state,
+          discord_channel_id: agent.discord_channel_id,
+          ...(movementTimer
+            ? {
+                movement: {
+                  from_node_id: movementTimer.from_node_id,
+                  to_node_id: movementTimer.to_node_id,
+                  path: [...movementTimer.path],
+                  arrives_at: movementTimer.fires_at,
+                },
+              }
+            : {}),
+        };
+      }),
+      conversations: this.state.conversations.list().map((conversation) => ({
+        conversation_id: conversation.conversation_id,
+        status: conversation.status,
+        initiator_agent_id: conversation.initiator_agent_id,
+        target_agent_id: conversation.target_agent_id,
+        current_turn: conversation.current_turn,
+        current_speaker_agent_id: conversation.current_speaker_agent_id,
+        closing_reason: conversation.closing_reason,
+      })),
+      server_events: this.state.serverEvents.list().map((serverEvent) => ({
+        server_event_id: serverEvent.server_event_id,
+        event_id: serverEvent.event_id,
+        name: serverEvent.name,
+        description: serverEvent.description,
+        choices: serverEvent.choices,
+        delivered_agent_ids: serverEvent.delivered_agent_ids,
+        pending_agent_ids: serverEvent.pending_agent_ids,
+      })),
+      generated_at: now,
+    };
   }
 
   emitEvent(event: EmittableWorldEvent): void {

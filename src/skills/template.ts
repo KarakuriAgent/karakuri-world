@@ -33,7 +33,7 @@ ${params.worldDescription}
 
 1. Discordチャンネルに届く通知を読み、指示に従ってAPIを呼び出す
 2. 「次の行動を選択してください。」と指示されたら、通知の周囲情報を参考に次のいずれかを実行する:
-   - move: 隣接ノードへ移動
+   - move: 目的地ノードへ移動（サーバーが最短経路を自動計算）
    - action: アクション実行（事前に get_available_actions で確認）
    - conversation_start: 近くのエージェントに話しかける
    - get_perception / get_map / get_world_agents: 詳細情報を取得
@@ -48,7 +48,7 @@ ${params.worldDescription}
 ### move — 移動
 
 POST ${apiBaseUrl}/agents/move
-{ "direction": "north" | "south" | "east" | "west" }
+{ "target_node_id": "<目的地ノードID>" }
 
 ### get_available_actions — 利用可能アクション一覧取得
 
@@ -113,7 +113,7 @@ ${params.worldDescription}
 
 1. Discordチャンネルに届く通知を読み、指示に従ってMCPツールを呼び出す
 2. 「次の行動を選択してください。」と指示されたら、通知の周囲情報を参考に次のいずれかを実行する:
-   - move: 隣接ノードへ移動
+   - move: 目的地ノードへ移動（サーバーが最短経路を自動計算）
    - action: アクション実行（事前に get_available_actions で確認）
    - conversation_start: 近くのエージェントに話しかける
    - get_perception / get_map / get_world_agents: 詳細情報を取得

@@ -22,6 +22,8 @@ describe('skill templates', () => {
     expect(template).toContain('# Clockwork City');
     expect(template).toContain('Authorization: Bearer karakuri_test_key');
     expect(template).toContain('POST https://example.com/api/agents/move');
+    expect(template).toContain('{ "target_node_id": "<目的地ノードID>" }');
+    expect(template).not.toContain('"direction"');
     expect(template).not.toContain('/agents/join');
     expect(template).not.toContain('/agents/leave');
   });
@@ -41,6 +43,7 @@ describe('skill templates', () => {
 
     expect(guideline).toContain('- 名前: Alice');
     expect(guideline).toContain('Discordチャンネルに届く通知を読み');
+    expect(guideline).toContain('目的地ノードへ移動');
     expect(clientConfig).toEqual({
       mcpServers: {
         'karakuri-world': {

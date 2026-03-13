@@ -35,8 +35,9 @@ describe('server event domain', () => {
     const { engine } = createTestWorld({ withDiscord: false });
     const alice = engine.registerAgent({ agent_name: 'alice' });
     await engine.joinAgent(alice.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
 
-    engine.move(alice.agent_id, { direction: 'east' });
+    engine.move(alice.agent_id, { target_node_id: '3-4' });
     const fired = engine.fireServerEvent('sudden-rain');
 
     expect(engine.state.getJoined(alice.agent_id)?.pending_server_event_ids).toEqual([fired.server_event_id]);
@@ -44,7 +45,7 @@ describe('server event domain', () => {
       engine.timerManager.list().some((timer) => timer.type === 'server_event_timeout' && timer.agent_id === alice.agent_id),
     ).toBe(false);
 
-    vi.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(3000);
 
     expect(engine.state.getJoined(alice.agent_id)?.pending_server_event_ids).toEqual([]);
     expect(

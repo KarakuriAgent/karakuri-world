@@ -24,9 +24,9 @@ describe('TimerManager', () => {
       type: 'movement',
       agent_ids: ['agent-1'],
       agent_id: 'agent-1',
-      direction: 'north',
       from_node_id: '1-1',
       to_node_id: '1-2',
+      path: ['1-2'],
       fires_at: Date.now() + 1000,
     });
 
@@ -61,9 +61,9 @@ describe('TimerManager', () => {
       type: 'movement',
       agent_ids: ['agent-1'],
       agent_id: 'agent-1',
-      direction: 'south',
       from_node_id: '1-1',
       to_node_id: '2-1',
+      path: ['2-1'],
       fires_at: Date.now() + 1000,
     });
 

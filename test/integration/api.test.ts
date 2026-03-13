@@ -175,7 +175,7 @@ describe('REST API', () => {
     const invalidBody = await requestJson(app, '/api/agents/move', {
       method: 'POST',
       headers: { Authorization: `Bearer ${registered.data.api_key}` },
-      body: JSON.stringify({ direction: 'up' }),
+      body: JSON.stringify({ target_node_id: 'up' }),
     });
     expect(invalidBody.response.status).toBe(400);
     expect(invalidBody.data.error).toBe('invalid_request');
@@ -183,14 +183,14 @@ describe('REST API', () => {
     const firstMove = await requestJson(app, '/api/agents/move', {
       method: 'POST',
       headers: { Authorization: `Bearer ${registered.data.api_key}` },
-      body: JSON.stringify({ direction: 'east' }),
+      body: JSON.stringify({ target_node_id: '3-4' }),
     });
     expect(firstMove.response.status).toBe(200);
 
     const conflict = await requestJson(app, '/api/agents/move', {
       method: 'POST',
       headers: { Authorization: `Bearer ${registered.data.api_key}` },
-      body: JSON.stringify({ direction: 'east' }),
+      body: JSON.stringify({ target_node_id: '3-4' }),
     });
     expect(conflict.response.status).toBe(409);
     expect(conflict.data.error).toBe('state_conflict');

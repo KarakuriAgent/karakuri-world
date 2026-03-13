@@ -1,9 +1,31 @@
+import type { WorldEngine } from '../engine/world-engine.js';
 import type { JoinedAgent } from '../types/agent.js';
 import type { PerceptionResponse } from '../types/api.js';
+import { WorldError } from '../types/api.js';
 import type { MapConfig, NodeId } from '../types/data-model.js';
 import { findBuildingsInNodes, getNodeConfig, getNodesInRange, manhattanDistance } from './map-utils.js';
+import { getAgentCurrentNode } from './movement.js';
 
 export type PerceptionData = PerceptionResponse;
+
+export function getPerceptionData(engine: WorldEngine, agentId: string): PerceptionData {
+  const joinedAgent = engine.state.getJoined(agentId);
+  if (!joinedAgent) {
+    throw new WorldError(403, 'not_joined', `Agent is not joined: ${agentId}`);
+  }
+
+  const now = Date.now();
+  const joinedAgents = engine.state.listJoined().map((agent) => ({
+    ...agent,
+    node_id: getAgentCurrentNode(engine, agent, now),
+  }));
+  const currentAgent = joinedAgents.find((agent) => agent.agent_id === agentId);
+  if (!currentAgent) {
+    throw new WorldError(403, 'not_joined', `Agent is not joined: ${agentId}`);
+  }
+
+  return buildPerceptionData(currentAgent, joinedAgents, engine.config.map, engine.config.perception.range);
+}
 
 export function buildPerceptionData(
   agent: Pick<JoinedAgent, 'agent_id' | 'node_id'>,

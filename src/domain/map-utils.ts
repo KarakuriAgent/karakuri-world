@@ -1,6 +1,7 @@
 import type { BuildingConfig, Direction, MapConfig, NodeConfig, NodeCoordinate, NodeId, NodeType, NpcConfig } from '../types/data-model.js';
 
 const PASSABLE_NODE_TYPES = new Set<NodeType>(['normal', 'door', 'building_interior']);
+const CARDINAL_DIRECTIONS: readonly Direction[] = ['north', 'south', 'east', 'west'];
 
 export function parseNodeId(nodeId: NodeId | string): NodeCoordinate {
   const match = /^(\d+)-(\d+)$/.exec(nodeId);
@@ -46,6 +47,61 @@ export function getNodeConfig(nodeId: NodeId, mapConfig: MapConfig): NodeConfig 
 
 export function isPassable(nodeType: NodeType): boolean {
   return PASSABLE_NODE_TYPES.has(nodeType);
+}
+
+function reconstructPath(from: NodeId, to: NodeId, previous: ReadonlyMap<NodeId, NodeId>): NodeId[] {
+  const path: NodeId[] = [];
+  let current = to;
+
+  while (current !== from) {
+    path.push(current);
+    const previousNode = previous.get(current);
+    if (!previousNode) {
+      throw new Error(`Failed to reconstruct path from ${from} to ${to}.`);
+    }
+    current = previousNode;
+  }
+
+  return path.reverse();
+}
+
+export function findPath(from: NodeId, to: NodeId, mapConfig: MapConfig): NodeId[] | null {
+  if (from === to) {
+    return [];
+  }
+
+  const queue: NodeId[] = [from];
+  const visited = new Set<NodeId>([from]);
+  const previous = new Map<NodeId, NodeId>();
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) {
+      continue;
+    }
+
+    for (const direction of CARDINAL_DIRECTIONS) {
+      const adjacentNodeId = getAdjacentNodeId(current, direction, mapConfig);
+      if (!adjacentNodeId || visited.has(adjacentNodeId)) {
+        continue;
+      }
+
+      if (!isPassable(getNodeConfig(adjacentNodeId, mapConfig).type)) {
+        continue;
+      }
+
+      visited.add(adjacentNodeId);
+      previous.set(adjacentNodeId, current);
+
+      if (adjacentNodeId === to) {
+        return reconstructPath(from, to, previous);
+      }
+
+      queue.push(adjacentNodeId);
+    }
+  }
+
+  return null;
 }
 
 export function manhattanDistance(a: NodeId, b: NodeId): number {

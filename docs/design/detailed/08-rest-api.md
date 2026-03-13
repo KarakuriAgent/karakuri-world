@@ -111,7 +111,7 @@ POST /api/agents/move
 
 ```typescript
 interface MoveRequest {
-  direction: "north" | "south" | "east" | "west";
+  target_node_id: NodeId; // 目的地ノードID（例: "1-2"）
 }
 ```
 

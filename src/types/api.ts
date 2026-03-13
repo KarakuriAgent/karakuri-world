@@ -1,5 +1,5 @@
 import type { AgentState } from './agent.js';
-import type { Direction, NodeConfig, NodeId, NodeType } from './data-model.js';
+import type { NodeConfig, NodeId, NodeType } from './data-model.js';
 import type { WorldSnapshot } from './snapshot.js';
 
 export type ApiErrorCode =
@@ -9,6 +9,8 @@ export type ApiErrorCode =
   | 'state_conflict'
   | 'out_of_bounds'
   | 'impassable_node'
+  | 'same_node'
+  | 'no_path'
   | 'action_not_found'
   | 'action_not_available'
   | 'target_not_found'
@@ -83,7 +85,7 @@ export interface LeaveResponse {
 }
 
 export interface MoveRequest {
-  direction: Direction;
+  target_node_id: NodeId;
 }
 
 export interface MoveResponse {

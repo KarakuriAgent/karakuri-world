@@ -83,4 +83,46 @@ describe('DiscordEventHandler', () => {
 
     handler.dispose();
   });
+
+  it('uses movement_completed.node_id for arrival notifications', async () => {
+    const { engine } = createTestWorld({
+      withDiscord: true,
+      config: {
+        spawn: { nodes: ['3-1'] },
+      },
+    });
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = engine.registerAgent({ agent_name: 'Alice' });
+    await engine.joinAgent(alice.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.worldLogMessages).toHaveLength(1);
+    });
+    bot.agentMessages.length = 0;
+    bot.worldLogMessages.length = 0;
+
+    engine.state.setNode(alice.agent_id, '3-4');
+    engine.emitEvent({
+      type: 'movement_completed',
+      agent_id: alice.agent_id,
+      agent_name: 'Alice',
+      node_id: '3-4',
+      delivered_server_event_ids: [],
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        bot.agentMessages.some(
+          (message) =>
+            message.channelId === 'channel-Alice' &&
+            message.content.includes('3-4 (Workshop Door) に到着しました。'),
+        ),
+      ).toBe(true);
+      expect(bot.worldLogMessages).toContain('Alice が 3-4 (Workshop Door) に到着しました');
+    });
+
+    handler.dispose();
+  });
 });
