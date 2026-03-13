@@ -99,7 +99,7 @@ interface ConversationAcceptRequest {
 
 1. `ConversationAcceptTimer` をキャンセル
 2. 発信側の受諾待ちを解除
-3. 対象側が `in_action` の場合、`action` タイマーをキャンセル（アクション結果は発生しない）
+3. 対象側が `in_action` の場合、`action` タイマーおよび `wait` タイマーをキャンセル（アクション結果・待機完了は発生しない）
 4. 両者を `in_conversation` に遷移
 5. 会話を開始（`turn = 1`、`current_speaker_agent_id = target`。発信側の初回発言を turn 1 として記録済み、対象側が次に発言する）
 6. `conversation_accepted` イベントを発行
@@ -130,7 +130,7 @@ Target → API: POST /api/agents/conversation/accept { conversation_id }
   API: バリデーション
   API: ConversationAcceptTimer キャンセル
   API: 発信側の受諾待ちを解除
-  API: (対象側が in_action の場合) action タイマーキャンセル
+  API: (対象側が in_action の場合) action/wait タイマーキャンセル
   API: 両者を in_conversation に遷移
   API: conversation_accepted イベント発行
   API: 発信側Discordに受諾通知

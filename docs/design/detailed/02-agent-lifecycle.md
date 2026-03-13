@@ -214,9 +214,9 @@ type AgentState = "idle" | "moving" | "in_action" | "in_conversation";
 
 | 状態 | 説明 |
 |------|------|
-| idle | 待機中。移動・アクション・会話開始が可能 |
+| idle | 待機中。移動・アクション・待機・会話開始が可能 |
 | moving | 移動中。移動タイマー発火で idle に戻る。割り込み不可 |
-| in_action | アクション実行中。会話着信の受諾、サーバーイベント選択で割り込み可 |
+| in_action | アクションまたは待機の実行中。会話着信の受諾、サーバーイベント選択で割り込み可 |
 | in_conversation | 会話中。サーバーイベント選択で割り込み可 |
 
 ### 4.2 状態遷移表
@@ -226,14 +226,15 @@ type AgentState = "idle" | "moving" | "in_action" | "in_conversation";
 | (未参加) | join | idle | スポーン地点に配置 |
 | idle | 移動リクエスト | moving | |
 | idle | アクション実行リクエスト | in_action | |
+| idle | 待機リクエスト | in_action | |
 | idle | 会話受諾 | in_conversation | |
 | idle | 会話開始リクエスト受理 | idle (受諾待ち) | 相手に着信通知。詳細は 4.4 参照 |
 | idle (受諾待ち) | 相手が受諾 | in_conversation | |
 | idle (受諾待ち) | 相手が拒否 / 受諾タイムアウト | idle | |
 | moving | 移動タイマー発火 | idle | |
-| in_action | アクションタイマー発火 | idle | |
-| in_action | 会話受諾 | in_conversation | アクションタイマーをキャンセル |
-| in_action | サーバーイベント選択 | idle | アクションタイマーをキャンセル |
+| in_action | アクション/待機タイマー発火 | idle | |
+| in_action | 会話受諾 | in_conversation | アクション/待機タイマーをキャンセル |
+| in_action | サーバーイベント選択 | idle | アクション/待機タイマーをキャンセル |
 | in_conversation | `ConversationConfig.max_turns` 到達 | idle | 終了あいさつ生成後 |
 | in_conversation | 会話相手leave | idle | 強制終了 |
 | in_conversation | サーバーイベント選択 | idle | 終了あいさつ生成後 |

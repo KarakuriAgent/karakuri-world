@@ -20,6 +20,7 @@ import {
   formatMovementCompletedMessage,
   formatServerEventMessage,
   formatServerEventSelectedMessage,
+  formatWaitCompletedMessage,
   formatWorldLogAction,
   formatWorldLogConversationEnded,
   formatWorldLogConversationStarted,
@@ -27,6 +28,7 @@ import {
   formatWorldLogLeft,
   formatWorldLogMovement,
   formatWorldLogServerEvent,
+  formatWorldLogWait,
 } from './notification.js';
 
 interface PendingForcedConversationEnd {
@@ -85,6 +87,11 @@ export class DiscordEventHandler {
         return;
       case 'action_completed':
         await this.handleActionCompleted(event.agent_id, event.agent_name, event.action_name, event.result_description);
+        return;
+      case 'wait_completed':
+        await this.handleWaitCompleted(event.agent_id, event.agent_name, event.duration_ms);
+        return;
+      case 'wait_started':
         return;
       case 'conversation_requested':
         await this.handleConversationRequested(
@@ -182,6 +189,15 @@ export class DiscordEventHandler {
     }
 
     await this.bot.sendWorldLog(formatWorldLogAction(agentName, actionName));
+  }
+
+  private async handleWaitCompleted(agentId: string, agentName: string, durationMs: number): Promise<void> {
+    const perceptionText = this.getPerceptionText(agentId);
+    if (perceptionText) {
+      await this.sendToAgent(agentId, formatWaitCompletedMessage(durationMs, perceptionText));
+    }
+
+    await this.bot.sendWorldLog(formatWorldLogWait(agentName, durationMs));
   }
 
   private async handleConversationRequested(

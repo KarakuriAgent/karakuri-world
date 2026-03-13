@@ -30,6 +30,7 @@ describe('MCP tools', () => {
       'leave',
       'move',
       'action',
+      'wait',
       'conversation_start',
       'conversation_accept',
       'conversation_reject',

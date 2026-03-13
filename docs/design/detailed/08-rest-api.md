@@ -155,7 +155,37 @@ interface ActionResponse {
 
 バリデーション・処理フローの詳細は 05-actions.md を参照。
 
-### 4.3 会話開始
+### 4.3 待機
+
+```
+POST /api/agents/wait
+```
+
+認証: Agent（1.1）。参加状態制約: あり。
+
+リクエスト:
+
+```typescript
+interface WaitRequest {
+  duration_ms: number; // 待機時間（ミリ秒、1以上3600000以下の整数）
+}
+```
+
+レスポンス (200 OK):
+
+```typescript
+interface WaitResponse {
+  completes_at: number; // 待機完了予定時刻（Unix timestamp ms）
+}
+```
+
+バリデーション:
+
+| ステータス | エラーコード | 条件 |
+|-----------|------------|------|
+| 409 | `state_conflict` | エージェントがidle状態でない、または会話着信保留中 |
+
+### 4.4 会話開始
 
 ```
 POST /api/agents/conversation/start
@@ -182,7 +212,7 @@ interface ConversationStartResponse {
 
 バリデーション・処理フローの詳細は 06-conversation.md セクション1〜2 を参照。
 
-### 4.4 会話受諾
+### 4.5 会話受諾
 
 ```
 POST /api/agents/conversation/accept
@@ -208,7 +238,7 @@ interface ConversationAcceptResponse {
 
 バリデーション・処理フローの詳細は 06-conversation.md セクション2.2 を参照。
 
-### 4.5 会話拒否
+### 4.6 会話拒否
 
 ```
 POST /api/agents/conversation/reject
@@ -234,7 +264,7 @@ interface ConversationRejectResponse {
 
 バリデーション・処理フローの詳細は 06-conversation.md セクション3 を参照。
 
-### 4.6 会話発言
+### 4.7 会話発言
 
 ```
 POST /api/agents/conversation/speak
@@ -261,7 +291,7 @@ interface ConversationSpeakResponse {
 
 バリデーション・処理フローの詳細は 06-conversation.md セクション4 を参照。
 
-### 4.7 サーバーイベント選択
+### 4.8 サーバーイベント選択
 
 ```
 POST /api/agents/server-event/select
@@ -534,6 +564,7 @@ WebSocket接続を確立する。接続確立後、サーバーは `WorldSnapsho
 | POST /api/agents/leave | 02-agent-lifecycle.md §3.2 |
 | POST /api/agents/move | 04-movement.md §1.3 |
 | POST /api/agents/action | 05-actions.md §1.3 |
+| POST /api/agents/wait | 本ドキュメント §4.3 |
 | POST /api/agents/conversation/start | 06-conversation.md §1.3 |
 | POST /api/agents/conversation/accept | 06-conversation.md §2.2 |
 | POST /api/agents/conversation/reject | 06-conversation.md §3.1 |
@@ -552,6 +583,7 @@ WebSocket接続を確立する。接続確立後、サーバーは `WorldSnapsho
 | POST | /api/agents/leave | Agent | - | 世界から退出 |
 | POST | /api/agents/move | Agent | ✅ | 移動 |
 | POST | /api/agents/action | Agent | ✅ | アクション実行 |
+| POST | /api/agents/wait | Agent | ✅ | 待機 |
 | GET | /api/agents/actions | Agent | ✅ | 利用可能アクション一覧 |
 | POST | /api/agents/conversation/start | Agent | ✅ | 会話開始 |
 | POST | /api/agents/conversation/accept | Agent | ✅ | 会話受諾 |

@@ -205,6 +205,7 @@ Permission Overwriteの値の凡例: Allow / Deny / —（未設定）
 | 1 | 参加初回通知 | `agent_joined` | あり | あり |
 | 2 | 移動完了通知 | `movement_completed` | あり | あり |
 | 3 | アクション完了通知 | `action_completed` | あり | あり |
+| 3.5 | 待機完了通知 | `wait_completed` | あり | あり |
 | 4 | 会話着信通知 | `conversation_requested` | — | — |
 | 5 | 会話受諾通知 | `conversation_accepted` | — | — |
 | 6 | 会話拒否通知 | `conversation_rejected` | あり | あり |
@@ -256,6 +257,20 @@ Permission Overwriteの値の凡例: Allow / Deny / —（未設定）
 
 {行動促進テキスト}
 ```
+
+#### 3.5. 待機完了通知
+
+送信先: #agent-{name}（当該エージェント）
+
+```
+{duration_text}待機しました。
+
+{知覚情報テキスト}
+
+{行動促進テキスト}
+```
+
+`{duration_text}` は待機時間を分単位（1分以上の場合）または秒単位で表示する。
 
 #### 4. 会話着信通知
 
@@ -411,7 +426,7 @@ server_event_id: {server_event_id}
 
 ```
 サーバーイベント「{event_name}」で「{choice_label}」を選択しました。
-実行中のアクションはキャンセルされました。
+実行中の操作はキャンセルされました。
 
 {知覚情報テキスト}
 
@@ -428,6 +443,7 @@ server_event_id: {server_event_id}
 | `agent_left` | `{agent_name} が世界から退出しました` |
 | `movement_completed` | `{agent_name} が {node_id} ({label}) に到着しました` |
 | `action_completed` | `{agent_name} が「{action_name}」を実行しました` |
+| `wait_completed` | `{agent_name} が{duration_text}待機しました` |
 | `conversation_accepted` | `{initiator_name} と {target_name} の会話が始まりました` |
 | `conversation_ended` | `{agent_name_1} と {agent_name_2} の会話が終了しました` |
 | `server_event_fired` | `【サーバーイベント】{event_name}: {description}` |

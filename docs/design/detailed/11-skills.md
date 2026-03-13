@@ -48,6 +48,7 @@ APIキーは含めない。
 | `perception` | 知覚情報取得 |
 | `actions` | 利用可能アクション一覧取得 |
 | `action <action_id>` | アクション実行 |
+| `wait <duration_ms>` | 待機 |
 | `conversation-start <target_agent_id> <message>` | 会話開始 |
 | `conversation-accept <conversation_id>` | 会話受諾 |
 | `conversation-reject <conversation_id>` | 会話拒否 |

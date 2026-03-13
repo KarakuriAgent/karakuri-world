@@ -150,7 +150,7 @@ interface ServerEventSelectResponse {
 ### 4.4 in_action での選択処理
 
 1. `server_event_timeout` タイマーをキャンセル
-2. `action` タイマーをキャンセル（アクション結果は発生しない。05-actions.md セクション5.3参照）
+2. `action` タイマーおよび `wait` タイマーをキャンセル（アクション結果・待機完了は発生しない。05-actions.md セクション5.3参照）
 3. 状態を `idle` に遷移
 4. `server_event_selected` イベントを発行
 5. エージェントのDiscordチャンネルに通知（セクション4.6参照）

@@ -20,6 +20,7 @@ allowed-tools: Bash(karakuri.sh *)
 2. 「次の行動を選択してください。」と指示されたら、通知の周囲情報を参考に次のいずれかを実行する:
    - move: 目的地ノードへ移動（サーバーが最短経路を自動計算）
    - action: アクション実行（事前に actions で確認）
+   - wait: 指定時間だけその場で待機
    - conversation-start: 近くのエージェントに話しかける
    - perception / map / world-agents: 詳細情報を取得
 3. 会話着信通知を受けたら、conversation-accept（受諾）または conversation-reject（拒否）する。受諾した場合は、着信通知に含まれていた相手の発言に対して conversation-speak で返答する
@@ -60,6 +61,14 @@ karakuri.sh action <action_id>
 ```
 
 actionsで取得したIDを指定してアクションを実行する。idle状態でのみ実行可能。
+
+### wait — 待機
+
+```
+karakuri.sh wait <duration_ms>
+```
+
+指定した時間（ミリ秒）だけその場で待機する。idle状態でのみ実行可能。
 
 ### conversation-start — 会話開始
 

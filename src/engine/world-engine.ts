@@ -23,6 +23,7 @@ import {
   selectServerEvent as selectRuntimeServerEvent,
 } from '../domain/server-events.js';
 import { executeMove, getAgentCurrentNode, getMovementTimer, handleMovementCompleted } from '../domain/movement.js';
+import { executeWait as executeWaitRequest, handleWaitCompleted } from '../domain/wait.js';
 import { getPerceptionData } from '../domain/perception.js';
 import { WorldError } from '../types/api.js';
 import type {
@@ -44,6 +45,8 @@ import type {
   OkResponse,
   PerceptionResponse,
   ServerEventSelectRequest,
+  WaitRequest,
+  WaitResponse,
   WorldAgentsResponse,
 } from '../types/api.js';
 import type { AgentRegistration } from '../types/agent.js';
@@ -87,6 +90,9 @@ export class WorldEngine {
     });
     this.timerManager.onFire('action', (timer) => {
       handleActionCompleted(this, timer);
+    });
+    this.timerManager.onFire('wait', (timer) => {
+      handleWaitCompleted(this, timer);
     });
     this.timerManager.onFire('conversation_accept', (timer) => {
       handleAcceptTimeout(this, timer);
@@ -244,6 +250,10 @@ export class WorldEngine {
 
   executeAction(_agentId: string, _request: ActionRequest): ActionResponse {
     return executeActionRequest(this, _agentId, _request);
+  }
+
+  executeWait(_agentId: string, _request: WaitRequest): WaitResponse {
+    return executeWaitRequest(this, _agentId, _request);
   }
 
   startConversation(_agentId: string, _request: ConversationStartRequest): ConversationStartResponse {

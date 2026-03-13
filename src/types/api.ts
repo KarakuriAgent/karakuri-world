@@ -104,6 +104,14 @@ export interface ActionResponse {
   completes_at: number;
 }
 
+export interface WaitRequest {
+  duration_ms: number;
+}
+
+export interface WaitResponse {
+  completes_at: number;
+}
+
 export interface ConversationStartRequest {
   target_agent_id: string;
   message: string;

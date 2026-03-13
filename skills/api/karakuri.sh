@@ -18,6 +18,7 @@ Commands:
   perception                                     Get perception data
   actions                                        List available actions
   action <action_id>                             Execute an action
+  wait <duration_ms>                             Wait for a specified duration
   conversation-start <target_agent_id> <message> Start a conversation
   conversation-accept <conversation_id>          Accept a conversation
   conversation-reject <conversation_id>          Reject a conversation
@@ -93,6 +94,10 @@ case "${command}" in
   action)
     [ $# -lt 1 ] && { echo "Usage: karakuri.sh action <action_id>" >&2; exit 1; }
     do_post "/agents/action" "$(json_obj action_id "$1")"
+    ;;
+  wait)
+    [ $# -lt 1 ] && { echo "Usage: karakuri.sh wait <duration_ms>" >&2; exit 1; }
+    do_post "/agents/wait" "$(jq -nc --argjson duration_ms "$1" '{duration_ms: $duration_ms}')"
     ;;
   conversation-start)
     [ $# -lt 2 ] && { echo "Usage: karakuri.sh conversation-start <target_agent_id> <message>" >&2; exit 1; }

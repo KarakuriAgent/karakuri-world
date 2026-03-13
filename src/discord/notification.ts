@@ -59,6 +59,12 @@ export function formatActionCompletedMessage(
   return joinSections(`「${actionName}」が完了しました。`, resultDescription, perceptionText, ACTION_PROMPT_TEXT);
 }
 
+export function formatWaitCompletedMessage(durationMs: number, perceptionText: string): string {
+  const minutes = Math.floor(durationMs / 60000);
+  const durationText = minutes >= 1 ? `${minutes}分間待機しました。` : `${Math.floor(durationMs / 1000)}秒間待機しました。`;
+  return joinSections(durationText, perceptionText, ACTION_PROMPT_TEXT);
+}
+
 export function formatConversationRequestedMessage(
   initiatorName: string,
   initialMessage: string,
@@ -136,7 +142,7 @@ export function formatServerEventMessage(
 
 export function formatServerEventSelectedMessage(eventName: string, choiceLabel: string, perceptionText: string): string {
   return joinSections(
-    `サーバーイベント「${eventName}」で「${choiceLabel}」を選択しました。\n実行中のアクションはキャンセルされました。`,
+    `サーバーイベント「${eventName}」で「${choiceLabel}」を選択しました。\n実行中の操作はキャンセルされました。`,
     perceptionText,
     ACTION_PROMPT_TEXT,
   );
@@ -157,6 +163,12 @@ export function formatWorldLogMovement(agentName: string, nodeId: string, label?
 
 export function formatWorldLogAction(agentName: string, actionName: string): string {
   return `${agentName} が「${actionName}」を実行しました`;
+}
+
+export function formatWorldLogWait(agentName: string, durationMs: number): string {
+  const minutes = Math.floor(durationMs / 60000);
+  const durationText = minutes >= 1 ? `${minutes}分間` : `${Math.floor(durationMs / 1000)}秒間`;
+  return `${agentName} が${durationText}待機しました`;
 }
 
 export function formatWorldLogConversationStarted(initiatorName: string, targetName: string): string {

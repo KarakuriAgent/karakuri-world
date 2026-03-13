@@ -103,6 +103,23 @@ export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): 
       ),
     },
     {
+      name: 'wait',
+      description: '指定した時間（ミリ秒）だけその場で待機する。idle状態でのみ実行可能。',
+      inputSchema: z
+        .object({
+          duration_ms: z.number().int().min(1).max(3600000),
+        })
+        .strict(),
+      execute: wrapTool(
+        z
+          .object({
+            duration_ms: z.number().int().min(1).max(3600000),
+          })
+          .strict(),
+        async (arguments_) => engine.executeWait(agentId, arguments_),
+      ),
+    },
+    {
       name: 'conversation_start',
       description:
         '他のエージェントに話しかけて会話を開始する。隣接または同一ノードにいるエージェントが対象。idle状態でのみ実行可能。',

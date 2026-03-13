@@ -16,6 +16,10 @@ const actionSchema = z.object({
   action_id: z.string().min(1),
 });
 
+const waitSchema = z.object({
+  duration_ms: z.number().int().min(1).max(3600000),
+});
+
 export function registerAgentActionRoutes(app: Hono<ApiEnv>, engine: WorldEngine): void {
   app.get('/api/agents/actions', agentAuth(engine), requireJoined(engine), (c) => {
     const agentId = c.get('agentId') as string;
@@ -30,5 +34,10 @@ export function registerAgentActionRoutes(app: Hono<ApiEnv>, engine: WorldEngine
   app.post('/api/agents/action', agentAuth(engine), requireJoined(engine), validateBody(actionSchema), (c) => {
     const agentId = c.get('agentId') as string;
     return c.json(engine.executeAction(agentId, c.get('validatedBody') as z.infer<typeof actionSchema>));
+  });
+
+  app.post('/api/agents/wait', agentAuth(engine), requireJoined(engine), validateBody(waitSchema), (c) => {
+    const agentId = c.get('agentId') as string;
+    return c.json(engine.executeWait(agentId, c.get('validatedBody') as z.infer<typeof waitSchema>));
   });
 }

@@ -9,6 +9,8 @@ export type EventType =
   | 'movement_completed'
   | 'action_started'
   | 'action_completed'
+  | 'wait_started'
+  | 'wait_completed'
   | 'conversation_requested'
   | 'conversation_accepted'
   | 'conversation_rejected'
@@ -72,6 +74,21 @@ export interface ActionCompletedEvent extends EventBase {
   action_id: string;
   action_name: string;
   result_description: string;
+}
+
+export interface WaitStartedEvent extends EventBase {
+  type: 'wait_started';
+  agent_id: string;
+  agent_name: string;
+  duration_ms: number;
+  completes_at: number;
+}
+
+export interface WaitCompletedEvent extends EventBase {
+  type: 'wait_completed';
+  agent_id: string;
+  agent_name: string;
+  duration_ms: number;
 }
 
 export interface ConversationRequestedEvent extends EventBase {
@@ -146,6 +163,8 @@ export type WorldEvent =
   | MovementCompletedEvent
   | ActionStartedEvent
   | ActionCompletedEvent
+  | WaitStartedEvent
+  | WaitCompletedEvent
   | ConversationRequestedEvent
   | ConversationAcceptedEvent
   | ConversationRejectedEvent

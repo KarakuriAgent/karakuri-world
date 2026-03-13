@@ -12,6 +12,7 @@ MCPサーバーは、エージェント向けREST API（08-rest-api.md セクシ
 | `leave` | POST /api/agents/leave | 世界から退出 |
 | `move` | POST /api/agents/move | 移動 |
 | `action` | POST /api/agents/action | アクション実行 |
+| `wait` | POST /api/agents/wait | 待機 |
 | `conversation_start` | POST /api/agents/conversation/start | 会話開始 |
 | `conversation_accept` | POST /api/agents/conversation/accept | 会話受諾 |
 | `conversation_reject` | POST /api/agents/conversation/reject | 会話拒否 |
@@ -93,7 +94,28 @@ MCPサーバーは、エージェント向けREST API（08-rest-api.md セクシ
 }
 ```
 
-### 2.5 conversation_start
+### 2.5 wait
+
+```json
+{
+  "name": "wait",
+  "description": "指定した時間（ミリ秒）だけその場で待機する。idle状態でのみ実行可能。",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "duration_ms": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 3600000,
+        "description": "待機時間（ミリ秒、最大1時間）"
+      }
+    },
+    "required": ["duration_ms"]
+  }
+}
+```
+
+### 2.6 conversation_start
 
 ```json
 {
@@ -117,7 +139,7 @@ MCPサーバーは、エージェント向けREST API（08-rest-api.md セクシ
 }
 ```
 
-### 2.6 conversation_accept
+### 2.7 conversation_accept
 
 ```json
 {
@@ -136,7 +158,7 @@ MCPサーバーは、エージェント向けREST API（08-rest-api.md セクシ
 }
 ```
 
-### 2.7 conversation_reject
+### 2.8 conversation_reject
 
 ```json
 {
@@ -155,7 +177,7 @@ MCPサーバーは、エージェント向けREST API（08-rest-api.md セクシ
 }
 ```
 
-### 2.8 conversation_speak
+### 2.9 conversation_speak
 
 ```json
 {
@@ -179,7 +201,7 @@ MCPサーバーは、エージェント向けREST API（08-rest-api.md セクシ
 }
 ```
 
-### 2.9 server_event_select
+### 2.10 server_event_select
 
 ```json
 {
@@ -202,7 +224,7 @@ MCPサーバーは、エージェント向けREST API（08-rest-api.md セクシ
 }
 ```
 
-### 2.10 get_available_actions
+### 2.11 get_available_actions
 
 ```json
 {
@@ -216,7 +238,7 @@ MCPサーバーは、エージェント向けREST API（08-rest-api.md セクシ
 }
 ```
 
-### 2.11 get_perception
+### 2.12 get_perception
 
 ```json
 {
@@ -230,7 +252,7 @@ MCPサーバーは、エージェント向けREST API（08-rest-api.md セクシ
 }
 ```
 
-### 2.12 get_map
+### 2.13 get_map
 
 ```json
 {
@@ -244,7 +266,7 @@ MCPサーバーは、エージェント向けREST API（08-rest-api.md セクシ
 }
 ```
 
-### 2.13 get_world_agents
+### 2.14 get_world_agents
 
 ```json
 {

@@ -20,6 +20,7 @@ import type {
 } from '../types/timer.js';
 import { cancelActiveAction } from './actions.js';
 import { manhattanDistance } from './map-utils.js';
+import { cancelActiveWait } from './wait.js';
 
 function requireJoinedAgent(engine: WorldEngine, agentId: string): JoinedAgent {
   const agent = engine.state.getJoined(agentId);
@@ -220,6 +221,7 @@ export function acceptConversation(engine: WorldEngine, agentId: string, request
   cancelConversationTimers(engine, conversation.conversation_id);
   if (target.state === 'in_action') {
     cancelActiveAction(engine, target.agent_id);
+    cancelActiveWait(engine, target.agent_id);
   }
 
   engine.state.setPendingConversation(initiator.agent_id, null);

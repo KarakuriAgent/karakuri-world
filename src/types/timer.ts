@@ -3,6 +3,7 @@ import type { NodeId } from './data-model.js';
 export type TimerType =
   | 'movement'
   | 'action'
+  | 'wait'
   | 'conversation_accept'
   | 'conversation_turn'
   | 'conversation_interval'
@@ -29,6 +30,12 @@ export interface ActionTimer extends TimerBase {
   agent_id: string;
   action_id: string;
   action_name: string;
+}
+
+export interface WaitTimer extends TimerBase {
+  type: 'wait';
+  agent_id: string;
+  duration_ms: number;
 }
 
 export interface ConversationAcceptTimer extends TimerBase {
@@ -63,6 +70,7 @@ export interface ServerEventTimeoutTimer extends TimerBase {
 export type Timer =
   | MovementTimer
   | ActionTimer
+  | WaitTimer
   | ConversationAcceptTimer
   | ConversationTurnTimer
   | ConversationIntervalTimer
