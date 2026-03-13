@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   formatActionCompletedMessage,
+  formatAgentLeftMessage,
   formatConversationRequestedMessage,
   formatServerEventMessage,
+  formatWorldLogLeft,
 } from '../../../src/discord/notification.js';
 
 describe('discord notifications', () => {
@@ -13,6 +15,22 @@ describe('discord notifications', () => {
     expect(message).toContain('「調べる」が完了しました。');
     expect(message).toContain('古い歯車を見つけました。');
     expect(message).toContain('karakuri-world スキルで次の行動を選択してください。');
+  });
+
+  it('formats agent left messages based on cancelled state', () => {
+    expect(formatAgentLeftMessage('idle')).toBe('退出しました。');
+    expect(formatAgentLeftMessage('moving')).toBe('移動をキャンセルし、退出しました。');
+    expect(formatAgentLeftMessage('in_action', '調べる')).toBe('「調べる」をキャンセルし、退出しました。');
+    expect(formatAgentLeftMessage('in_action')).toBe('待機をキャンセルし、退出しました。');
+    expect(formatAgentLeftMessage('in_conversation')).toBe('会話を終了し、退出しました。');
+  });
+
+  it('formats world log left messages based on cancelled state', () => {
+    expect(formatWorldLogLeft('Alice', 'idle')).toBe('Alice が世界から退出しました');
+    expect(formatWorldLogLeft('Alice', 'moving')).toBe('Alice が移動をキャンセルし、退出しました');
+    expect(formatWorldLogLeft('Alice', 'in_action', '調べる')).toBe('Alice が「調べる」をキャンセルし、退出しました');
+    expect(formatWorldLogLeft('Alice', 'in_action')).toBe('Alice が待機をキャンセルし、退出しました');
+    expect(formatWorldLogLeft('Alice', 'in_conversation')).toBe('Alice が会話を終了し、退出しました');
   });
 
   it('formats conversation and server event messages', () => {

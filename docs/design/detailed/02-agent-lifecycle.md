@@ -10,6 +10,8 @@ interface AgentRegistration {
   agent_name: string;     // エージェント名（一意）
   api_key: string;        // "karakuri_" + ランダム文字列
   discord_bot_id: string; // エージェントのDiscord Bot ID
+  discord_channel_id?: string; // 退出時のDiscordチャンネルID（再join時に再利用）
+  last_node_id?: NodeId;       // 退出時のノードID（再join時にスポーン地点として使用）
 }
 ```
 
@@ -32,14 +34,16 @@ interface AgentRegistration {
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "agents": [
     {
       "agent_id": "agent-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
       "agent_name": "example-agent",
       "api_key": "karakuri_xxx",
       "discord_bot_id": "123456789",
-      "created_at": 1710000000000
+      "created_at": 1710000000000,
+      "discord_channel_id": "987654321",
+      "last_node_id": "3-1"
     }
   ]
 }
@@ -51,6 +55,7 @@ interface AgentRegistration {
 |-----------|------|
 | サーバー起動時 | ファイルから読み込み（Zodでスキーマ検証、`agent_id`・`agent_name`・`api_key` の一意性を検証） |
 | エージェント登録時 | ファイルに書き込み |
+| エージェントleave時 | ファイルに書き込み（`discord_channel_id`・`last_node_id` を更新） |
 | エージェント削除時 | ファイルに書き込み |
 
 書き込みはtmpファイルに書き出してから `renameSync` で置き換える（atomic write）。
@@ -150,9 +155,9 @@ POST /api/agents/join
 
 1. APIキーからエージェントを特定
 2. 既に参加中でないことを確認
-3. `SpawnConfig.nodes` からランダムに1つを選択し配置
-4. エージェント状態を `idle` に設定
-5. Discordチャンネル `#agent-{name}` を作成、権限を設定
+3. `discord_channel_id` がある場合はチャンネルを再利用、ない場合はDiscordチャンネル `#agent-{name}` を新規作成
+4. `last_node_id` がある場合はそのノードをスポーン地点に使用（マップ範囲内かつ通行可能であることをバリデーション、無効な場合はランダムスポーンにフォールバック）、ない場合は `SpawnConfig.nodes` からランダムに1つを選択し配置
+5. エージェント状態を `idle` に設定
 6. `#world-log` に参加通知を投稿
 7. エージェント専用チャンネルに初回通知を送信（スポーン地点の周囲情報と行動促進）
 
@@ -182,12 +187,14 @@ POST /api/agents/leave
 
 1. APIキーからエージェントを特定
 2. 参加中であることを確認
-3. 会話受諾待ちの発信リクエストがあればキャンセルし、相手への着信通知を取り消す
-4. 関連するすべてのタイマーおよびサーバーイベント保留リストをクリーンアップ（詳細は 03-world-engine.md セクション6を参照）
-5. `in_conversation` 中の場合、会話相手を強制的に `idle` に戻し、相手のDiscordチャンネルに通知
-6. エージェントを世界から除去（位置・状態情報をクリア）
-7. Discordチャンネル `#agent-{name}` を削除
-8. `#world-log` に退出通知を投稿
+3. 退出前のエージェント状態とアクティブなタイマーを取得（退出通知のキャンセル情報に使用）
+4. 会話受諾待ちの発信リクエストがあればキャンセルし、相手への着信通知を取り消す
+5. 関連するすべてのタイマーおよびサーバーイベント保留リストをクリーンアップ（詳細は 03-world-engine.md セクション6を参照）
+6. `in_conversation` 中の場合、会話相手を強制的に `idle` に戻し、相手のDiscordチャンネルに通知
+7. エージェントを世界から除去（位置・状態情報をクリア）
+8. `discord_channel_id` と `last_node_id` をエージェント登録情報に永続化
+9. Discordチャンネルに退出通知を送信（キャンセルした活動に応じたメッセージ）
+10. `#world-log` に退出通知を投稿（キャンセル情報付き）
 
 **レスポンス (200 OK):**
 
@@ -313,9 +320,9 @@ interface StateConflictError {
 
 ## 6. 再join時の挙動
 
-leave後の再joinは初回joinと同一の処理を行う:
+leave後の再joinは、退出時のDiscordチャンネルと位置を引き継ぐ:
 
-- `SpawnConfig.nodes` からランダムに1つを選択して配置
+- `discord_channel_id` がある場合、同じチャンネルを再利用する（チャット履歴が保持される）
+- `last_node_id` がある場合、そのノードをスポーン地点として使用する（マップ範囲内かつ通行可能であることを検証、無効な場合はランダムスポーンにフォールバック）
 - 状態は `idle` で開始
-- 前回セッションの状態（位置、進行中の行動等）は保持しない
-- Discordチャンネルは新規作成（leave時に削除済み）
+- 前回セッションの進行中の行動は保持しない（leave時にキャンセル済み）

@@ -8,6 +8,7 @@ import type { DiscordNotificationAdapter } from './bot.js';
 import {
   formatActionCompletedMessage,
   formatAgentJoinedMessage,
+  formatAgentLeftMessage,
   formatConversationAcceptedMessage,
   formatConversationClosingPromptMessage,
   formatConversationDeliveredClosingMessage,
@@ -93,7 +94,7 @@ export class DiscordEventHandler {
         await this.handleAgentJoined(event.agent_id, event.agent_name, event.node_id);
         return;
       case 'agent_left':
-        await this.handleAgentLeft(event.agent_id, event.agent_name);
+        await this.handleAgentLeft(event);
         return;
       case 'movement_completed':
         await this.handleMovementCompleted(event.agent_id, event.agent_name, event.node_id);
@@ -189,15 +190,22 @@ export class DiscordEventHandler {
     await this.bot.sendWorldLog(formatWorldLogJoined(agentName));
   }
 
-  private async handleAgentLeft(agentId: string, agentName: string): Promise<void> {
-    for (const partnerId of this.consumeForcedConversationPartners(agentId)) {
+  private async handleAgentLeft(event: Extract<WorldEvent, { type: 'agent_left' }>): Promise<void> {
+    try {
+      const agentMessage = formatAgentLeftMessage(event.cancelled_state, event.cancelled_action_name);
+      await this.bot.sendAgentMessage(event.discord_channel_id, agentMessage);
+    } catch (error) {
+      console.error('Failed to send leave notification to agent channel.', error);
+    }
+
+    for (const partnerId of this.consumeForcedConversationPartners(event.agent_id)) {
       const perceptionText = this.getPerceptionText(partnerId);
       if (perceptionText) {
-        await this.sendToAgent(partnerId, formatConversationForcedEndedMessage(agentName, perceptionText, this.skillName));
+        await this.sendToAgent(partnerId, formatConversationForcedEndedMessage(event.agent_name, perceptionText, this.skillName));
       }
     }
 
-    await this.bot.sendWorldLog(formatWorldLogLeft(agentName));
+    await this.bot.sendWorldLog(formatWorldLogLeft(event.agent_name, event.cancelled_state, event.cancelled_action_name));
   }
 
   private async handleMovementStarted(agentName: string, toNodeId: NodeId): Promise<void> {

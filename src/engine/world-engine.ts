@@ -17,6 +17,7 @@ import {
   startConversation as startConversationRequest,
 } from '../domain/conversation.js';
 import { handleIdleReminderFired, startIdleReminder } from '../domain/idle-reminder.js';
+import { getNodeConfig, isNodeWithinBounds, isPassable } from '../domain/map-utils.js';
 import {
   cleanupServerEventsForAgent,
   fireServerEvent as fireConfiguredServerEvent,
@@ -50,9 +51,10 @@ import type {
   WaitResponse,
   WorldAgentsResponse,
 } from '../types/api.js';
-import type { AgentRegistration } from '../types/agent.js';
-import type { MapConfig, ServerConfig } from '../types/data-model.js';
+import type { AgentRegistration, AgentState } from '../types/agent.js';
+import type { MapConfig, NodeId, ServerConfig } from '../types/data-model.js';
 import type { WorldEvent } from '../types/event.js';
+import type { ActionTimer } from '../types/timer.js';
 import type { WorldSnapshot } from '../types/snapshot.js';
 import { EventBus } from './event-bus.js';
 import { TimerManager } from './timer-manager.js';
@@ -65,6 +67,7 @@ type EmittableWorldEvent<T extends WorldEvent = WorldEvent> = T extends WorldEve
 export interface DiscordRuntimeAdapter {
   createAgentChannel(agentName: string, discordBotId: string): Promise<string>;
   deleteAgentChannel(channelId: string): Promise<void>;
+  channelExists(channelId: string): Promise<boolean>;
 }
 
 export interface WorldEngineOptions {
@@ -139,12 +142,24 @@ export class WorldEngine {
       throw new WorldError(409, 'state_conflict', `Agent is currently joined: ${agentId}`);
     }
 
-    if (!this.state.getById(agentId)) {
+    const registration = this.state.getById(agentId);
+    if (!registration) {
       return false;
     }
 
+    // Persist-then-mutate: remove registration first, then clean up Discord channel.
     this.persistRegistrations(this.state.list().filter((agent) => agent.agent_id !== agentId));
-    return this.state.delete(agentId) !== null;
+    this.state.delete(agentId);
+
+    if (registration.discord_channel_id) {
+      try {
+        await this.discordBot.deleteAgentChannel(registration.discord_channel_id);
+      } catch (error) {
+        console.error('Failed to delete persisted agent channel.', error);
+      }
+    }
+
+    return true;
   }
 
   getAgentByApiKey(apiKey: string): AgentRegistration | null {
@@ -188,12 +203,21 @@ export class WorldEngine {
 
     this.joiningAgentIds.add(agentId);
     let channelId = '';
+    let channelCreated = false;
 
     try {
-      channelId = await this.discordBot.createAgentChannel(agent.agent_name, agent.discord_bot_id);
+      if (agent.discord_channel_id && (await this.discordBot.channelExists(agent.discord_channel_id))) {
+        channelId = agent.discord_channel_id;
+      } else {
+        channelId = await this.discordBot.createAgentChannel(agent.agent_name, agent.discord_bot_id);
+        channelCreated = true;
+      }
+
+      const spawnNodeId = this.resolveSpawnNode(agent.last_node_id);
+
       const joinedAgent = this.state.join({
         agent_id: agentId,
-        node_id: this.config.spawn.nodes[randomInt(this.config.spawn.nodes.length)],
+        node_id: spawnNodeId,
         discord_channel_id: channelId,
       });
 
@@ -212,7 +236,7 @@ export class WorldEngine {
         node_id: joinedAgent.node_id,
       };
     } catch (error) {
-      if (channelId) {
+      if (channelCreated && channelId) {
         await this.discordBot.deleteAgentChannel(channelId);
       }
       throw error;
@@ -228,6 +252,23 @@ export class WorldEngine {
     }
 
     const leftNodeId = getAgentCurrentNode(this, joinedAgent);
+    const { cancelledState, cancelledActionName } = this.describeCancelledActivity(joinedAgent.state, agentId);
+
+    // Persist channel ID and position before tearing down runtime state.
+    // This follows the same persist-then-mutate pattern as registerAgent/deleteAgent.
+    const registration = this.state.getById(agentId);
+    if (registration) {
+      this.persistRegistrations(
+        this.state.list().map((agent) =>
+          agent.agent_id === agentId
+            ? { ...agent, discord_channel_id: joinedAgent.discord_channel_id, last_node_id: leftNodeId }
+            : agent,
+        ),
+      );
+      registration.discord_channel_id = joinedAgent.discord_channel_id;
+      registration.last_node_id = leftNodeId;
+    }
+
     cancelPendingConversation(this, agentId);
     forceEndConversation(this, agentId);
     this.timerManager.cancelByAgent(agentId);
@@ -236,15 +277,14 @@ export class WorldEngine {
     this.state.clearPendingServerEvents(agentId);
     this.state.leave(agentId);
 
-    if (joinedAgent.discord_channel_id) {
-      await this.discordBot.deleteAgentChannel(joinedAgent.discord_channel_id);
-    }
-
     this.emitEvent({
       type: 'agent_left',
       agent_id: joinedAgent.agent_id,
       agent_name: joinedAgent.agent_name,
       node_id: leftNodeId,
+      discord_channel_id: joinedAgent.discord_channel_id,
+      cancelled_state: cancelledState,
+      cancelled_action_name: cancelledActionName,
     });
 
     return { status: 'ok' };
@@ -363,6 +403,33 @@ export class WorldEngine {
       })),
       generated_at: now,
     };
+  }
+
+  private describeCancelledActivity(
+    state: AgentState,
+    agentId: string,
+  ): { cancelledState: AgentState; cancelledActionName?: string } {
+    if (state === 'in_action') {
+      const actionTimer = this.timerManager.find((t): t is ActionTimer => t.type === 'action' && (t as ActionTimer).agent_id === agentId);
+      if (actionTimer) {
+        return { cancelledState: 'in_action', cancelledActionName: actionTimer.action_name };
+      }
+      return { cancelledState: 'in_action' };
+    }
+    return { cancelledState: state };
+  }
+
+  private resolveSpawnNode(lastNodeId?: NodeId): NodeId {
+    if (lastNodeId) {
+      try {
+        if (isNodeWithinBounds(lastNodeId, this.config.map) && isPassable(getNodeConfig(lastNodeId, this.config.map).type)) {
+          return lastNodeId;
+        }
+      } catch {
+        // Invalid node format — fall through to random spawn
+      }
+    }
+    return this.config.spawn.nodes[randomInt(this.config.spawn.nodes.length)];
   }
 
   private persistRegistrations(agents: AgentRegistration[]): void {

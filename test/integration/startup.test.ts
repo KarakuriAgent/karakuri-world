@@ -12,6 +12,7 @@ vi.mock('../../src/discord/bot.js', () => {
   const bot = {
     createAgentChannel: async () => 'channel-mock',
     deleteAgentChannel: async () => {},
+    channelExists: async () => true,
     sendAgentMessage: async () => {},
     sendWorldLog: async () => {},
     close: async () => {},

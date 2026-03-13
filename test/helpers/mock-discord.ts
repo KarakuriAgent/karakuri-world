@@ -13,4 +13,8 @@ export class MockDiscordBot implements DiscordRuntimeAdapter {
   async deleteAgentChannel(channelId: string): Promise<void> {
     this.deletedChannels.push(channelId);
   }
+
+  async channelExists(_channelId: string): Promise<boolean> {
+    return true;
+  }
 }

@@ -1,3 +1,4 @@
+import type { AgentState } from './agent.js';
 import type { NodeId } from './data-model.js';
 import type { ConversationClosureReason, ConversationRejectionReason } from './conversation.js';
 import type { ServerEventChoiceConfig } from './server-event.js';
@@ -39,6 +40,9 @@ export interface AgentLeftEvent extends EventBase {
   agent_id: string;
   agent_name: string;
   node_id: NodeId;
+  discord_channel_id: string;
+  cancelled_state: AgentState;
+  cancelled_action_name?: string;
 }
 
 export interface MovementStartedEvent extends EventBase {

@@ -199,6 +199,9 @@ interface AgentLeftEvent extends EventBase {
   agent_id: string;
   agent_name: string;
   node_id: NodeId; // 退出時の位置
+  discord_channel_id: string; // 退出通知送信先チャンネル
+  cancelled_state: AgentState; // 退出時の状態
+  cancelled_action_name?: string; // in_action時のアクション名（待機の場合は省略）
 }
 
 interface MovementStartedEvent extends EventBase {
@@ -327,7 +330,8 @@ type WorldEvent =
 |---------|------------|--------|-----------|
 | 参加初回通知 | `agent_joined` | #agent-{name} | 現在地、知覚情報、行動促進 |
 | 参加ログ | `agent_joined` | #world-log | エージェント名 |
-| 退出ログ | `agent_left` | #world-log | エージェント名 |
+| 退出通知 | `agent_left` | #agent-{name} | キャンセルした活動に応じたメッセージ |
+| 退出ログ | `agent_left` | #world-log | エージェント名、キャンセル情報 |
 | 会話強制終了通知 | `agent_left`（`in_conversation` 中の場合） | #agent-{partner} | 退出エージェント名、知覚情報、行動促進 |
 | 移動開始ログ | `movement_started` | #world-log | エージェント名、目的地ノード |
 | 移動完了通知 | `movement_completed` | #agent-{name} | 到着ノード、知覚情報、行動促進 |
@@ -407,7 +411,7 @@ type WorldEvent =
 | イベント | Discord #agent | Discord #world-log | WebSocket | ログ |
 |---------|---------------|-------------------|-----------|------|
 | `agent_joined` | ✅ 当該 | ✅ | ✅ | ✅ |
-| `agent_left` | ✅ 会話相手 ※1 | ✅ | ✅ | ✅ |
+| `agent_left` | ✅ 当該 + 会話相手 ※1 | ✅ | ✅ | ✅ |
 | `movement_started` | - | ✅ | ✅ | ✅ |
 | `movement_completed` | ✅ 当該 | ✅ | ✅ | ✅ |
 | `action_started` | - | ✅ | ✅ | ✅ |

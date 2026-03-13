@@ -48,6 +48,10 @@ export class DiscordBot implements DiscordNotificationAdapter {
     await this.channelManager.deleteAgentChannel(channelId);
   }
 
+  async channelExists(channelId: string): Promise<boolean> {
+    return (await this.channelManager.getTextChannel(channelId)) !== null;
+  }
+
   async sendAgentMessage(channelId: string, content: string): Promise<void> {
     const channel = await this.channelManager.getTextChannel(channelId);
     if (!channel) {

@@ -1,4 +1,5 @@
 import { buildPerceptionText } from '../domain/perception.js';
+import type { AgentState } from '../types/agent.js';
 import type { PerceptionResponse } from '../types/api.js';
 import type { ConversationClosureReason, ConversationRejectionReason } from '../types/conversation.js';
 import type { ServerEventChoiceConfig } from '../types/server-event.js';
@@ -157,8 +158,35 @@ export function formatWorldLogJoined(agentName: string): string {
   return `${agentName} が世界に参加しました`;
 }
 
-export function formatWorldLogLeft(agentName: string): string {
-  return `${agentName} が世界から退出しました`;
+export function formatAgentLeftMessage(cancelledState: AgentState, cancelledActionName?: string): string {
+  switch (cancelledState) {
+    case 'in_action':
+      return cancelledActionName
+        ? `「${cancelledActionName}」をキャンセルし、退出しました。`
+        : '待機をキャンセルし、退出しました。';
+    case 'moving':
+      return '移動をキャンセルし、退出しました。';
+    case 'in_conversation':
+      return '会話を終了し、退出しました。';
+    case 'idle':
+      return '退出しました。';
+  }
+}
+
+export function formatWorldLogLeft(agentName: string, cancelledState: AgentState, cancelledActionName?: string): string {
+  switch (cancelledState) {
+    case 'in_action':
+      if (cancelledActionName) {
+        return `${agentName} が「${cancelledActionName}」をキャンセルし、退出しました`;
+      }
+      return `${agentName} が待機をキャンセルし、退出しました`;
+    case 'moving':
+      return `${agentName} が移動をキャンセルし、退出しました`;
+    case 'in_conversation':
+      return `${agentName} が会話を終了し、退出しました`;
+    case 'idle':
+      return `${agentName} が世界から退出しました`;
+  }
 }
 
 export function formatWorldLogMovementStarted(agentName: string, nodeId: string, label?: string): string {

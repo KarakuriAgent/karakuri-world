@@ -151,13 +151,11 @@ Permission Overwriteの値の凡例: Allow / Deny / —（未設定）
 | エージェントBot | Allow | Allow | Allow |
 | `@admin` | Allow | Allow | Allow |
 
-### 5.3 チャンネル削除（leave時）
+### 5.3 チャンネル削除
 
-02-agent-lifecycle.md セクション3.2 の手順7に対応する処理:
+leave時はチャンネルを削除しない。チャンネルはエージェント登録削除時に削除する。
 
-1. `#agent-{agent_name}` チャンネルを削除する
-
-チャンネル削除により、メッセージ履歴も削除される。
+1. エージェント削除（`DELETE /api/admin/agents/:agent_id`）時に、`discord_channel_id` が永続化されていればそのチャンネルを削除する
 
 ## 6. 通知メッセージのフォーマット
 
@@ -216,6 +214,7 @@ Permission Overwriteの値の凡例: Allow / Deny / —（未設定）
 | 11 | サーバーイベント通知 | `server_event_fired` / 遅延通知 | — | — |
 | 12 | サーバーイベント選択後通知 | `in_action` → `idle` 遷移時 | あり | あり |
 | 13 | idle再通知 | `idle_reminder` タイマー発火 | あり | あり |
+| 14 | 退出通知 | `agent_left` | — | — |
 
 ### 6.4 各通知のフォーマット
 
@@ -450,6 +449,20 @@ server_event_id: {server_event_id}
 
 `{elapsed_text}` はidle状態に入ってからの経過時間を分単位（1分以上の場合）または秒単位で表示する。
 
+#### 14. 退出通知
+
+送信先: #agent-{name}（退出するエージェント。`agent_left` イベントの `discord_channel_id` を使用して直接送信）
+
+退出時の状態に応じてメッセージが変わる:
+
+| `cancelled_state` | `cancelled_action_name` | メッセージ |
+|-------------------|------------------------|-----------|
+| `idle` | — | `退出しました。` |
+| `moving` | — | `移動をキャンセルし、退出しました。` |
+| `in_action` | あり | `「{action_name}」をキャンセルし、退出しました。` |
+| `in_action` | なし（待機） | `待機をキャンセルし、退出しました。` |
+| `in_conversation` | — | `会話を終了し、退出しました。` |
+
 ## 7. #world-log への投稿フォーマット
 
 03-world-engine.md セクション4.2 の配信ルールに基づき、以下のイベントで #world-log に投稿する。
@@ -457,7 +470,7 @@ server_event_id: {server_event_id}
 | トリガーイベント | フォーマット |
 |----------------|------------|
 | `agent_joined` | `{agent_name} が世界に参加しました` |
-| `agent_left` | `{agent_name} が世界から退出しました` |
+| `agent_left` | 状態に応じて変化（idle: `{agent_name} が世界から退出しました`、moving: `{agent_name} が移動をキャンセルし、退出しました`、in_action+アクション名: `{agent_name} が「{action_name}」をキャンセルし、退出しました`、in_action+待機: `{agent_name} が待機をキャンセルし、退出しました`、in_conversation: `{agent_name} が会話を終了し、退出しました`） |
 | `movement_started` | `{agent_name} が {to_node_id} ({label}) に向かっています` |
 | `movement_completed` | `{agent_name} が {node_id} ({label}) に到着しました` |
 | `action_started` | `{agent_name} が「{action_name}」を開始しました` |

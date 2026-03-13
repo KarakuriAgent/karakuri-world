@@ -104,6 +104,38 @@ describe('agent storage', () => {
     expect(() => loadAgents(filePath)).toThrowError('Duplicate agent_name: alice');
   });
 
+  it('persists and loads optional discord_channel_id and last_node_id', () => {
+    const filePath = createTempPath('agents.json');
+    const alice = createRegistration({ discord_channel_id: 'ch-123', last_node_id: '3-1' });
+
+    saveAgents(filePath, [alice]);
+
+    const loaded = loadAgents(filePath);
+    expect(loaded[0].discord_channel_id).toBe('ch-123');
+    expect(loaded[0].last_node_id).toBe('3-1');
+  });
+
+  it('migrates v1 data to v2 automatically', () => {
+    const filePath = createTempPath('agents.json');
+
+    writeFileSync(
+      filePath,
+      JSON.stringify({
+        version: 1,
+        agents: [createRegistration()],
+      }),
+      'utf8',
+    );
+
+    const loaded = loadAgents(filePath);
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].discord_channel_id).toBeUndefined();
+    expect(loaded[0].last_node_id).toBeUndefined();
+
+    const persisted = JSON.parse(readFileSync(filePath, 'utf8'));
+    expect(persisted.version).toBe(CURRENT_VERSION);
+  });
+
   it('writes sorted JSON without leaving a tmp file behind', () => {
     const filePath = createTempPath('agents.json');
     const bob = createRegistration({

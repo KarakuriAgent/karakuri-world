@@ -8,6 +8,8 @@ export interface AgentRegistration {
   api_key: string;
   discord_bot_id: string;
   created_at: number;
+  discord_channel_id?: string;
+  last_node_id?: NodeId;
 }
 
 export interface JoinedAgent {

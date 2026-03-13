@@ -78,6 +78,36 @@ describe('DiscordEventHandler', () => {
             message.content.includes('Alice が世界から退出したため、会話が強制終了されました。'),
         ),
       ).toBe(true);
+      expect(bot.worldLogMessages).toContain('Alice が会話を終了し、退出しました');
+    });
+
+    handler.dispose();
+  });
+
+  it('sends leave notification to agent channel and world log', async () => {
+    const { engine } = createTestWorld();
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
+    await engine.joinAgent(alice.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.worldLogMessages).toHaveLength(1);
+    });
+    bot.agentMessages.length = 0;
+    bot.worldLogMessages.length = 0;
+
+    await engine.leaveAgent(alice.agent_id);
+
+    await vi.waitFor(() => {
+      expect(
+        bot.agentMessages.some(
+          (message) =>
+            message.channelId === 'channel-Alice' &&
+            message.content === '退出しました。',
+        ),
+      ).toBe(true);
     });
     expect(bot.worldLogMessages).toContain('Alice が世界から退出しました');
 

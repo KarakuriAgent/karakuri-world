@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 import { z } from 'zod';
 
 import type { AgentRegistration } from '../types/agent.js';
+import type { NodeId } from '../types/data-model.js';
 
 const agentNamePattern = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])$/;
 const apiKeyPattern = /^karakuri_[0-9a-f]+$/;
@@ -13,14 +14,21 @@ export interface AgentsFileData {
   agents: AgentRegistration[];
 }
 
-export const CURRENT_VERSION = 1;
+export const CURRENT_VERSION = 2;
 
-const agentRegistrationSchema = z.object({
+const agentRegistrationSchemaV1 = z.object({
   agent_id: z.string().min(1),
   agent_name: z.string().min(2).max(32).regex(agentNamePattern),
   api_key: z.string().regex(apiKeyPattern),
   discord_bot_id: z.string().min(1),
   created_at: z.number().int().nonnegative(),
+});
+
+const nodeIdPattern = /^\d+-\d+$/;
+
+const agentRegistrationSchema = agentRegistrationSchemaV1.extend({
+  discord_channel_id: z.string().min(1).optional(),
+  last_node_id: z.string().regex(nodeIdPattern).optional().transform((v) => v as NodeId | undefined),
 });
 
 const agentsFileSchema = z.object({
@@ -35,7 +43,14 @@ export function loadAgents(filePath: string): AgentRegistration[] {
   }
 
   const raw = readFileSync(filePath, 'utf8');
-  return validateAgentsFileData(JSON.parse(raw)).agents;
+  const parsed = JSON.parse(raw);
+  const fileData = validateAgentsFileData(parsed);
+
+  if (parsed.version !== CURRENT_VERSION) {
+    saveAgents(filePath, fileData.agents);
+  }
+
+  return fileData.agents;
 }
 
 export function saveAgents(filePath: string, agents: AgentRegistration[]): void {
@@ -48,6 +63,13 @@ export function saveAgents(filePath: string, agents: AgentRegistration[]): void 
 }
 
 function validateAgentsFileData(value: unknown): AgentsFileData {
+  const raw = z.object({ version: z.number().int() }).passthrough().parse(value);
+
+  if (raw.version === 1) {
+    const v1 = z.object({ version: z.literal(1), agents: z.array(agentRegistrationSchemaV1) }).parse(value);
+    return validateAgentsFileData({ ...v1, version: CURRENT_VERSION });
+  }
+
   const parsed = agentsFileSchema.parse(value);
 
   if (parsed.version !== CURRENT_VERSION) {

@@ -38,6 +38,10 @@ class DeferredDiscordBot implements DiscordRuntimeAdapter {
     this.deletedChannels.push(channelId);
   }
 
+  async channelExists(_channelId: string): Promise<boolean> {
+    return true;
+  }
+
   resolvePendingChannel(): void {
     if (!this.pendingChannel) {
       throw new Error('No pending channel creation');
@@ -75,10 +79,16 @@ describe('WorldEngine lifecycle', () => {
 
     await engine.leaveAgent(registration.agent_id);
     expect(engine.state.getJoined(registration.agent_id)).toBeNull();
-    expect(discordBot?.deletedChannels).toEqual(['channel-alice']);
+    expect(discordBot?.deletedChannels).toEqual([]);
+
+    const updatedReg = engine.getAgentById(registration.agent_id)!;
+    expect(updatedReg.discord_channel_id).toBe('channel-alice');
+    expect(updatedReg.last_node_id).toBe(joinResponse.node_id);
 
     const rejoined = await engine.joinAgent(registration.agent_id);
-    expect(config.spawn.nodes).toContain(rejoined.node_id);
+    expect(rejoined.channel_id).toBe('channel-alice');
+    expect(rejoined.node_id).toBe(joinResponse.node_id);
+    expect(discordBot?.createdChannels).toHaveLength(1);
     expect(engine.state.getJoined(registration.agent_id)?.node_id).toBe(rejoined.node_id);
   });
 
@@ -101,7 +111,7 @@ describe('WorldEngine lifecycle', () => {
     expect(await engine.deleteAgent(bob.agent_id)).toBe(true);
   });
 
-  it('persists registrations on register and delete', async () => {
+  it('persists registrations on register, leave, and delete', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'karakuri-world-lifecycle-'));
     const filePath = join(dataDir, 'agents.json');
     const { engine } = createTestWorld({
@@ -118,6 +128,14 @@ describe('WorldEngine lifecycle', () => {
         alice,
         bob,
       ]);
+
+      const joinResponse = await engine.joinAgent(alice.agent_id);
+      await engine.leaveAgent(alice.agent_id);
+
+      const persisted = loadAgents(filePath);
+      const persistedAlice = persisted.find((a) => a.agent_id === alice.agent_id)!;
+      expect(persistedAlice.discord_channel_id).toBe('channel-alice');
+      expect(persistedAlice.last_node_id).toBe(joinResponse.node_id);
 
       expect(await engine.deleteAgent(alice.agent_id)).toBe(true);
       expect(loadAgents(filePath)).toEqual([bob]);
@@ -151,6 +169,33 @@ describe('WorldEngine lifecycle', () => {
 
     await expect(deleteWorld.engine.deleteAgent(persistedAlice.agent_id)).rejects.toThrowError(failure);
     expect(deleteWorld.engine.getAgentById(persistedAlice.agent_id)).toEqual(persistedAlice);
+  });
+
+  it('falls back to random spawn when last_node_id is invalid', async () => {
+    const { config, engine } = createTestWorld({
+      engineOptions: {
+        initialRegistrations: [
+          createRegistration({ last_node_id: '1-3' as never, discord_channel_id: 'channel-alice' }),
+        ],
+      },
+    });
+
+    const joinResponse = await engine.joinAgent('agent-1');
+    expect(config.spawn.nodes).toContain(joinResponse.node_id);
+    expect(joinResponse.channel_id).toBe('channel-alice');
+  });
+
+  it('deletes persisted channel on agent deletion', async () => {
+    const { engine, discordBot } = createTestWorld({
+      engineOptions: {
+        initialRegistrations: [
+          createRegistration({ discord_channel_id: 'channel-alice' }),
+        ],
+      },
+    });
+
+    await engine.deleteAgent('agent-1');
+    expect(discordBot.deletedChannels).toEqual(['channel-alice']);
   });
 
   it('prevents deleting an agent while join is in progress', async () => {
