@@ -24,6 +24,8 @@ import {
   formatWorldLogAction,
   formatWorldLogActionStarted,
   formatWorldLogConversationEnded,
+  formatWorldLogMovementStarted,
+  formatWorldLogWaitStarted,
   formatWorldLogConversationStarted,
   formatWorldLogJoined,
   formatWorldLogLeft,
@@ -96,6 +98,7 @@ export class DiscordEventHandler {
         await this.handleWaitCompleted(event.agent_id, event.agent_name, event.duration_ms);
         return;
       case 'wait_started':
+        await this.handleWaitStarted(event.agent_name, event.duration_ms);
         return;
       case 'conversation_requested':
         await this.handleConversationRequested(
@@ -132,6 +135,7 @@ export class DiscordEventHandler {
         await this.handleServerEventSelected(event);
         return;
       case 'movement_started':
+        await this.handleMovementStarted(event.agent_name, event.to_node_id);
         return;
       case 'action_started':
         await this.handleActionStarted(event.agent_name, event.action_name);
@@ -174,6 +178,11 @@ export class DiscordEventHandler {
     await this.bot.sendWorldLog(formatWorldLogLeft(agentName));
   }
 
+  private async handleMovementStarted(agentName: string, toNodeId: NodeId): Promise<void> {
+    const label = this.engine.getMap().nodes[toNodeId]?.label;
+    await this.bot.sendWorldLog(formatWorldLogMovementStarted(agentName, toNodeId, label));
+  }
+
   private async handleMovementCompleted(agentId: string, agentName: string, toNodeId: NodeId): Promise<void> {
     const perceptionText = this.getPerceptionText(agentId);
     if (perceptionText) {
@@ -199,6 +208,10 @@ export class DiscordEventHandler {
     }
 
     await this.bot.sendWorldLog(formatWorldLogAction(agentName, actionName));
+  }
+
+  private async handleWaitStarted(agentName: string, durationMs: number): Promise<void> {
+    await this.bot.sendWorldLog(formatWorldLogWaitStarted(agentName, durationMs));
   }
 
   private async handleWaitCompleted(agentId: string, agentName: string, durationMs: number): Promise<void> {

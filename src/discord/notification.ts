@@ -161,6 +161,11 @@ export function formatWorldLogLeft(agentName: string): string {
   return `${agentName} が世界から退出しました`;
 }
 
+export function formatWorldLogMovementStarted(agentName: string, nodeId: string, label?: string): string {
+  const destination = label ? `${nodeId} (${label})` : nodeId;
+  return `${agentName} が ${destination} に向かっています`;
+}
+
 export function formatWorldLogMovement(agentName: string, nodeId: string, label?: string): string {
   const destination = label ? `${nodeId} (${label})` : nodeId;
   return `${agentName} が ${destination} に到着しました`;
@@ -172,6 +177,12 @@ export function formatWorldLogActionStarted(agentName: string, actionName: strin
 
 export function formatWorldLogAction(agentName: string, actionName: string): string {
   return `${agentName} が「${actionName}」を実行しました`;
+}
+
+export function formatWorldLogWaitStarted(agentName: string, durationMs: number): string {
+  const minutes = Math.floor(durationMs / 60000);
+  const durationText = minutes >= 1 ? `${minutes}分間` : `${Math.floor(durationMs / 1000)}秒間`;
+  return `${agentName} が${durationText}の待機を開始しました`;
 }
 
 export function formatWorldLogWait(agentName: string, durationMs: number): string {

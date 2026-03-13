@@ -193,6 +193,7 @@ interface AgentLeftEvent extends EventBase {
 interface MovementStartedEvent extends EventBase {
   type: "movement_started";
   agent_id: string;
+  agent_name: string;
   from_node_id: NodeId;
   to_node_id: NodeId;
   path: NodeId[]; // BFS最短経路（fromを含まず、toを含む）
@@ -317,11 +318,13 @@ type WorldEvent =
 | 参加ログ | `agent_joined` | #world-log | エージェント名 |
 | 退出ログ | `agent_left` | #world-log | エージェント名 |
 | 会話強制終了通知 | `agent_left`（`in_conversation` 中の場合） | #agent-{partner} | 退出エージェント名、知覚情報、行動促進 |
+| 移動開始ログ | `movement_started` | #world-log | エージェント名、目的地ノード |
 | 移動完了通知 | `movement_completed` | #agent-{name} | 到着ノード、知覚情報、行動促進 |
 | 到着ログ | `movement_completed` | #world-log | エージェント名、到着ノード |
 | アクション開始ログ | `action_started` | #world-log | エージェント名、アクション名 |
 | アクション完了通知 | `action_completed` | #agent-{name} | `result_description`、知覚情報、行動促進 |
 | アクション完了ログ | `action_completed` | #world-log | エージェント名、アクション名 |
+| 待機開始ログ | `wait_started` | #world-log | エージェント名、待機時間 |
 | 待機完了通知 | `wait_completed` | #agent-{name} | 待機時間、知覚情報、行動促進 |
 | 待機完了ログ | `wait_completed` | #world-log | エージェント名、待機時間 |
 | 会話着信通知 | `conversation_requested` | #agent-{target} | 発信者名、最初の発言内容、受諾/拒否の指示 |
@@ -393,11 +396,11 @@ type WorldEvent =
 |---------|---------------|-------------------|-----------|------|
 | `agent_joined` | ✅ 当該 | ✅ | ✅ | ✅ |
 | `agent_left` | ✅ 会話相手 ※1 | ✅ | ✅ | ✅ |
-| `movement_started` | - | - | ✅ | ✅ |
+| `movement_started` | - | ✅ | ✅ | ✅ |
 | `movement_completed` | ✅ 当該 | ✅ | ✅ | ✅ |
 | `action_started` | - | ✅ | ✅ | ✅ |
 | `action_completed` | ✅ 当該 | ✅ | ✅ | ✅ |
-| `wait_started` | - | - | ✅ | ✅ |
+| `wait_started` | - | ✅ | ✅ | ✅ |
 | `wait_completed` | ✅ 当該 | ✅ | ✅ | ✅ |
 | `conversation_requested` | ✅ ターゲット | - | ✅ | ✅ |
 | `conversation_accepted` | ✅ 発信側 | ✅ | ✅ | ✅ |

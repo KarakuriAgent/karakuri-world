@@ -441,9 +441,11 @@ server_event_id: {server_event_id}
 |----------------|------------|
 | `agent_joined` | `{agent_name} が世界に参加しました` |
 | `agent_left` | `{agent_name} が世界から退出しました` |
+| `movement_started` | `{agent_name} が {to_node_id} ({label}) に向かっています` |
 | `movement_completed` | `{agent_name} が {node_id} ({label}) に到着しました` |
 | `action_started` | `{agent_name} が「{action_name}」を開始しました` |
 | `action_completed` | `{agent_name} が「{action_name}」を実行しました` |
+| `wait_started` | `{agent_name} が{duration_text}の待機を開始しました` |
 | `wait_completed` | `{agent_name} が{duration_text}待機しました` |
 | `conversation_accepted` | `{initiator_name} と {target_name} の会話が始まりました` |
 | `conversation_ended` | `{agent_name_1} と {agent_name_2} の会話が終了しました` |

@@ -68,7 +68,7 @@ interface MoveValidationError {
 1. BFS経路探索で最短経路（`path`）を算出
 2. エージェント状態を `moving` に遷移
 3. `MovementTimer` を生成（03-world-engine.md セクション1.2参照。`fires_at = 現在時刻 + path.length × MovementConfig.duration_ms`（01-data-model.md セクション6.3））
-4. `MovementStartedEvent` を発行（03-world-engine.md セクション2.2参照）。配信先は WebSocket・ログのみ（Discord通知なし。03-world-engine.md セクション4.2参照）
+4. `MovementStartedEvent` を発行（03-world-engine.md セクション2.2参照）。配信先は WebSocket・ログ・Discord #world-log（03-world-engine.md セクション4.2参照）
 5. レスポンスを返却
 
 ```typescript
