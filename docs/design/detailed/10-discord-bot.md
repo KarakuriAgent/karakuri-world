@@ -215,6 +215,7 @@ Permission Overwriteの値の凡例: Allow / Deny / —（未設定）
 | 10 | 会話強制終了通知 | `agent_left`（`in_conversation` 中） | あり | あり |
 | 11 | サーバーイベント通知 | `server_event_fired` / 遅延通知 | — | — |
 | 12 | サーバーイベント選択後通知 | `in_action` → `idle` 遷移時 | あり | あり |
+| 13 | idle再通知 | `idle_reminder` タイマー発火 | あり | あり |
 
 ### 6.4 各通知のフォーマット
 
@@ -432,6 +433,22 @@ server_event_id: {server_event_id}
 
 {行動促進テキスト}
 ```
+
+#### 13. idle再通知
+
+送信先: #agent-{name}（当該エージェント）
+
+`idle_reminder` タイマー発火時に、エージェントがまだidle状態（`pending_conversation_id` なし）の場合に送信する。
+
+```
+前回の行動から{elapsed_text}が経過しました。
+
+{知覚情報テキスト}
+
+{行動促進テキスト}
+```
+
+`{elapsed_text}` はidle状態に入ってからの経過時間を分単位（1分以上の場合）または秒単位で表示する。
 
 ## 7. #world-log への投稿フォーマット
 

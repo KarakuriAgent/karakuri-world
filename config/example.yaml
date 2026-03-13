@@ -72,6 +72,8 @@ map:
           description: Offer a respectful greeting.
           duration_ms: 300000
           result_description: The gatekeeper returns the greeting with a nod.
+idle_reminder:
+  interval_ms: 60000
 server_events:
   - event_id: sudden-rain
     name: Sudden Rain

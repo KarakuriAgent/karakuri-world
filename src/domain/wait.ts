@@ -2,6 +2,7 @@ import type { WorldEngine } from '../engine/world-engine.js';
 import type { WaitRequest, WaitResponse } from '../types/api.js';
 import { WorldError } from '../types/api.js';
 import type { WaitTimer } from '../types/timer.js';
+import { cancelIdleReminder, startIdleReminder } from './idle-reminder.js';
 
 export const MAX_WAIT_DURATION_MS = 3600000;
 
@@ -21,6 +22,7 @@ export function executeWait(engine: WorldEngine, agentId: string, request: WaitR
 
   const completesAt = Date.now() + request.duration_ms;
 
+  cancelIdleReminder(engine, agentId);
   engine.timerManager.cancelByType(agentId, 'wait');
   engine.state.setState(agentId, 'in_action');
   engine.timerManager.create({
@@ -66,6 +68,7 @@ export function handleWaitCompleted(engine: WorldEngine, timer: WaitTimer): void
   }
 
   engine.state.setState(timer.agent_id, 'idle');
+  startIdleReminder(engine, timer.agent_id);
   engine.emitEvent({
     type: 'wait_completed',
     agent_id: agent.agent_id,

@@ -7,6 +7,7 @@ import type { ServerEventInstance } from '../types/server-event.js';
 import type { ServerEventTimeoutTimer } from '../types/timer.js';
 import { cancelActiveAction } from './actions.js';
 import { beginClosingConversation, findConversationByAgent } from './conversation.js';
+import { startIdleReminder } from './idle-reminder.js';
 import { cancelActiveWait } from './wait.js';
 
 function createTimeoutTimer(engine: WorldEngine, agentId: string, serverEvent: ServerEventInstance): void {
@@ -156,6 +157,7 @@ export function selectServerEvent(engine: WorldEngine, agentId: string, request:
   if (sourceState === 'in_action') {
     cancelActiveAction(engine, agentId);
     cancelActiveWait(engine, agentId);
+    startIdleReminder(engine, agentId);
   } else if (sourceState === 'in_conversation' && conversation) {
     beginClosingConversation(engine, conversation.conversation_id, agentId, 'server_event');
   }

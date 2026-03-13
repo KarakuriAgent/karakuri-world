@@ -17,7 +17,8 @@ export type EventType =
   | 'conversation_message'
   | 'conversation_ended'
   | 'server_event_fired'
-  | 'server_event_selected';
+  | 'server_event_selected'
+  | 'idle_reminder_fired';
 
 export interface EventBase {
   event_id: string;
@@ -156,6 +157,13 @@ export interface ServerEventSelectedEvent extends EventBase {
   source_state: 'idle' | 'in_action' | 'in_conversation';
 }
 
+export interface IdleReminderFiredEvent extends EventBase {
+  type: 'idle_reminder_fired';
+  agent_id: string;
+  agent_name: string;
+  idle_since: number;
+}
+
 export type WorldEvent =
   | AgentJoinedEvent
   | AgentLeftEvent
@@ -171,4 +179,5 @@ export type WorldEvent =
   | ConversationMessageEvent
   | ConversationEndedEvent
   | ServerEventFiredEvent
-  | ServerEventSelectedEvent;
+  | ServerEventSelectedEvent
+  | IdleReminderFiredEvent;

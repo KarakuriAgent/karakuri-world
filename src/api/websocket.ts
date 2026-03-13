@@ -21,6 +21,9 @@ export class WebSocketManager {
 
   constructor(private readonly engine: WorldEngine) {
     this.unsubscribe = this.engine.eventBus.onAny((event) => {
+      if (event.type === 'idle_reminder_fired') {
+        return;
+      }
       this.broadcast({ type: 'event', data: event });
     });
   }

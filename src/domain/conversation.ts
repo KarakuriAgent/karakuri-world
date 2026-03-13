@@ -19,6 +19,7 @@ import type {
   ConversationTurnTimer,
 } from '../types/timer.js';
 import { cancelActiveAction } from './actions.js';
+import { cancelIdleReminder, startIdleReminder } from './idle-reminder.js';
 import { manhattanDistance } from './map-utils.js';
 import { cancelActiveWait } from './wait.js';
 
@@ -85,6 +86,7 @@ function endConversation(
 
     engine.state.setState(participantId, 'idle');
     engine.state.setPendingConversation(participantId, null);
+    startIdleReminder(engine, participantId);
   }
 
   engine.emitEvent({
@@ -172,6 +174,7 @@ export function startConversation(
   };
 
   engine.state.conversations.set(conversation);
+  cancelIdleReminder(engine, initiator.agent_id);
   engine.state.setPendingConversation(initiator.agent_id, conversation.conversation_id);
   engine.state.setPendingConversation(target.agent_id, conversation.conversation_id);
   engine.timerManager.create({
@@ -224,6 +227,8 @@ export function acceptConversation(engine: WorldEngine, agentId: string, request
     cancelActiveWait(engine, target.agent_id);
   }
 
+  cancelIdleReminder(engine, initiator.agent_id);
+  cancelIdleReminder(engine, target.agent_id);
   engine.state.setPendingConversation(initiator.agent_id, null);
   engine.state.setPendingConversation(target.agent_id, null);
   engine.state.setState(initiator.agent_id, 'in_conversation');
@@ -258,6 +263,7 @@ export function rejectConversation(engine: WorldEngine, agentId: string, request
   const target = engine.state.getJoined(conversation.target_agent_id);
   if (initiator) {
     engine.state.setPendingConversation(initiator.agent_id, null);
+    startIdleReminder(engine, initiator.agent_id);
   }
   if (target) {
     engine.state.setPendingConversation(target.agent_id, null);
@@ -285,6 +291,7 @@ export function handleAcceptTimeout(engine: WorldEngine, timer: ConversationAcce
   const target = engine.state.getJoined(conversation.target_agent_id);
   if (initiator) {
     engine.state.setPendingConversation(initiator.agent_id, null);
+    startIdleReminder(engine, initiator.agent_id);
   }
   if (target) {
     engine.state.setPendingConversation(target.agent_id, null);
@@ -437,6 +444,9 @@ export function cancelPendingConversation(engine: WorldEngine, agentId: string):
   }
 
   if (conversation.target_agent_id === agentId) {
+    if (initiator) {
+      startIdleReminder(engine, initiator.agent_id);
+    }
     engine.emitEvent({
       type: 'conversation_rejected',
       conversation_id: conversation.conversation_id,

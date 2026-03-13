@@ -16,6 +16,7 @@ import {
   speak as speakInConversation,
   startConversation as startConversationRequest,
 } from '../domain/conversation.js';
+import { handleIdleReminderFired, startIdleReminder } from '../domain/idle-reminder.js';
 import {
   cleanupServerEventsForAgent,
   fireServerEvent as fireConfiguredServerEvent,
@@ -106,6 +107,9 @@ export class WorldEngine {
     this.timerManager.onFire('server_event_timeout', (timer) => {
       handleServerEventTimeout(this, timer);
     });
+    this.timerManager.onFire('idle_reminder', (timer) => {
+      handleIdleReminderFired(this, timer);
+    });
   }
 
   registerAgent(input: { agent_name: string; discord_bot_id: string }): AgentRegistration {
@@ -192,6 +196,8 @@ export class WorldEngine {
         node_id: this.config.spawn.nodes[randomInt(this.config.spawn.nodes.length)],
         discord_channel_id: channelId,
       });
+
+      startIdleReminder(this, agentId);
 
       this.emitEvent({
         type: 'agent_joined',

@@ -3,7 +3,7 @@ import { buildPerceptionText } from '../domain/perception.js';
 import type { WorldEngine } from '../engine/world-engine.js';
 import type { NodeId } from '../types/data-model.js';
 import type { WorldEvent } from '../types/event.js';
-import type { ConversationIntervalTimer } from '../types/timer.js';
+import type { ConversationIntervalTimer, IdleReminderTimer } from '../types/timer.js';
 import type { DiscordNotificationAdapter } from './bot.js';
 import {
   formatActionCompletedMessage,
@@ -17,6 +17,7 @@ import {
   formatConversationReplyPromptMessage,
   formatConversationRequestedMessage,
   formatConversationServerEventClosingPromptMessage,
+  formatIdleReminderMessage,
   formatMovementCompletedMessage,
   formatServerEventMessage,
   formatServerEventSelectedMessage,
@@ -66,9 +67,15 @@ export class DiscordEventHandler {
         console.error('Failed to dispatch Discord notification.', error);
       });
     });
+    const disposeIdleReminderSubscription = this.engine.timerManager.onFire('idle_reminder', (timer) => {
+      void this.handleIdleReminder(timer).catch((error) => {
+        console.error('Failed to dispatch Discord notification.', error);
+      });
+    });
     this.unsubscribe = () => {
       disposeEventSubscription();
       disposeConversationIntervalSubscription();
+      disposeIdleReminderSubscription();
       this.unsubscribe = null;
       this.pendingForcedConversationEnds.clear();
     };
@@ -141,6 +148,21 @@ export class DiscordEventHandler {
         await this.handleActionStarted(event.agent_name, event.action_name);
         return;
     }
+  }
+
+  private async handleIdleReminder(timer: IdleReminderTimer): Promise<void> {
+    const agent = this.engine.state.getJoined(timer.agent_id);
+    if (!agent || agent.pending_conversation_id) {
+      return;
+    }
+
+    const perceptionText = this.getPerceptionText(timer.agent_id);
+    if (!perceptionText) {
+      return;
+    }
+
+    const elapsedMs = Date.now() - timer.idle_since;
+    await this.sendToAgent(timer.agent_id, formatIdleReminderMessage(elapsedMs, perceptionText, this.skillName));
   }
 
   private async handleConversationInterval(timer: ConversationIntervalTimer): Promise<void> {

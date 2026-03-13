@@ -199,6 +199,12 @@ export function formatWorldLogConversationEnded(initiatorName: string, targetNam
   return `${initiatorName} と ${targetName} の会話が終了しました`;
 }
 
+export function formatIdleReminderMessage(elapsedMs: number, perceptionText: string, skillName: string): string {
+  const minutes = Math.floor(elapsedMs / 60000);
+  const elapsedText = minutes >= 1 ? `${minutes}分間` : `${Math.floor(elapsedMs / 1000)}秒間`;
+  return joinSections(`前回の行動から${elapsedText}が経過しました。`, perceptionText, formatActionPrompt(skillName));
+}
+
 export function formatWorldLogServerEvent(eventName: string, description: string): string {
   return `【サーバーイベント】${eventName}: ${description}`;
 }

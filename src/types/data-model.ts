@@ -77,6 +77,10 @@ export interface SpawnConfig {
   nodes: NodeId[];
 }
 
+export interface IdleReminderConfig {
+  interval_ms: number;
+}
+
 export interface ServerConfig {
   world: WorldConfig;
   movement: MovementConfig;
@@ -85,4 +89,5 @@ export interface ServerConfig {
   spawn: SpawnConfig;
   map: MapConfig;
   server_events: ServerEventConfig[];
+  idle_reminder?: IdleReminderConfig;
 }

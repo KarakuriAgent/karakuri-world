@@ -13,6 +13,7 @@
 | `conversation_turn` | ターン応答タイムアウト | `ConversationConfig.turn_timeout_ms` |
 | `conversation_interval` | ターン間インターバル | `ConversationConfig.interval_ms` |
 | `server_event_timeout` | サーバーイベント選択タイムアウト | `ServerEventConfig` で定義（07-server-events.md） |
+| `idle_reminder` | idle状態継続時の再通知 | `IdleReminderConfig.interval_ms` |
 
 ### 1.2 タイマーデータ構造
 
@@ -78,6 +79,12 @@ interface ServerEventTimeoutTimer extends TimerBase {
   server_event_id: string;
 }
 
+interface IdleReminderTimer extends TimerBase {
+  type: "idle_reminder";
+  agent_id: string;
+  idle_since: number; // idle状態に入った時刻（経過時間算出用）
+}
+
 type Timer =
   | MovementTimer
   | ActionTimer
@@ -85,7 +92,8 @@ type Timer =
   | ConversationAcceptTimer
   | ConversationTurnTimer
   | ConversationIntervalTimer
-  | ServerEventTimeoutTimer;
+  | ServerEventTimeoutTimer
+  | IdleReminderTimer;
 ```
 
 ### 1.3 タイマーの生成
@@ -99,6 +107,7 @@ type Timer =
 | `conversation_turn` | 会話開始時（受諾後、ターゲットの応答期限として）、および `conversation_interval` タイマー発火時 | 06-conversation.md |
 | `conversation_interval` | エージェントが発言した時 | 06-conversation.md |
 | `server_event_timeout` | サーバーイベント通知時（エージェントごとに生成） | 07-server-events.md |
+| `idle_reminder` | idle状態に入った時（join完了後、移動完了後、アクション完了後、待機完了後、会話終了後、会話拒否/タイムアウト後、サーバーイベント選択によるin_action→idle遷移時） | — |
 
 ### 1.4 タイマーのキャンセル
 
@@ -111,6 +120,7 @@ type Timer =
 | `conversation_turn` | 対象エージェントが発言、会話終了（max_turns到達、相手leave、サーバーイベント選択） |
 | `conversation_interval` | 会話終了（max_turns到達、相手leave、サーバーイベント選択） |
 | `server_event_timeout` | エージェントが選択を実行、エージェントleave |
+| `idle_reminder` | エージェントがidle状態から離れる時（移動開始、アクション開始、待機開始、会話開始、会話受諾）、エージェントleave |
 
 ### 1.5 タイマー発火時処理
 
@@ -123,6 +133,7 @@ type Timer =
 | `conversation_turn` | `active` 状態: 会話を終了、両者を `idle` に遷移、`conversation_ended` イベント発行（`reason: "turn_timeout"`）。`closing` 状態: 終了あいさつ未送信として会話を終了、`conversation_ended` イベント発行（`reason` は終了理由に応じて `"max_turns"` または `"server_event"`）。詳細は 06-conversation.md セクション5.2、6.3、7.2 |
 | `conversation_interval` | `active` 状態: 次の発言者にDiscordで発言を配信、`conversation_turn` タイマーを生成。turn が `ConversationConfig.max_turns` に到達した場合は終了あいさつフェーズに移行。`closing` 状態: 終了あいさつを配信し会話を終了。詳細は 06-conversation.md セクション4.4、6.2 |
 | `server_event_timeout` | 詳細は 07-server-events.md で定義 |
+| `idle_reminder` | エージェントがまだidle（`pending_conversation_id` なし）なら、同じ `idle_since` で新しいタイマーを再作成し、`idle_reminder_fired` イベントを発行。Discord通知で経過時間・知覚情報・行動促進テキストを送信 |
 
 ## 2. イベントシステム
 
@@ -339,6 +350,7 @@ type WorldEvent =
 | サーバーイベント遅延通知 | `movement_completed`（保留あり） | #agent-{name} | 保留中のサーバーイベント情報（選択肢含む） |
 | サーバーイベント選択後通知 | `server_event_selected`（`in_action` からの遷移時） | #agent-{name} | 選択したイベント名・選択肢、知覚情報、行動促進 |
 | サーバーイベントログ | `server_event_fired` | #world-log | イベント名、説明文 |
+| idle再通知 | `idle_reminder` タイマー発火 | #agent-{name} | 経過時間、知覚情報、行動促進 |
 
 - ※4 `reason: "partner_left"` の場合、会話終了通知は送信しない。代わりに `agent_left` をトリガーとする会話強制終了通知が残された側にのみ送信される（10-discord-bot.md セクション6.4 #10参照）
 - ※5 `max_turns` 到達時は最終ターンの聞き手へ、サーバーイベント選択時は選択したエージェントへ送信（06-conversation.md セクション6.2、7.1参照）
@@ -409,6 +421,7 @@ type WorldEvent =
 | `conversation_ended` | ✅ 双方 ※4 | ✅ | ✅ | ✅ |
 | `server_event_fired` | ✅ 対象全員 ※3 | ✅ | ✅ | ✅ |
 | `server_event_selected` | ✅ 当該 ※5 | - | ✅ | ✅ |
+| `idle_reminder_fired` | ✅ 当該 | - | - | ✅ |
 
 - ※1 `in_conversation` 中のleaveの場合のみ。会話相手に強制終了通知を送信
 - ※2 Discord配信は `conversation_interval` タイマー発火後（セクション3.3参照）

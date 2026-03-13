@@ -155,6 +155,7 @@ interface ServerConfig {
   spawn: SpawnConfig;
   map: MapConfig;
   server_events: ServerEventConfig[]; // サーバーイベント定義（詳細は 07-server-events.md で定義）
+  idle_reminder?: IdleReminderConfig; // idle再通知設定（オプション、未設定で無効）
 }
 ```
 
@@ -204,6 +205,16 @@ interface SpawnConfig {
 ```
 
 `nodes` に複数のノードが定義されている場合、join時にランダムで1つが選択される。指定ノードは移動可能ノード（`normal` または `door` または `building_interior`）でなければならない。
+
+### 6.7 idle再通知設定
+
+```typescript
+interface IdleReminderConfig {
+  interval_ms: number; // 再通知間隔（ミリ秒、1以上）
+}
+```
+
+`idle_reminder` フィールドはオプショナルであり、未設定の場合この機能は無効となる。設定された場合、エージェントがidle状態に入ってから `interval_ms` ごとに再通知を送信し、行動を促す。
 
 ## 7. 知覚範囲
 

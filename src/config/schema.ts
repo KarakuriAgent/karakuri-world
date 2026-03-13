@@ -71,6 +71,12 @@ export const mapConfigSchema = z
   })
   .strict();
 
+export const idleReminderConfigSchema = z
+  .object({
+    interval_ms: z.number().int().min(1),
+  })
+  .strict();
+
 export const serverConfigSchema = z
   .object({
     world: z
@@ -105,5 +111,6 @@ export const serverConfigSchema = z
       .strict(),
     map: mapConfigSchema,
     server_events: z.array(serverEventConfigSchema),
+    idle_reminder: idleReminderConfigSchema.optional(),
   })
   .strict();

@@ -4,6 +4,7 @@ import { WorldError } from '../types/api.js';
 import type { JoinedAgent } from '../types/agent.js';
 import type { ActionConfig, BuildingConfig, NpcConfig } from '../types/data-model.js';
 import type { ActionTimer } from '../types/timer.js';
+import { cancelIdleReminder, startIdleReminder } from './idle-reminder.js';
 import { findAdjacentNpcs, findBuildingByInteriorNode } from './map-utils.js';
 import { getAgentCurrentNode } from './movement.js';
 
@@ -144,6 +145,7 @@ export function executeAction(engine: WorldEngine, agentId: string, request: Act
   const { agent, source } = validateAction(engine, agentId, request);
   const completesAt = Date.now() + source.action.duration_ms;
 
+  cancelIdleReminder(engine, agentId);
   engine.timerManager.cancelByType(agentId, 'action');
   engine.state.setState(agentId, 'in_action');
   engine.timerManager.create({
@@ -200,6 +202,7 @@ export function handleActionCompleted(engine: WorldEngine, timer: ActionTimer): 
   }
 
   engine.state.setState(timer.agent_id, 'idle');
+  startIdleReminder(engine, timer.agent_id);
   engine.emitEvent({
     type: 'action_completed',
     agent_id: agent.agent_id,

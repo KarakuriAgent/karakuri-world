@@ -7,7 +7,8 @@ export type TimerType =
   | 'conversation_accept'
   | 'conversation_turn'
   | 'conversation_interval'
-  | 'server_event_timeout';
+  | 'server_event_timeout'
+  | 'idle_reminder';
 
 export interface TimerBase {
   timer_id: string;
@@ -67,6 +68,12 @@ export interface ServerEventTimeoutTimer extends TimerBase {
   event_id: string;
 }
 
+export interface IdleReminderTimer extends TimerBase {
+  type: 'idle_reminder';
+  agent_id: string;
+  idle_since: number;
+}
+
 export type Timer =
   | MovementTimer
   | ActionTimer
@@ -74,4 +81,5 @@ export type Timer =
   | ConversationAcceptTimer
   | ConversationTurnTimer
   | ConversationIntervalTimer
-  | ServerEventTimeoutTimer;
+  | ServerEventTimeoutTimer
+  | IdleReminderTimer;

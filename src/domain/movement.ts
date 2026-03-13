@@ -4,6 +4,7 @@ import { WorldError } from '../types/api.js';
 import type { JoinedAgent } from '../types/agent.js';
 import type { NodeId } from '../types/data-model.js';
 import type { MovementTimer } from '../types/timer.js';
+import { cancelIdleReminder, startIdleReminder } from './idle-reminder.js';
 import { findPath, getNodeConfig, isNodeWithinBounds, isPassable } from './map-utils.js';
 import { handlePendingServerEvents } from './server-events.js';
 
@@ -59,6 +60,7 @@ export function executeMove(engine: WorldEngine, agentId: string, request: MoveR
   const { agent, to_node_id, path } = validateMove(engine, agentId, request);
   const arrivesAt = Date.now() + path.length * engine.config.movement.duration_ms;
 
+  cancelIdleReminder(engine, agentId);
   engine.timerManager.cancelByType(agentId, 'movement');
   engine.state.setState(agentId, 'moving');
   engine.timerManager.create({
@@ -141,6 +143,7 @@ export function handleMovementCompleted(engine: WorldEngine, timer: MovementTime
 
   engine.state.setNode(timer.agent_id, timer.to_node_id);
   engine.state.setState(timer.agent_id, 'idle');
+  startIdleReminder(engine, timer.agent_id);
   const deliveredServerEventIds = handlePendingServerEvents(engine, timer.agent_id);
 
   engine.emitEvent({
