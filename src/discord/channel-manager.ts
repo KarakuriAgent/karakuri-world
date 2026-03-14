@@ -4,20 +4,74 @@ import {
   OverwriteType,
   type Guild,
   type OverwriteResolvable,
+  type Role,
   type TextChannel,
 } from 'discord.js';
 
-interface StaticChannels {
-  announcements_id: string;
+export interface StaticChannels {
   world_log_id: string;
   agents_category_id: string;
-  admin_category_id: string;
-  system_control_id: string;
   admin_role_id: string;
+  human_role_id: string;
+  agent_role_id: string;
 }
 
 function combinePermissions(...permissions: bigint[]): bigint {
   return permissions.reduce((combined, permission) => combined | permission, 0n);
+}
+
+const fullChannelAccess = combinePermissions(
+  PermissionFlagsBits.ViewChannel,
+  PermissionFlagsBits.SendMessages,
+  PermissionFlagsBits.ReadMessageHistory,
+  PermissionFlagsBits.CreatePublicThreads,
+  PermissionFlagsBits.CreatePrivateThreads,
+  PermissionFlagsBits.SendMessagesInThreads,
+  PermissionFlagsBits.AddReactions,
+);
+
+const memberChannelAccess = combinePermissions(
+  PermissionFlagsBits.ViewChannel,
+  PermissionFlagsBits.SendMessages,
+  PermissionFlagsBits.ReadMessageHistory,
+);
+
+const humanReadAccess = combinePermissions(
+  PermissionFlagsBits.ViewChannel,
+  PermissionFlagsBits.ReadMessageHistory,
+);
+
+const humanWriteRestrictions = combinePermissions(
+  PermissionFlagsBits.SendMessages,
+  PermissionFlagsBits.CreatePublicThreads,
+  PermissionFlagsBits.CreatePrivateThreads,
+  PermissionFlagsBits.SendMessagesInThreads,
+  PermissionFlagsBits.AddReactions,
+);
+
+function findManagedRole(roles: Iterable<Role>, roleName: string): Role | undefined {
+  return [...roles].find((role) => role.name === roleName || role.name === `@${roleName}`);
+}
+
+function buildRestrictedOverwrites(guild: Guild, adminRoleId: string, humanRoleId: string): OverwriteResolvable[] {
+  return [
+    {
+      id: guild.roles.everyone.id,
+      type: OverwriteType.Role,
+      deny: PermissionFlagsBits.ViewChannel,
+    },
+    {
+      id: adminRoleId,
+      type: OverwriteType.Role,
+      allow: fullChannelAccess,
+    },
+    {
+      id: humanRoleId,
+      type: OverwriteType.Role,
+      allow: humanReadAccess,
+      deny: humanWriteRestrictions,
+    },
+  ];
 }
 
 export function sanitizeAgentChannelName(agentName: string): string {
@@ -41,43 +95,30 @@ export class ChannelManager {
       return this.staticChannels;
     }
 
-    const worldBotId = this.requireWorldBotUserId();
     const channels = await this.guild.channels.fetch();
     const availableChannels = [...channels.values()].filter((channel): channel is NonNullable<typeof channel> => channel !== null);
 
-    // 1. admin ロール: fetch してから検索、無ければ作成
+    // 1. 管理対象ロール: fetch してから検索、無ければ作成
     const roles = await this.guild.roles.fetch();
-    let adminRole = [...roles.values()].find((role) => role.name === 'admin' || role.name === '@admin');
+    let adminRole = findManagedRole(roles.values(), 'admin');
     if (!adminRole) {
       console.log('Creating missing admin role...');
       adminRole = await this.guild.roles.create({ name: 'admin' });
     }
 
-    const restrictedOverwrites: OverwriteResolvable[] = [
-      {
-        id: this.guild.roles.everyone.id,
-        type: OverwriteType.Role,
-        deny: PermissionFlagsBits.ViewChannel,
-      },
-      {
-        id: worldBotId,
-        type: OverwriteType.Member,
-        allow: combinePermissions(
-          PermissionFlagsBits.ViewChannel,
-          PermissionFlagsBits.SendMessages,
-          PermissionFlagsBits.ReadMessageHistory,
-        ),
-      },
-      {
-        id: adminRole.id,
-        type: OverwriteType.Role,
-        allow: combinePermissions(
-          PermissionFlagsBits.ViewChannel,
-          PermissionFlagsBits.SendMessages,
-          PermissionFlagsBits.ReadMessageHistory,
-        ),
-      },
-    ];
+    let humanRole = findManagedRole(roles.values(), 'human');
+    if (!humanRole) {
+      console.log('Creating missing human role...');
+      humanRole = await this.guild.roles.create({ name: 'human' });
+    }
+
+    let agentRole = findManagedRole(roles.values(), 'agent');
+    if (!agentRole) {
+      console.log('Creating missing agent role...');
+      agentRole = await this.guild.roles.create({ name: 'agent' });
+    }
+
+    const restrictedOverwrites = buildRestrictedOverwrites(this.guild, adminRole.id, humanRole.id);
 
     // 2. agents カテゴリ
     let agentsCategory = availableChannels.find(
@@ -92,32 +133,7 @@ export class ChannelManager {
       });
     }
 
-    // 3. admin カテゴリ
-    let adminCategory = availableChannels.find(
-      (channel) => channel.type === ChannelType.GuildCategory && channel.name === 'admin',
-    );
-    if (!adminCategory) {
-      console.log('Creating missing admin category...');
-      adminCategory = await this.guild.channels.create({
-        name: 'admin',
-        type: ChannelType.GuildCategory,
-        permissionOverwrites: restrictedOverwrites,
-      });
-    }
-
-    // 4. #announcements
-    let announcements = availableChannels.find(
-      (channel) => channel.type === ChannelType.GuildText && channel.name === 'announcements',
-    );
-    if (!announcements) {
-      console.log('Creating missing #announcements channel...');
-      announcements = await this.guild.channels.create({
-        name: 'announcements',
-        type: ChannelType.GuildText,
-      });
-    }
-
-    // 5. #world-log
+    // 3. #world-log
     let worldLog = availableChannels.find(
       (channel) => channel.type === ChannelType.GuildText && channel.name === 'world-log',
     );
@@ -126,32 +142,16 @@ export class ChannelManager {
       worldLog = await this.guild.channels.create({
         name: 'world-log',
         type: ChannelType.GuildText,
-      });
-    }
-
-    // 6. #system-control (admin カテゴリ配下)
-    let systemControl = availableChannels.find(
-      (channel) =>
-        channel.type === ChannelType.GuildText &&
-        channel.name === 'system-control' &&
-        channel.parentId === adminCategory.id,
-    );
-    if (!systemControl) {
-      console.log('Creating missing #system-control channel...');
-      systemControl = await this.guild.channels.create({
-        name: 'system-control',
-        type: ChannelType.GuildText,
-        parent: adminCategory.id,
+        permissionOverwrites: restrictedOverwrites,
       });
     }
 
     this.staticChannels = {
-      announcements_id: announcements.id,
       world_log_id: worldLog.id,
       agents_category_id: agentsCategory.id,
-      admin_category_id: adminCategory.id,
-      system_control_id: systemControl.id,
       admin_role_id: adminRole.id,
+      human_role_id: humanRole.id,
+      agent_role_id: agentRole.id,
     };
 
     return this.staticChannels;
@@ -159,33 +159,14 @@ export class ChannelManager {
 
   async createAgentChannel(agentName: string, discordBotId: string): Promise<string> {
     const staticChannels = await this.ensureStaticChannels();
-    const worldBotPermissions = combinePermissions(
-      PermissionFlagsBits.ViewChannel,
-      PermissionFlagsBits.SendMessages,
-      PermissionFlagsBits.ReadMessageHistory,
-    );
     const permissionOverwrites: OverwriteResolvable[] = [
-      {
-        id: this.guild.roles.everyone.id,
-        type: OverwriteType.Role,
-        deny: PermissionFlagsBits.ViewChannel,
-      },
-      {
-        id: this.requireWorldBotUserId(),
-        type: OverwriteType.Member,
-        allow: worldBotPermissions,
-      },
-      {
-        id: staticChannels.admin_role_id,
-        type: OverwriteType.Role,
-        allow: worldBotPermissions,
-      },
+      ...buildRestrictedOverwrites(this.guild, staticChannels.admin_role_id, staticChannels.human_role_id),
     ];
 
     permissionOverwrites.push({
       id: discordBotId,
       type: OverwriteType.Member,
-      allow: worldBotPermissions,
+      allow: memberChannelAccess,
     });
 
     const channel = await this.guild.channels.create({
@@ -223,14 +204,4 @@ export class ChannelManager {
 
     return channel;
   }
-
-  private requireWorldBotUserId(): string {
-    const userId = this.guild.client.user?.id;
-    if (!userId) {
-      throw new Error('Discord client is not ready.');
-    }
-
-    return userId;
-  }
-
 }

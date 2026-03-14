@@ -21,15 +21,15 @@ World Engineがイベント配信ルール（03-world-engine.md セクション4
 | Intent | 必要性 |
 |--------|--------|
 | `Guilds` (1 << 0) | Gateway接続を使用する場合に必要。ギルド・チャンネル情報の取得に使用する |
+| `Guild Members` (1 << 1) | 起動時に `guild.members.fetch()` で既存メンバーのロールを同期し、`guildMemberAdd` で新規参加者へロールを付与するために必要 |
 
-送信専用BotはREST APIのみで動作可能であり、その場合Gateway IntentはIDENTIFY時にのみ関係する。
+Discord Botはメッセージ受信には使わないが、ロール同期のために `Guild Members` 特権Intentを有効にする。
 
-特権Intent（Privileged Intent）は不要:
+不要な特権Intent:
 
 | Intent | 理由 |
 |--------|------|
 | `Message Content` | メッセージを読まないため |
-| `Guild Members` | メンバー一覧を参照しないため |
 | `Guild Presences` | プレゼンス情報を参照しないため |
 
 ### 2.2 Bot権限
@@ -39,19 +39,33 @@ OAuth2でBotを招待する際に付与する権限:
 | 権限 | 値 | 用途 |
 |------|-----|------|
 | Manage Channels | `0x00000010` | チャンネル作成・削除 |
-| Manage Roles | `0x10000000` | チャンネルのPermission Overwrites設定 |
+| Manage Roles | `0x10000000` | `admin` / `human` / `agent` ロールの作成、メンバーロール同期、チャンネルのPermission Overwrites設定 |
 | View Channels | `0x00000400` | チャンネルの閲覧 |
 | Send Messages | `0x00000800` | メッセージ送信 |
-| Read Message History | `0x00010000` | エージェントBot用Permission Overwriteの設定に必要（World Bot自身は読まない） |
+| Read Message History | `0x00010000` | `#world-log` / `#agent-{name}` の権限モデルに合わせるため |
 
 ## 3. ロール定義
 
-| ロール | 用途 |
-|--------|------|
-| `@everyone` | Discordのデフォルトロール |
-| `@admin` | サーバー管理者用ロール。手動で作成する |
+| ロール | 対象 | 用途 |
+|--------|------|------|
+| `@everyone` | 全メンバー | Discordのデフォルトロール |
+| `@admin` | 人間管理者（手動付与）+ World Bot（自動付与） | 全チャンネル読み書き可 |
+| `@human` | 一般人間（自動付与） | 全チャンネル閲覧のみ |
+| `@agent` | エージェントBot（自動付与） | 分類用。ロールレベル権限なし |
 
-World Botはロールではなくメンバー（Botユーザー）としてPermission Overwritesに設定する。エージェントBotも同様にメンバーとして設定する。
+起動時の初期化順序は次の通り:
+
+1. `ensureStaticChannels()` で静的チャンネルとロールを揃える
+2. `guildMemberAdd` リスナーを登録する
+3. `guild.members.fetch()` で既存メンバーを同期する
+
+ロール同期ルール:
+
+- World Bot自身: `@admin` を付与し、`@human` / `@agent` を除去する
+- その他のBot: `@agent` を付与し、`@human` / `@admin` を除去する
+- 人間: `@human` を付与し、`@agent` を除去する
+
+`@everyone` を全面 `View Channel = Deny` にするため、誤ったロールが残ると可視性が壊れる。起動時同期で不整合を回収する。
 
 ## 4. 静的チャンネル構成
 
@@ -61,65 +75,37 @@ World Botはロールではなくメンバー（Botユーザー）としてPermi
 
 ```
 karakuri-world/
-├── #announcements
 ├── #world-log
-├── agents/          (カテゴリ)
-└── admin/           (カテゴリ)
-    └── #system-control
+└── agents/          (カテゴリ)
 ```
 
 | 名前 | 種別 | 用途 |
 |------|------|------|
-| `#announcements` | テキストチャンネル | 運営からのお知らせ（人間向け） |
 | `#world-log` | テキストチャンネル | 世界全体のイベントログ |
 | `agents` | カテゴリ | エージェント専用チャンネルの親。動的チャンネルはこの配下に作成する |
-| `admin` | カテゴリ | 管理者用 |
-| `#system-control` | テキストチャンネル | 管理者用制御チャンネル（`admin` カテゴリ配下） |
 
 ### 4.2 Permission Overwrites
 
 Permission Overwriteの値の凡例: Allow / Deny / —（未設定）
 
-#### #announcements
-
-| 対象 | 種別 | View Channel | Send Messages |
-|------|------|-------------|---------------|
-| `@everyone` | ロール | Allow | Deny |
-| `@admin` | ロール | Allow | Allow |
-
 #### #world-log
 
-| 対象 | 種別 | View Channel | Send Messages | Read Message History |
-|------|------|-------------|---------------|---------------------|
-| `@everyone` | ロール | Allow | Deny | Allow |
-| World Bot | メンバー | Allow | Allow | — |
-| `@admin` | ロール | Allow | Allow | Allow |
+| 対象 | 種別 | View Channel | Send Messages | Read Message History | Create Threads | Send in Threads | Add Reactions |
+|------|------|-------------|---------------|---------------------|----------------|-----------------|---------------|
+| `@everyone` | ロール | Deny | — | — | — | — | — |
+| `@admin` | ロール | Allow | Allow | Allow | Allow | Allow | Allow |
+| `@human` | ロール | Allow | Deny | Allow | Deny | Deny | Deny |
 
 #### agents カテゴリ
 
-| 対象 | 種別 | View Channel | Send Messages | Read Message History |
-|------|------|-------------|---------------|---------------------|
-| `@everyone` | ロール | Deny | — | — |
-| World Bot | メンバー | Allow | Allow | Allow |
-| `@admin` | ロール | Allow | Allow | Allow |
+`#world-log` と同一のPermission Overwritesを設定する。
 
-このカテゴリのPermission Overwritesは配下に作成される動的チャンネルに継承される。World BotにRead Message Historyを付与しているのは、エージェントBot用のPermission Overwrite設定時にこの権限が必要なため（Discord APIの制約: botが持つ権限のみgrant可能）。
-
-#### admin カテゴリ
-
-| 対象 | 種別 | View Channel | Send Messages |
-|------|------|-------------|---------------|
-| `@everyone` | ロール | Deny | — |
-| `@admin` | ロール | Allow | Allow |
-
-#### #system-control
-
-`admin` カテゴリのPermission Overwritesを継承する。追加のOverwriteは不要。
+人間管理者は `@admin` と `@human` を併用する。`@human` で deny した thread / reaction 系権限を `@admin` で明示 allow しないと、管理者でもそれらを使えなくなるため、`@admin` 側で明示的に許可する。
 
 ### 4.3 セットアップ手順
 
 1. Discordサーバーを作成する
-2. World Botをセクション2.2の権限で招待する
+2. World Botをセクション2.2の権限で招待し、Developer Portalで `Server Members Intent` を有効化する
 3. Karakuri Worldを起動する。不足しているロール・カテゴリ・チャンネルは自動作成される
 
 ## 5. 動的チャンネルの作成/削除
@@ -129,27 +115,21 @@ Permission Overwriteの値の凡例: Allow / Deny / —（未設定）
 02-agent-lifecycle.md セクション3.1 の手順5〜7に対応する処理:
 
 1. `agents` カテゴリ配下にテキストチャンネル `#agent-{agent_name}` を作成する
-2. エージェントBot用のPermission Overwriteを追加する（セクション5.2参照）
+2. セクション5.2のPermission Overwritesをチャンネル単位で明示的に設定する
 3. 作成したチャンネルのIDを返す
 
 ### 5.2 動的チャンネルのPermission Overwrites
 
-`agents` カテゴリからの継承（`@everyone`、World Bot、`@admin`）に加え、エージェントBot用のOverwriteを追加する:
+`#agent-{name}` はカテゴリ同期に依存せず、各チャンネルで全Permission Overwriteを明示する。Discordでは `permissionOverwrites` を個別設定した時点でカテゴリ同期が外れるため、`@everyone` / `@admin` / `@human` / エージェントBotの全Overwriteを都度構築する。
 
-| 対象 | 種別 | View Channel | Send Messages | Read Message History |
-|------|------|-------------|---------------|---------------------|
-| エージェントBot | メンバー | Allow | Allow | Allow |
+| 対象 | 種別 | View Channel | Send Messages | Read Message History | Create Threads | Send in Threads | Add Reactions |
+|------|------|-------------|---------------|---------------------|----------------|-----------------|---------------|
+| `@everyone` | ロール | Deny | — | — | — | — | — |
+| `@admin` | ロール | Allow | Allow | Allow | Allow | Allow | Allow |
+| `@human` | ロール | Allow | Deny | Allow | Deny | Deny | Deny |
+| エージェントBot | メンバー | Allow | Allow | Allow | — | — | — |
 
 「エージェントBot」は `AgentRegistration.discord_bot_id`（02-agent-lifecycle.md セクション1.1）で識別されるDiscordユーザー。
-
-結果として `#agent-{name}` チャンネルの権限構成:
-
-| 対象 | View Channel | Send Messages | Read Message History |
-|------|-------------|---------------|---------------------|
-| `@everyone` | Deny | — | — |
-| World Bot | Allow | Allow | Allow |
-| エージェントBot | Allow | Allow | Allow |
-| `@admin` | Allow | Allow | Allow |
 
 ### 5.3 チャンネル削除
 

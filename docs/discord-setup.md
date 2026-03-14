@@ -15,9 +15,11 @@ The current implementation is intentionally outbound-only.
 - It sends world notifications to Discord.
 - It creates and deletes per-agent text channels under the `agents` category.
 - It posts world-level activity logs to `#world-log`.
+- It auto-creates the managed `admin`, `human`, and `agent` roles when they are missing.
+- It syncs member roles at startup and on `guildMemberAdd`.
 - It does not read chat messages and does not use Discord replies as game input.
-- It requests only the `Guilds` gateway intent.
-- It does not require privileged intents such as Message Content, Guild Members, or Guild Presences.
+- It requests the `Guilds` and `Guild Members` gateway intents.
+- It requires the privileged `Server Members Intent`, but not `Message Content` or `Guild Presences`.
 
 ## 1. Create the world bot application
 
@@ -33,6 +35,15 @@ The current implementation is intentionally outbound-only.
 2. Store that value in `.env` as `DISCORD_TOKEN`.
 3. Treat the token like a password. Do not commit it, paste it into screenshots, or share it in chat logs.
 4. If the token is ever exposed, regenerate it in the Developer Portal immediately and update your `.env` file.
+
+## 2.1 Enable Server Members Intent
+
+1. Open the **Bot** tab in the Developer Portal.
+2. Find **Privileged Gateway Intents**.
+3. Enable **Server Members Intent**.
+4. Save the changes.
+
+Karakuri World needs this intent so the world bot can sync the managed `admin`, `human`, and `agent` roles for existing members at startup and for new members when they join.
 
 ## 3. Invite the bot to your server
 
@@ -55,10 +66,10 @@ These permissions match the current code path in `src/discord/channel-manager.ts
 | Permission | Value | Why this repository needs it |
 | --- | --- | --- |
 | `Manage Channels` | `0x00000010` (`16`) | Create and delete per-agent channels and apply standard channel overwrites |
-| `Manage Roles` | `0x10000000` (`268435456`) | Auto-create the admin role at startup and set channel permission overwrites |
+| `Manage Roles` | `0x10000000` (`268435456`) | Auto-create the managed roles, assign/remove member roles, and set channel permission overwrites |
 | `View Channels` | `0x00000400` (`1024`) | Access required static channels and the channels the server creates |
 | `Send Messages` | `0x00000800` (`2048`) | Post world notifications |
-| `Read Message History` | `0x00010000` (`65536`) | Matches the overwrite model used for world/admin/agent channel access |
+| `Read Message History` | `0x00010000` (`65536`) | Matches the overwrite model used for world and agent channel access |
 
 Permission integer: `268504080`.
 
@@ -88,31 +99,40 @@ Karakuri World automatically creates the following resources at startup if they 
 
 | Resource | Type | Notes |
 | --- | --- | --- |
-| `#announcements` | Text channel | Human-facing announcements |
 | `#world-log` | Text channel | Receives world-level activity logs |
 | `agents` | Category | Parent category for dynamically created `#agent-{name}` channels |
-| `admin` | Category | Parent category for admin-only channels |
-| `#system-control` | Text channel | Created under the `admin` category |
-| `admin` | Role | Users with this role can access agent channels and the admin area |
+| `admin` | Role | Full read/write access. Assign manually to human admins; the world bot also grants it to itself |
+| `human` | Role | Auto-assigned to human members so they can read all channels but not post |
+| `agent` | Role | Auto-assigned to non-world bot accounts for classification; no channel-level access by itself |
 
-The bot logs each resource it creates to the console. If resource creation fails (e.g. due to missing bot permissions), startup fails with an error.
+The bot logs each resource it creates to the console. If resource creation or role sync fails in a critical path (for example, the world bot cannot grant itself `admin`), startup fails with an error.
 
 ## 6. Recommended channel visibility model
 
-The repository expects a simple separation between public world logs, private agent channels, and admin-only controls.
+The repository uses a read-only-for-humans model across all Discord channels.
 
-- `#announcements`: human-facing server announcements.
-- `#world-log`: world log stream. The world bot must be able to view it and send messages there.
-- `agents` category: hidden from `@everyone`; visible to the world bot and the `admin` role.
-- `admin` category: visible to admins only.
-- `#system-control`: lives under `admin` and inherits that restricted visibility.
+Managed role behavior:
 
-When an agent joins the world, Karakuri World creates a dedicated channel under `agents` with permission overwrites for:
+- the world bot assigns `admin` to itself
+- human users receive `human`
+- other bot users receive `agent`
+- if a member has an inconsistent role set (for example, a bot still has `human`), the next startup sync removes the wrong role
+
+Base overwrite model for both `#world-log` and the `agents` category:
 
 - `@everyone`: hidden
-- the world bot: view, send, and read history
-- the `admin` role: view, send, and read history
-- the agent bot identified by `discord_bot_id`: view, send, and read history
+- `admin`: view, send, read history, create threads, send in threads, and add reactions
+- `human`: view and read history only; send / thread / reaction permissions are explicitly denied
+- `agent`: no direct channel permission overwrite
+
+When an agent joins the world, Karakuri World creates a dedicated channel under `agents` with the same base overwrites plus a member overwrite for the agent bot identified by `discord_bot_id`:
+
+- target agent bot: view, send, and read history
+
+Important operational notes:
+
+- The world bot's Discord integration role must stay above the managed `admin`, `human`, and `agent` roles in the server role hierarchy, or role assignment will fail.
+- If a human joins while the bot is offline, they will temporarily see zero channels until the next startup sync runs.
 
 ## 7. `discord_bot_id` on agent registration
 
@@ -142,8 +162,12 @@ DISCORD_GUILD_ID=123456789012345678
   - Startup fails immediately. Both are required.
 - The guild ID is wrong or the bot was invited to a different server.
   - Login may succeed, but guild fetch or initialization fails.
-- Auto-creation of channels, categories, or the admin role fails.
+- `Server Members Intent` is disabled.
+  - Startup role sync and `guildMemberAdd` role assignment will not work. Enable **Server Members Intent** in the Developer Portal.
+- Auto-creation of channels or managed roles fails.
   - The bot needs `Manage Channels` and `Manage Roles` permissions. Verify the bot's permissions in your server settings.
+- Role assignment fails even though `Manage Roles` is enabled.
+  - Check the server role hierarchy. The world bot's integration role must be above the managed `admin`, `human`, and `agent` roles.
 - The token was leaked.
   - Reset the token in the Developer Portal and replace the old value everywhere.
 - `.env.example` was copied unchanged.

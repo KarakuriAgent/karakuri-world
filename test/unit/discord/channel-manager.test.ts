@@ -3,9 +3,44 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ChannelManager } from '../../../src/discord/channel-manager.js';
 
+function combinePermissions(...permissions: bigint[]): bigint {
+  return permissions.reduce((combined, permission) => combined | permission, 0n);
+}
+
+const adminChannelAccess = combinePermissions(
+  PermissionFlagsBits.ViewChannel,
+  PermissionFlagsBits.SendMessages,
+  PermissionFlagsBits.ReadMessageHistory,
+  PermissionFlagsBits.CreatePublicThreads,
+  PermissionFlagsBits.CreatePrivateThreads,
+  PermissionFlagsBits.SendMessagesInThreads,
+  PermissionFlagsBits.AddReactions,
+);
+
+const humanReadAccess = combinePermissions(
+  PermissionFlagsBits.ViewChannel,
+  PermissionFlagsBits.ReadMessageHistory,
+);
+
+const humanWriteRestrictions = combinePermissions(
+  PermissionFlagsBits.SendMessages,
+  PermissionFlagsBits.CreatePublicThreads,
+  PermissionFlagsBits.CreatePrivateThreads,
+  PermissionFlagsBits.SendMessagesInThreads,
+  PermissionFlagsBits.AddReactions,
+);
+
+const agentChannelAccess = combinePermissions(
+  PermissionFlagsBits.ViewChannel,
+  PermissionFlagsBits.SendMessages,
+  PermissionFlagsBits.ReadMessageHistory,
+);
+
 function createMockGuild(options?: {
   omitChannels?: string[];
   omitAdminRole?: boolean;
+  omitHumanRole?: boolean;
+  omitAgentRole?: boolean;
 }): {
   guild: Guild;
   createdChannelOptions: Array<Record<string, unknown>>;
@@ -15,35 +50,28 @@ function createMockGuild(options?: {
   const omitChannels = new Set(options?.omitChannels ?? []);
 
   const channels = new Map<string, Record<string, unknown>>();
-  if (!omitChannels.has('announcements')) {
-    channels.set('announcements', { id: 'announcements', name: 'announcements', type: ChannelType.GuildText, parentId: null });
-  }
   if (!omitChannels.has('world-log')) {
     channels.set('world-log', { id: 'world-log', name: 'world-log', type: ChannelType.GuildText, parentId: null });
   }
   if (!omitChannels.has('agents')) {
     channels.set('agents', { id: 'agents', name: 'agents', type: ChannelType.GuildCategory, parentId: null });
   }
-  if (!omitChannels.has('admin')) {
-    channels.set('admin', { id: 'admin', name: 'admin', type: ChannelType.GuildCategory, parentId: null });
-  }
-  if (!omitChannels.has('system-control')) {
-    channels.set('system-control', {
-      id: 'system-control',
-      name: 'system-control',
-      type: ChannelType.GuildText,
-      parentId: 'admin',
-    });
-  }
 
   const rolesMap = new Map<string, Record<string, unknown>>();
   if (!options?.omitAdminRole) {
     rolesMap.set('admin-role', { id: 'admin-role', name: 'admin' });
   }
+  if (!options?.omitHumanRole) {
+    rolesMap.set('human-role', { id: 'human-role', name: 'human' });
+  }
+  if (!options?.omitAgentRole) {
+    rolesMap.set('agent-role', { id: 'agent-role', name: 'agent' });
+  }
 
   const createdChannelOptions: Array<Record<string, unknown>> = [];
   const createdRoleOptions: Array<Record<string, unknown>> = [];
   let channelCreateCounter = 0;
+  let roleCreateCounter = 0;
 
   const guild = {
     client: {
@@ -59,7 +87,8 @@ function createMockGuild(options?: {
       fetch: vi.fn(async () => rolesMap),
       create: vi.fn(async (opts: Record<string, unknown>) => {
         createdRoleOptions.push(opts);
-        const role = { id: 'created-admin-role', name: opts.name };
+        roleCreateCounter++;
+        const role = { id: `created-role-${roleCreateCounter}`, name: opts.name };
         rolesMap.set(role.id, role);
         return role;
       }),
@@ -108,32 +137,30 @@ describe('ChannelManager', () => {
     });
 
     const permissionOverwrites = createdChannelOptions[0].permissionOverwrites as Array<Record<string, unknown>>;
-    const fullAccess =
-      PermissionFlagsBits.ViewChannel | PermissionFlagsBits.SendMessages | PermissionFlagsBits.ReadMessageHistory;
-    expect(permissionOverwrites).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: 'everyone',
-          type: OverwriteType.Role,
-          deny: PermissionFlagsBits.ViewChannel,
-        }),
-        expect.objectContaining({
-          id: 'world-bot',
-          type: OverwriteType.Member,
-          allow: fullAccess,
-        }),
-        expect.objectContaining({
-          id: 'admin-role',
-          type: OverwriteType.Role,
-          allow: fullAccess,
-        }),
-        expect.objectContaining({
-          id: 'agent-bot',
-          type: OverwriteType.Member,
-          allow: fullAccess,
-        }),
-      ]),
-    );
+    expect(permissionOverwrites).toEqual([
+      {
+        id: 'everyone',
+        type: OverwriteType.Role,
+        deny: PermissionFlagsBits.ViewChannel,
+      },
+      {
+        id: 'admin-role',
+        type: OverwriteType.Role,
+        allow: adminChannelAccess,
+      },
+      {
+        id: 'human-role',
+        type: OverwriteType.Role,
+        allow: humanReadAccess,
+        deny: humanWriteRestrictions,
+      },
+      {
+        id: 'agent-bot',
+        type: OverwriteType.Member,
+        allow: agentChannelAccess,
+      },
+    ]);
+    expect(permissionOverwrites).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: 'world-bot' })]));
   });
 
   it('does not create anything when all resources exist', async () => {
@@ -145,56 +172,140 @@ describe('ChannelManager', () => {
     expect(createdChannelOptions).toHaveLength(0);
     expect(createdRoleOptions).toHaveLength(0);
     expect(result).toEqual({
-      announcements_id: 'announcements',
       world_log_id: 'world-log',
       agents_category_id: 'agents',
-      admin_category_id: 'admin',
-      system_control_id: 'system-control',
       admin_role_id: 'admin-role',
+      human_role_id: 'human-role',
+      agent_role_id: 'agent-role',
     });
   });
 
   it('auto-creates all missing resources', async () => {
     const { guild, createdChannelOptions, createdRoleOptions } = createMockGuild({
-      omitChannels: ['announcements', 'world-log', 'agents', 'admin', 'system-control'],
+      omitChannels: ['world-log', 'agents'],
       omitAdminRole: true,
+      omitHumanRole: true,
+      omitAgentRole: true,
     });
     const manager = new ChannelManager(guild);
 
     const result = await manager.ensureStaticChannels();
 
-    expect(createdRoleOptions).toHaveLength(1);
-    expect(createdRoleOptions[0]).toMatchObject({ name: 'admin' });
+    expect(createdRoleOptions).toHaveLength(3);
+    expect(createdRoleOptions.map((options) => options.name)).toEqual(['admin', 'human', 'agent']);
 
-    // 4 channels + 1 system-control = 4 channel creates (agents cat, admin cat, announcements, world-log, system-control)
-    expect(createdChannelOptions).toHaveLength(5);
-    expect(createdChannelOptions.map((o) => o.name)).toEqual([
-      'agents',
-      'admin',
-      'announcements',
-      'world-log',
-      'system-control',
-    ]);
+    expect(createdChannelOptions).toHaveLength(2);
+    expect(createdChannelOptions.map((options) => options.name)).toEqual(['agents', 'world-log']);
 
-    expect(result.admin_role_id).toBe('created-admin-role');
-    expect(result.agents_category_id).toBe('created-channel-1');
-    expect(result.admin_category_id).toBe('created-channel-2');
-    expect(result.announcements_id).toBe('created-channel-3');
-    expect(result.world_log_id).toBe('created-channel-4');
-    expect(result.system_control_id).toBe('created-channel-5');
+    expect(result).toEqual({
+      world_log_id: 'created-channel-2',
+      agents_category_id: 'created-channel-1',
+      admin_role_id: 'created-role-1',
+      human_role_id: 'created-role-2',
+      agent_role_id: 'created-role-3',
+    });
   });
 
-  it('creates #system-control under newly created admin category', async () => {
+  it('creates agents category with restricted permission overwrites', async () => {
     const { guild, createdChannelOptions } = createMockGuild({
-      omitChannels: ['admin', 'system-control'],
+      omitChannels: ['agents'],
     });
     const manager = new ChannelManager(guild);
 
     await manager.ensureStaticChannels();
 
-    const systemControlCreate = createdChannelOptions.find((o) => o.name === 'system-control');
-    expect(systemControlCreate).toBeDefined();
-    // system-control should reference the newly created admin category's id (created-channel-1)
-    expect(systemControlCreate!.parent).toBe('created-channel-1');
+    const agentsCategoryCreate = createdChannelOptions.find((options) => options.name === 'agents');
+    expect(agentsCategoryCreate).toBeDefined();
+    expect(agentsCategoryCreate).toMatchObject({
+      name: 'agents',
+      type: ChannelType.GuildCategory,
+      permissionOverwrites: [
+        {
+          id: 'everyone',
+          type: OverwriteType.Role,
+          deny: PermissionFlagsBits.ViewChannel,
+        },
+        {
+          id: 'admin-role',
+          type: OverwriteType.Role,
+          allow: adminChannelAccess,
+        },
+        {
+          id: 'human-role',
+          type: OverwriteType.Role,
+          allow: humanReadAccess,
+          deny: humanWriteRestrictions,
+        },
+      ],
+    });
+  });
+
+  it('creates #world-log with restricted permission overwrites', async () => {
+    const { guild, createdChannelOptions } = createMockGuild({
+      omitChannels: ['world-log'],
+    });
+    const manager = new ChannelManager(guild);
+
+    await manager.ensureStaticChannels();
+
+    const worldLogCreate = createdChannelOptions.find((options) => options.name === 'world-log');
+    expect(worldLogCreate).toBeDefined();
+    expect(worldLogCreate).toMatchObject({
+      name: 'world-log',
+      type: ChannelType.GuildText,
+      permissionOverwrites: [
+        {
+          id: 'everyone',
+          type: OverwriteType.Role,
+          deny: PermissionFlagsBits.ViewChannel,
+        },
+        {
+          id: 'admin-role',
+          type: OverwriteType.Role,
+          allow: adminChannelAccess,
+        },
+        {
+          id: 'human-role',
+          type: OverwriteType.Role,
+          allow: humanReadAccess,
+          deny: humanWriteRestrictions,
+        },
+      ],
+    });
+  });
+
+  it('denies send, thread, and reaction permissions to the human role', async () => {
+    const { guild, createdChannelOptions } = createMockGuild({
+      omitChannels: ['world-log'],
+    });
+    const manager = new ChannelManager(guild);
+
+    await manager.ensureStaticChannels();
+
+    const worldLogCreate = createdChannelOptions.find((options) => options.name === 'world-log');
+    const permissionOverwrites = worldLogCreate?.permissionOverwrites as Array<Record<string, unknown>>;
+    const humanOverwrite = permissionOverwrites.find((overwrite) => overwrite.id === 'human-role');
+
+    expect(humanOverwrite).toMatchObject({
+      allow: humanReadAccess,
+      deny: humanWriteRestrictions,
+    });
+  });
+
+  it('allows send, thread, and reaction permissions to the admin role', async () => {
+    const { guild, createdChannelOptions } = createMockGuild({
+      omitChannels: ['world-log'],
+    });
+    const manager = new ChannelManager(guild);
+
+    await manager.ensureStaticChannels();
+
+    const worldLogCreate = createdChannelOptions.find((options) => options.name === 'world-log');
+    const permissionOverwrites = worldLogCreate?.permissionOverwrites as Array<Record<string, unknown>>;
+    const adminOverwrite = permissionOverwrites.find((overwrite) => overwrite.id === 'admin-role');
+
+    expect(adminOverwrite).toMatchObject({
+      allow: adminChannelAccess,
+    });
   });
 });
