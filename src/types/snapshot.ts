@@ -1,6 +1,6 @@
 import type { AgentState } from './agent.js';
 import type { ConversationClosureReason, ConversationStatus } from './conversation.js';
-import type { NodeId } from './data-model.js';
+import type { MapConfig, NodeId, WorldConfig } from './data-model.js';
 import type { ServerEventChoiceConfig } from './server-event.js';
 
 export interface AgentSnapshot {
@@ -38,14 +38,8 @@ export interface ServerEventSnapshot {
 }
 
 export interface WorldSnapshot {
-  world: {
-    name: string;
-    description: string;
-  };
-  map: {
-    rows: number;
-    cols: number;
-  };
+  world: WorldConfig;
+  map: MapConfig;
   agents: AgentSnapshot[];
   conversations: ConversationSnapshot[];
   server_events: ServerEventSnapshot[];

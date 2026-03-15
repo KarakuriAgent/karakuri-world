@@ -6,12 +6,12 @@ export function createTestMapConfig(): MapConfig {
     cols: 5,
     nodes: {
       '1-2': { type: 'npc', label: 'Gatekeeper', npc_id: 'npc-gatekeeper' },
-      '1-3': { type: 'wall' },
-      '1-4': { type: 'wall' },
-      '1-5': { type: 'wall' },
-      '2-3': { type: 'wall' },
+      '1-3': { type: 'wall', building_id: 'building-workshop' },
+      '1-4': { type: 'wall', building_id: 'building-workshop' },
+      '1-5': { type: 'wall', building_id: 'building-workshop' },
+      '2-3': { type: 'wall', building_id: 'building-workshop' },
       '2-4': { type: 'building_interior', label: 'Workshop Interior', building_id: 'building-workshop' },
-      '2-5': { type: 'wall' },
+      '2-5': { type: 'wall', building_id: 'building-workshop' },
       '3-4': { type: 'door', label: 'Workshop Door', building_id: 'building-workshop' },
     },
     buildings: [

@@ -527,7 +527,7 @@ interface FireServerEventResponse {
 GET /api/snapshot
 ```
 
-認証: なし（公開API）。
+認証: Admin（1.2）。
 
 世界の現在状態をスナップショットとして返す。WebSocket接続前の初期データ取得にも使用できる。
 
@@ -539,7 +539,7 @@ GET /api/snapshot
 GET /ws
 ```
 
-認証: なし。
+認証: Admin（1.2）。WebSocket接続確立前のHTTPハンドシェイク時に `X-Admin-Key` ヘッダーで認証する。
 
 WebSocket接続を確立する。接続確立後、サーバーは `WorldSnapshot` を送信し、以降はイベントをリアルタイムで配信する。
 
@@ -593,5 +593,9 @@ WebSocket接続を確立する。接続確立後、サーバーは `WorldSnapsho
 | GET | /api/agents/perception | Agent | ✅ | 知覚情報取得 |
 | GET | /api/agents/map | Agent | ✅ | マップ全体取得 |
 | GET | /api/agents/world-agents | Agent | ✅ | 参加中エージェント一覧 |
-| GET | /api/snapshot | なし | - | 世界スナップショット |
-| GET | /ws | なし | - | WebSocket接続 |
+| GET | /api/admin/config | Admin | - | 設定取得（12-map-editor.md） |
+| PUT | /api/admin/config | Admin | - | 設定更新（12-map-editor.md） |
+| POST | /api/admin/config/validate | Admin | - | 設定バリデーション（12-map-editor.md） |
+| GET | /api/snapshot | Admin | - | 世界スナップショット |
+| GET | /ws | Admin | - | WebSocket接続 |
+| GET | /admin/editor | なし | - | マップエディタWeb UI（12-map-editor.md） |

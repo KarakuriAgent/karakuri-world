@@ -1,5 +1,6 @@
 import type { AgentState } from './agent.js';
-import type { NodeConfig, NodeId, NodeType } from './data-model.js';
+import type { NodeConfig, NodeId, NodeType, ServerConfig } from './data-model.js';
+import type { ConfigValidationIssue } from '../config/validation.js';
 import type { WorldSnapshot } from './snapshot.js';
 
 export type ApiErrorCode =
@@ -23,7 +24,8 @@ export type ApiErrorCode =
   | 'invalid_choice'
   | 'conversation_closing'
   | 'not_found'
-  | 'invalid_config';
+  | 'invalid_config'
+  | 'validation_error';
 
 export interface ErrorResponse {
   error: ApiErrorCode;
@@ -73,6 +75,23 @@ export interface AdminRegisterAgentResponse {
 
 export interface AdminAgentsResponse {
   agents: AdminAgentSummary[];
+}
+
+export interface ConfigResponse {
+  config: ServerConfig;
+}
+
+export interface ConfigUpdateRequest {
+  config: unknown;
+}
+
+export interface ConfigValidateResponse {
+  valid: true;
+}
+
+export interface ConfigValidationErrorResponse extends ErrorResponse {
+  error: 'validation_error';
+  details: ConfigValidationIssue[];
 }
 
 export interface JoinResponse {

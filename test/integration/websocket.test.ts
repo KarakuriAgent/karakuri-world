@@ -8,6 +8,9 @@ import WebSocket from 'ws';
 import { createApp } from '../../src/api/app.js';
 import { createTestWorld } from '../helpers/test-world.js';
 
+const ADMIN_KEY = 'admin';
+const CONFIG_PATH = './config/example.yaml';
+
 async function waitForCondition(predicate: () => boolean): Promise<void> {
   const startedAt = Date.now();
   while (!predicate()) {
@@ -33,15 +36,11 @@ describe('websocket integration', () => {
     vi.restoreAllMocks();
   });
 
-  it('sends snapshots, broadcasts movement events, and includes movement data after reconnect', async () => {
-    const { engine } = createTestWorld({
-      config: {
-        movement: { duration_ms: 100 },
-        spawn: { nodes: ['3-1'] },
-      },
-    });
+  it('rejects websocket handshakes without the admin key', async () => {
+    const { engine } = createTestWorld();
     const { app, injectWebSocket, websocketManager } = createApp(engine, {
-      adminKey: 'admin',
+      adminKey: ADMIN_KEY,
+      configPath: CONFIG_PATH,
       publicBaseUrl: 'http://localhost:3000',
     });
 
@@ -57,8 +56,63 @@ describe('websocket integration', () => {
     if (!serverInfo) {
       throw new Error('Server failed to start.');
     }
+    const port = serverInfo.port;
 
-    const ws = new WebSocket(`ws://127.0.0.1:${serverInfo.port}/ws`);
+    const statusCode = await new Promise<number>((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+      ws.once('unexpected-response', (_request, response) => {
+        resolve(response.statusCode ?? 0);
+      });
+      ws.once('open', () => {
+        reject(new Error('Expected websocket handshake to be rejected.'));
+      });
+      ws.once('error', () => {});
+    });
+
+    expect(statusCode).toBe(401);
+
+    websocketManager.dispose();
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  });
+
+  it('sends snapshots, broadcasts movement events, and includes movement data after reconnect', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        movement: { duration_ms: 100 },
+        spawn: { nodes: ['3-1'] },
+      },
+    });
+    const { app, injectWebSocket, websocketManager } = createApp(engine, {
+      adminKey: ADMIN_KEY,
+      configPath: CONFIG_PATH,
+      publicBaseUrl: 'http://localhost:3000',
+    });
+
+    let serverInfo: AddressInfo | undefined;
+    const server = serve({ fetch: app.fetch, port: 0 }, (info) => {
+      serverInfo = info;
+    });
+    injectWebSocket(server);
+
+    if (!serverInfo) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    if (!serverInfo) {
+      throw new Error('Server failed to start.');
+    }
+    const port = serverInfo.port;
+
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
+      headers: { 'X-Admin-Key': ADMIN_KEY },
+    });
     const messages: any[] = [];
     ws.on('message', (raw) => {
       messages.push(JSON.parse(raw.toString()));
@@ -102,7 +156,9 @@ describe('websocket integration', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 120));
 
-    const reconnectingWs = new WebSocket(`ws://127.0.0.1:${serverInfo.port}/ws`);
+    const reconnectingWs = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
+      headers: { 'X-Admin-Key': ADMIN_KEY },
+    });
     const reconnectMessages: any[] = [];
     reconnectingWs.on('message', (raw) => {
       reconnectMessages.push(JSON.parse(raw.toString()));

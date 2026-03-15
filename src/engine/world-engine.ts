@@ -87,7 +87,7 @@ export class WorldEngine {
     readonly discordBot: DiscordRuntimeAdapter,
     options: WorldEngineOptions = {},
   ) {
-    this.state = new WorldState(config, options.initialRegistrations);
+    this.state = new WorldState(options.initialRegistrations);
     this.onRegistrationChanged = options.onRegistrationChanged;
     this.timerManager.onFire('movement', (timer) => {
       handleMovementCompleted(this, timer);
@@ -354,14 +354,8 @@ export class WorldEngine {
     const now = Date.now();
 
     return {
-      world: {
-        name: this.config.world.name,
-        description: this.config.world.description,
-      },
-      map: {
-        rows: this.config.map.rows,
-        cols: this.config.map.cols,
-      },
+      world: this.config.world,
+      map: this.config.map,
       agents: this.state.listJoined().map((agent) => {
         const movementTimer = agent.state === 'moving' ? getMovementTimer(this, agent.agent_id) : null;
 

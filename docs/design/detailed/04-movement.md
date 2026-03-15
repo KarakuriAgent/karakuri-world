@@ -122,7 +122,7 @@ Timer 発火:
 }
 ```
 
-`EventBase` のフィールド（`event_id`、`type`、`timestamp`）は省略。
+`EventBase` のフィールド（`event_id`、`type`、`occurred_at`）は省略。
 
 ### 3.3 通知内容
 

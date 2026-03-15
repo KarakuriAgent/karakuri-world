@@ -137,7 +137,7 @@ interface ServerEventSelectError {
 ### 4.3 idle での選択処理
 
 1. `server_event_timeout` タイマーをキャンセル
-2. `server_event_selected` イベントを発行（03-world-engine.md セクション2.2参照。`choice` = リクエストの `choice_id`）
+2. `server_event_selected` イベントを発行（03-world-engine.md セクション2.2参照）
 
 状態遷移なし。Discord通知なし。受諾待ち中（02-agent-lifecycle.md セクション4.4参照）のエージェントが選択した場合も同様であり、受諾待ちは継続する。
 

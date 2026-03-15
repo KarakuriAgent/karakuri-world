@@ -5,6 +5,9 @@ import { createApp } from '../../src/api/app.js';
 import { createTestMapConfig } from '../helpers/test-map.js';
 import { createTestWorld } from '../helpers/test-world.js';
 
+const ADMIN_KEY = 'admin';
+const CONFIG_PATH = './config/example.yaml';
+
 type FetchableApp = {
   fetch: (request: Request) => Response | Promise<Response>;
 };
@@ -66,7 +69,8 @@ describe('movement integration', () => {
       },
     });
     const { app } = createApp(engine, {
-      adminKey: 'admin',
+      adminKey: ADMIN_KEY,
+      configPath: CONFIG_PATH,
       publicBaseUrl: 'http://localhost:3000',
     });
     const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
@@ -89,7 +93,9 @@ describe('movement integration', () => {
       }),
     ]);
 
-    const snapshot = await requestJson(app, '/api/snapshot');
+    const snapshot = await requestJson(app, '/api/snapshot', {
+      headers: { 'X-Admin-Key': ADMIN_KEY },
+    });
     expect(snapshot.response.status).toBe(200);
     expect(snapshot.data.agents).toEqual([
       expect.objectContaining({

@@ -4,6 +4,9 @@ import { Hono } from 'hono';
 import type { WorldEngine } from '../engine/world-engine.js';
 import { WorldError, toErrorResponse } from '../types/api.js';
 import type { ApiEnv } from './context.js';
+import { adminAuth } from './middleware/auth.js';
+import { registerAdminConfigRoutes } from './routes/admin-config.js';
+import { registerAdminEditorRoutes } from './routes/admin-editor.js';
 import { registerAdminRoutes } from './routes/admin.js';
 import { registerAgentActionRoutes } from './routes/agent-actions.js';
 import { registerAgentConversationRoutes } from './routes/agent-conversation.js';
@@ -15,6 +18,7 @@ import { WebSocketManager } from './websocket.js';
 
 export interface AppOptions {
   adminKey: string;
+  configPath: string;
   publicBaseUrl: string;
 }
 
@@ -33,15 +37,18 @@ export function createApp(engine: WorldEngine, options: AppOptions) {
   });
 
   registerAdminRoutes(app, engine, options);
+  registerAdminConfigRoutes(app, { adminKey: options.adminKey, configPath: options.configPath });
+  registerAdminEditorRoutes(app);
   registerAgentLifecycleRoutes(app, engine);
   registerAgentActionRoutes(app, engine);
   registerAgentConversationRoutes(app, engine);
   registerAgentInfoRoutes(app, engine);
   registerAgentServerEventRoutes(app, engine);
-  registerUiRoutes(app, engine);
+  registerUiRoutes(app, engine, { adminKey: options.adminKey });
 
   app.get(
     '/ws',
+    adminAuth(options.adminKey),
     upgradeWebSocket(() => ({
       onOpen: (_event, ws) => {
         websocketManager.handleOpen(ws);

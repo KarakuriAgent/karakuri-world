@@ -4,6 +4,7 @@ import { createApp } from '../../src/api/app.js';
 import { createTestWorld } from '../helpers/test-world.js';
 
 const ADMIN_KEY = 'test-admin-key';
+const CONFIG_PATH = './config/example.yaml';
 const PUBLIC_BASE_URL = 'http://localhost:3000';
 
 type JsonResult = {
@@ -55,7 +56,7 @@ describe('REST API', () => {
 
   it('supports admin registration, lifecycle routes, info routes, and deletion', async () => {
     const { engine } = createTestWorld();
-    const { app } = createApp(engine, { adminKey: ADMIN_KEY, publicBaseUrl: PUBLIC_BASE_URL });
+    const { app } = createApp(engine, { adminKey: ADMIN_KEY, configPath: CONFIG_PATH, publicBaseUrl: PUBLIC_BASE_URL });
 
     const registered = await registerAgent(app, 'alice', 'discord-alice');
     expect(registered.response.status).toBe(201);
@@ -117,7 +118,9 @@ describe('REST API', () => {
     });
     expect(actions.data.actions).toEqual([]);
 
-    const snapshot = await requestJson(app, '/api/snapshot');
+    const snapshot = await requestJson(app, '/api/snapshot', {
+      headers: { 'X-Admin-Key': ADMIN_KEY },
+    });
     expect(snapshot.response.status).toBe(200);
     expect(snapshot.data.agents).toHaveLength(1);
 
@@ -136,7 +139,7 @@ describe('REST API', () => {
 
   it('returns 401, 403, 400, and 409 errors in representative cases', async () => {
     const { engine } = createTestWorld();
-    const { app } = createApp(engine, { adminKey: ADMIN_KEY, publicBaseUrl: PUBLIC_BASE_URL });
+    const { app } = createApp(engine, { adminKey: ADMIN_KEY, configPath: CONFIG_PATH, publicBaseUrl: PUBLIC_BASE_URL });
     const registered = await registerAgent(app, 'alice');
     const invalidAgentName = await registerAgent(app, 'Alice');
 
@@ -146,6 +149,10 @@ describe('REST API', () => {
     const unauthorized = await requestJson(app, '/api/agents/perception');
     expect(unauthorized.response.status).toBe(401);
     expect(unauthorized.data.error).toBe('unauthorized');
+
+    const snapshotUnauthorized = await requestJson(app, '/api/snapshot');
+    expect(snapshotUnauthorized.response.status).toBe(401);
+    expect(snapshotUnauthorized.data.error).toBe('unauthorized');
 
     const notJoined = await requestJson(app, '/api/agents/perception', {
       headers: { Authorization: `Bearer ${registered.data.api_key}` },
@@ -198,7 +205,7 @@ describe('REST API', () => {
 
   it('wires action, conversation, and server event endpoints', async () => {
     const { engine } = createTestWorld();
-    const { app } = createApp(engine, { adminKey: ADMIN_KEY, publicBaseUrl: PUBLIC_BASE_URL });
+    const { app } = createApp(engine, { adminKey: ADMIN_KEY, configPath: CONFIG_PATH, publicBaseUrl: PUBLIC_BASE_URL });
 
     const alice = await registerAgent(app, 'alice');
     const bob = await registerAgent(app, 'bob');

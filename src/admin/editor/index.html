@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Karakuri World Map Editor</title>
+    <link rel="stylesheet" href="/admin/editor/editor.css" />
+  </head>
+  <body>
+    <div id="auth-dialog" class="auth-dialog">
+      <form id="auth-form" class="auth-card">
+        <h1>Karakuri World Map Editor</h1>
+        <p>管理APIに接続するための管理キーを入力してください。</p>
+        <label>
+          管理キー
+          <input id="admin-key-input" name="admin-key" type="password" autocomplete="off" required />
+        </label>
+        <button type="submit">接続</button>
+      </form>
+    </div>
+
+    <div id="app" class="app hidden">
+      <header class="topbar">
+        <div>
+          <h1>Karakuri World Map Editor</h1>
+          <p id="status-text">設定を読み込み中です...</p>
+        </div>
+        <div class="topbar-actions">
+          <button id="reload-button" type="button">再読込</button>
+          <button id="validate-button" type="button">保存前チェック</button>
+          <button id="save-button" type="button" class="primary">保存</button>
+        </div>
+      </header>
+
+      <main class="layout">
+        <aside class="sidebar">
+          <section class="panel">
+            <h2>タイルパレット</h2>
+            <div id="tile-palette" class="tile-palette"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>建物</h2>
+              <button id="add-building-button" type="button">追加</button>
+            </div>
+            <select id="building-select" size="6" class="entity-list"></select>
+            <div class="panel-actions">
+              <button id="delete-building-button" type="button">削除</button>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>NPC</h2>
+              <button id="add-npc-button" type="button">追加</button>
+            </div>
+            <select id="npc-select" size="6" class="entity-list"></select>
+            <div class="panel-actions">
+              <button id="delete-npc-button" type="button">削除</button>
+            </div>
+          </section>
+        </aside>
+
+        <section class="editor-surface">
+          <div class="canvas-toolbar">
+            <label>
+              セルサイズ
+              <input id="cell-size-input" type="range" min="24" max="80" step="4" value="40" />
+            </label>
+            <span id="selection-summary">ノードを選択してください。</span>
+          </div>
+          <canvas id="grid-canvas" width="800" height="600"></canvas>
+        </section>
+
+        <aside class="inspector">
+          <section class="panel">
+            <h2>ノード</h2>
+            <form id="node-form" class="form-grid">
+              <label>
+                ノードID
+                <input id="node-id-input" type="text" readonly />
+              </label>
+              <label>
+                種別
+                <select id="node-type-select"></select>
+              </label>
+              <label>
+                ラベル
+                <input id="node-label-input" type="text" />
+              </label>
+              <label>
+                建物ID
+                <select id="node-building-select"></select>
+              </label>
+              <label>
+                NPC ID
+                <select id="node-npc-select"></select>
+              </label>
+            </form>
+          </section>
+
+          <section class="panel">
+            <h2>選択中の建物</h2>
+            <form id="building-form" class="form-grid">
+              <label>
+                建物ID
+                <input id="building-id-input" type="text" />
+              </label>
+              <label>
+                名前
+                <input id="building-name-input" type="text" />
+              </label>
+              <label class="full-width">
+                説明
+                <textarea id="building-description-input" rows="3"></textarea>
+              </label>
+            </form>
+            <div class="readonly-list">
+              <div><strong>wall:</strong> <span id="building-wall-nodes"></span></div>
+              <div><strong>interior:</strong> <span id="building-interior-nodes"></span></div>
+              <div><strong>door:</strong> <span id="building-door-nodes"></span></div>
+            </div>
+            <div class="panel-heading">
+              <h3>アクション</h3>
+              <button id="add-building-action-button" type="button">追加</button>
+            </div>
+            <ul id="building-actions-list" class="items-list"></ul>
+          </section>
+
+          <section class="panel">
+            <h2>選択中のNPC</h2>
+            <form id="npc-form" class="form-grid">
+              <label>
+                NPC ID
+                <input id="npc-id-input" type="text" />
+              </label>
+              <label>
+                名前
+                <input id="npc-name-input" type="text" />
+              </label>
+              <label class="full-width">
+                説明
+                <textarea id="npc-description-input" rows="3"></textarea>
+              </label>
+              <label>
+                配置ノード
+                <input id="npc-node-id-input" type="text" readonly />
+              </label>
+            </form>
+            <div class="panel-heading">
+              <h3>アクション</h3>
+              <button id="add-npc-action-button" type="button">追加</button>
+            </div>
+            <ul id="npc-actions-list" class="items-list"></ul>
+          </section>
+
+          <section class="panel">
+            <h2>ワールド設定</h2>
+            <form id="settings-form" class="form-grid">
+              <label>
+                世界名
+                <input id="world-name-input" type="text" />
+              </label>
+              <label>
+                スキル名
+                <input id="world-skill-name-input" type="text" />
+              </label>
+              <label class="full-width">
+                世界説明
+                <textarea id="world-description-input" rows="3"></textarea>
+              </label>
+              <label>
+                行数
+                <input id="map-rows-input" type="number" min="1" />
+              </label>
+              <label>
+                列数
+                <input id="map-cols-input" type="number" min="1" />
+              </label>
+              <label>
+                移動時間(ms)
+                <input id="movement-duration-input" type="number" min="1" />
+              </label>
+              <label>
+                会話最大ターン
+                <input id="conversation-max-turns-input" type="number" min="1" />
+              </label>
+              <label>
+                会話間隔(ms)
+                <input id="conversation-interval-input" type="number" min="1" />
+              </label>
+              <label>
+                受諾タイムアウト(ms)
+                <input id="conversation-accept-timeout-input" type="number" min="1" />
+              </label>
+              <label>
+                ターンタイムアウト(ms)
+                <input id="conversation-turn-timeout-input" type="number" min="1" />
+              </label>
+              <label>
+                知覚範囲
+                <input id="perception-range-input" type="number" min="0" />
+              </label>
+              <label class="full-width">
+                スポーン地点（カンマ区切り）
+                <input id="spawn-nodes-input" type="text" />
+              </label>
+              <label>
+                idle再通知
+                <input id="idle-reminder-enabled-input" type="checkbox" />
+              </label>
+              <label>
+                idle再通知間隔(ms)
+                <input id="idle-reminder-interval-input" type="number" min="1" />
+              </label>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>サーバーイベント</h2>
+              <button id="add-event-button" type="button">追加</button>
+            </div>
+            <select id="server-event-select" size="5" class="entity-list"></select>
+            <form id="server-event-form" class="form-grid">
+              <label>
+                イベントID
+                <input id="server-event-id-input" type="text" />
+              </label>
+              <label>
+                名前
+                <input id="server-event-name-input" type="text" />
+              </label>
+              <label>
+                タイムアウト(ms)
+                <input id="server-event-timeout-input" type="number" min="1" />
+              </label>
+              <label class="full-width">
+                説明
+                <textarea id="server-event-description-input" rows="3"></textarea>
+              </label>
+            </form>
+            <div class="panel-heading">
+              <h3>選択肢</h3>
+              <button id="add-event-choice-button" type="button">追加</button>
+            </div>
+            <ul id="server-event-choices-list" class="items-list"></ul>
+            <div class="panel-actions">
+              <button id="delete-event-button" type="button">削除</button>
+            </div>
+          </section>
+        </aside>
+      </main>
+
+      <section class="validation-panel panel">
+        <div class="panel-heading">
+          <h2>バリデーション結果</h2>
+          <button id="clear-validation-button" type="button">クリア</button>
+        </div>
+        <ul id="validation-results" class="validation-results"></ul>
+      </section>
+    </div>
+
+    <script type="module" src="/admin/editor/editor.js"></script>
+  </body>
+</html>

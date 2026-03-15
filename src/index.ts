@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { getRequestListener } from '@hono/node-server';
 
 import { createApp } from './api/app.js';
-import { loadConfig } from './config/index.js';
+import { loadConfigFromFile } from './config/index.js';
 import { DiscordBot } from './discord/bot.js';
 import { DiscordEventHandler } from './discord/event-handler.js';
 import { WorldEngine } from './engine/world-engine.js';
@@ -61,7 +61,7 @@ export function resolveRuntimeOptions(env: NodeJS.ProcessEnv = process.env): Run
 }
 
 export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
-  const config = await loadConfig(options.configPath);
+  const config = await loadConfigFromFile(options.configPath);
   const agentsFilePath = join(options.dataDir, 'agents.json');
   const initialRegistrations = loadAgents(agentsFilePath);
   const discordBot = await DiscordBot.create({
@@ -75,6 +75,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
   const discordEventHandler = new DiscordEventHandler(engine, discordBot);
   const { app, injectWebSocket, websocketManager } = createApp(engine, {
     adminKey: options.adminKey,
+    configPath: options.configPath,
     publicBaseUrl: options.publicBaseUrl,
   });
   const mcpServerManager = new McpServerManager(engine);
