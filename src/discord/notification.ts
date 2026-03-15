@@ -223,6 +223,10 @@ export function formatWorldLogConversationStarted(initiatorName: string, targetN
   return `${initiatorName} と ${targetName} の会話が始まりました`;
 }
 
+export function formatWorldLogConversationMessage(speakerName: string, message: string): string {
+  return `${speakerName}: 「${message}」`;
+}
+
 export function formatWorldLogConversationEnded(initiatorName: string, targetName: string): string {
   return `${initiatorName} と ${targetName} の会話が終了しました`;
 }

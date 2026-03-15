@@ -457,6 +457,7 @@ server_event_id: {server_event_id}
 | `action_completed` | `{agent_name} が「{action_name}」を実行しました` |
 | `wait_started` | `{agent_name} が{duration_text}の待機を開始しました` |
 | `wait_completed` | `{agent_name} が{duration_text}待機しました` |
-| `conversation_accepted` | `{initiator_name} と {target_name} の会話が始まりました` |
+| `conversation_accepted` | `{initiator_name} と {target_name} の会話が始まりました` の直後に `{initiator_name}: 「{initial_message}」` を投稿 |
+| `conversation_message` | `{speaker_name}: 「{message}」` |
 | `conversation_ended` | `{agent_name_1} と {agent_name_2} の会話が終了しました` |
 | `server_event_fired` | `【サーバーイベント】{event_name}: {description}` |

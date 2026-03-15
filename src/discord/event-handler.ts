@@ -25,6 +25,7 @@ import {
   formatWaitCompletedMessage,
   formatWorldLogAction,
   formatWorldLogActionStarted,
+  formatWorldLogConversationMessage,
   formatWorldLogConversationEnded,
   formatWorldLogMovementStarted,
   formatWorldLogWaitStarted,
@@ -122,6 +123,7 @@ export class DiscordEventHandler {
           this.getAgentName(event.target_agent_id),
           this.getAgentName(event.initiator_agent_id),
           this.getAgentName(event.target_agent_id),
+          event.conversation_id,
         );
         return;
       case 'conversation_rejected':
@@ -132,6 +134,9 @@ export class DiscordEventHandler {
         );
         return;
       case 'conversation_message':
+        await this.bot.sendWorldLog(
+          formatWorldLogConversationMessage(this.getAgentName(event.speaker_agent_id), event.message),
+        );
         return;
       case 'conversation_ended':
         await this.handleConversationEnded(event);
@@ -270,9 +275,17 @@ export class DiscordEventHandler {
     targetName: string,
     initiatorName: string,
     logTargetName: string,
+    conversationId: string,
   ): Promise<void> {
     await this.sendToAgent(initiatorAgentId, formatConversationAcceptedMessage(targetName));
     await this.bot.sendWorldLog(formatWorldLogConversationStarted(initiatorName, logTargetName));
+
+    const conversation = this.engine.state.conversations.get(conversationId);
+    if (conversation) {
+      await this.bot.sendWorldLog(
+        formatWorldLogConversationMessage(initiatorName, conversation.initial_message),
+      );
+    }
   }
 
   private async handleConversationRejected(

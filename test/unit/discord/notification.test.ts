@@ -5,6 +5,7 @@ import {
   formatAgentLeftMessage,
   formatConversationRequestedMessage,
   formatServerEventMessage,
+  formatWorldLogConversationMessage,
   formatWorldLogLeft,
 } from '../../../src/discord/notification.js';
 
@@ -53,5 +54,9 @@ describe('discord notifications', () => {
     expect(serverEvent).toContain('【サーバーイベント】不思議な装置');
     expect(serverEvent).toContain('inspect: 調べる - 装置の仕組みを確認する');
     expect(serverEvent).toContain('server_event_id: server-event-1');
+  });
+
+  it('formats world log conversation messages', () => {
+    expect(formatWorldLogConversationMessage('Alice', 'こんにちは。')).toBe('Alice: 「こんにちは。」');
   });
 });
