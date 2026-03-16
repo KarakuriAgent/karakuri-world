@@ -7,9 +7,9 @@ import { cancelIdleReminder, startIdleReminder } from './idle-reminder.js';
 export const MAX_WAIT_DURATION_MS = 3600000;
 
 export function executeWait(engine: WorldEngine, agentId: string, request: WaitRequest): WaitResponse {
-  const agent = engine.state.getJoined(agentId);
+  const agent = engine.state.getLoggedIn(agentId);
   if (!agent) {
-    throw new WorldError(403, 'not_joined', `Agent is not joined: ${agentId}`);
+    throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
   }
 
   if (agent.state !== 'idle' || agent.pending_conversation_id) {
@@ -53,7 +53,7 @@ export function cancelActiveWait(engine: WorldEngine, agentId: string): WaitTime
   }
 
   engine.timerManager.cancel(timer.timer_id);
-  const agent = engine.state.getJoined(agentId);
+  const agent = engine.state.getLoggedIn(agentId);
   if (agent && agent.state === 'in_action') {
     engine.state.setState(agentId, 'idle');
   }
@@ -62,7 +62,7 @@ export function cancelActiveWait(engine: WorldEngine, agentId: string): WaitTime
 }
 
 export function handleWaitCompleted(engine: WorldEngine, timer: WaitTimer): void {
-  const agent = engine.state.getJoined(timer.agent_id);
+  const agent = engine.state.getLoggedIn(timer.agent_id);
   if (!agent) {
     return;
   }

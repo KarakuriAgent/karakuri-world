@@ -28,7 +28,7 @@ export function handleIdleReminderFired(engine: WorldEngine, timer: IdleReminder
     return;
   }
 
-  const agent = engine.state.getJoined(timer.agent_id);
+  const agent = engine.state.getLoggedIn(timer.agent_id);
   if (!agent) {
     return;
   }

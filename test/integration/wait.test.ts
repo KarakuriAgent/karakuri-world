@@ -31,20 +31,20 @@ describe('wait integration', () => {
   it('executes wait end-to-end: idle → in_action → timer fires → idle', async () => {
     const { engine } = createTestWorld();
     const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
-    await engine.joinAgent(alice.agent_id);
+    await engine.loginAgent(alice.agent_id);
 
     const response = engine.executeWait(alice.agent_id, { duration_ms: 5000 });
     expect(response.completes_at).toBe(Date.now() + 5000);
-    expect(engine.state.getJoined(alice.agent_id)?.state).toBe('in_action');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('in_action');
 
     vi.advanceTimersByTime(5000);
-    expect(engine.state.getJoined(alice.agent_id)?.state).toBe('idle');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('idle');
   });
 
   it('rejects wait when agent is not idle', async () => {
     const { engine } = createTestWorld();
     const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
-    await engine.joinAgent(alice.agent_id);
+    await engine.loginAgent(alice.agent_id);
 
     engine.executeWait(alice.agent_id, { duration_ms: 5000 });
     expect(() => engine.executeWait(alice.agent_id, { duration_ms: 1000 })).toThrow('Agent cannot wait in the current state.');
@@ -57,7 +57,7 @@ describe('wait integration', () => {
     handler.register();
 
     const alice = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
-    await engine.joinAgent(alice.agent_id);
+    await engine.loginAgent(alice.agent_id);
     await vi.waitFor(() => {
       expect(bot.worldLogMessages).toHaveLength(1);
     });
@@ -83,17 +83,17 @@ describe('wait integration', () => {
     });
     const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
     const bob = engine.registerAgent({ agent_name: 'bob', discord_bot_id: 'bot-bob' });
-    await engine.joinAgent(alice.agent_id);
-    await engine.joinAgent(bob.agent_id);
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
 
     engine.executeWait(bob.agent_id, { duration_ms: 5000 });
-    expect(engine.state.getJoined(bob.agent_id)?.state).toBe('in_action');
+    expect(engine.state.getLoggedIn(bob.agent_id)?.state).toBe('in_action');
 
     engine.startConversation(alice.agent_id, { target_agent_id: bob.agent_id, message: 'hello' });
     const conversation = [...engine.state.conversations.list()][0];
     engine.acceptConversation(bob.agent_id, { conversation_id: conversation.conversation_id });
 
-    expect(engine.state.getJoined(bob.agent_id)?.state).toBe('in_conversation');
+    expect(engine.state.getLoggedIn(bob.agent_id)?.state).toBe('in_conversation');
 
     // Advance past the original wait time (5s) but within turn timeout (4s) won't work,
     // so we check that after the wait timer would have fired, state is NOT corrupted.
@@ -116,7 +116,7 @@ describe('wait integration', () => {
     });
 
     const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
-    await engine.joinAgent(alice.agent_id);
+    await engine.loginAgent(alice.agent_id);
     events.length = 0;
 
     engine.executeWait(alice.agent_id, { duration_ms: 3000 });

@@ -17,7 +17,7 @@ describe('server event domain', () => {
   it('fires and selects an event immediately for idle agents', async () => {
     const { engine } = createTestWorld();
     const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
-    await engine.joinAgent(alice.agent_id);
+    await engine.loginAgent(alice.agent_id);
 
     const fired = engine.fireServerEvent('sudden-rain');
     expect(engine.getSnapshot().server_events).toHaveLength(1);
@@ -34,20 +34,20 @@ describe('server event domain', () => {
   it('delays event delivery while moving and releases it on arrival', async () => {
     const { engine } = createTestWorld();
     const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
-    await engine.joinAgent(alice.agent_id);
+    await engine.loginAgent(alice.agent_id);
     engine.state.setNode(alice.agent_id, '3-1');
 
     engine.move(alice.agent_id, { target_node_id: '3-4' });
     const fired = engine.fireServerEvent('sudden-rain');
 
-    expect(engine.state.getJoined(alice.agent_id)?.pending_server_event_ids).toEqual([fired.server_event_id]);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.pending_server_event_ids).toEqual([fired.server_event_id]);
     expect(
       engine.timerManager.list().some((timer) => timer.type === 'server_event_timeout' && timer.agent_id === alice.agent_id),
     ).toBe(false);
 
     vi.advanceTimersByTime(3000);
 
-    expect(engine.state.getJoined(alice.agent_id)?.pending_server_event_ids).toEqual([]);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.pending_server_event_ids).toEqual([]);
     expect(
       engine.timerManager.list().some((timer) => timer.type === 'server_event_timeout' && timer.agent_id === alice.agent_id),
     ).toBe(true);

@@ -7,8 +7,8 @@ import type { ConversationIntervalTimer, IdleReminderTimer } from '../types/time
 import type { DiscordNotificationAdapter } from './bot.js';
 import {
   formatActionCompletedMessage,
-  formatAgentJoinedMessage,
-  formatAgentLeftMessage,
+  formatAgentLoggedInMessage,
+  formatAgentLoggedOutMessage,
   formatConversationAcceptedMessage,
   formatConversationClosingPromptMessage,
   formatConversationDeliveredClosingMessage,
@@ -30,8 +30,8 @@ import {
   formatWorldLogMovementStarted,
   formatWorldLogWaitStarted,
   formatWorldLogConversationStarted,
-  formatWorldLogJoined,
-  formatWorldLogLeft,
+  formatWorldLogLoggedIn,
+  formatWorldLogLoggedOut,
   formatWorldLogMovement,
   formatWorldLogServerEvent,
   formatWorldLogWait,
@@ -91,11 +91,11 @@ export class DiscordEventHandler {
 
   private async handleEvent(event: WorldEvent): Promise<void> {
     switch (event.type) {
-      case 'agent_joined':
-        await this.handleAgentJoined(event.agent_id, event.agent_name, event.node_id);
+      case 'agent_logged_in':
+        await this.handleAgentLoggedIn(event.agent_id, event.agent_name, event.node_id);
         return;
-      case 'agent_left':
-        await this.handleAgentLeft(event);
+      case 'agent_logged_out':
+        await this.handleAgentLoggedOut(event);
         return;
       case 'movement_completed':
         await this.handleMovementCompleted(event.agent_id, event.agent_name, event.node_id);
@@ -157,7 +157,7 @@ export class DiscordEventHandler {
   }
 
   private async handleIdleReminder(timer: IdleReminderTimer): Promise<void> {
-    const agent = this.engine.state.getJoined(timer.agent_id);
+    const agent = this.engine.state.getLoggedIn(timer.agent_id);
     if (!agent || agent.pending_conversation_id) {
       return;
     }
@@ -186,21 +186,21 @@ export class DiscordEventHandler {
     );
   }
 
-  private async handleAgentJoined(agentId: string, agentName: string, _nodeId: NodeId): Promise<void> {
+  private async handleAgentLoggedIn(agentId: string, agentName: string, _nodeId: NodeId): Promise<void> {
     const perceptionText = this.getPerceptionText(agentId);
     if (perceptionText) {
-      await this.sendToAgent(agentId, formatAgentJoinedMessage(perceptionText, this.skillName));
+      await this.sendToAgent(agentId, formatAgentLoggedInMessage(perceptionText, this.skillName));
     }
 
-    await this.bot.sendWorldLog(formatWorldLogJoined(agentName));
+    await this.bot.sendWorldLog(formatWorldLogLoggedIn(agentName));
   }
 
-  private async handleAgentLeft(event: Extract<WorldEvent, { type: 'agent_left' }>): Promise<void> {
+  private async handleAgentLoggedOut(event: Extract<WorldEvent, { type: 'agent_logged_out' }>): Promise<void> {
     try {
-      const agentMessage = formatAgentLeftMessage(event.cancelled_state, event.cancelled_action_name);
+      const agentMessage = formatAgentLoggedOutMessage(event.cancelled_state, event.cancelled_action_name);
       await this.bot.sendAgentMessage(event.discord_channel_id, agentMessage);
     } catch (error) {
-      console.error('Failed to send leave notification to agent channel.', error);
+      console.error('Failed to send logout notification to agent channel.', error);
     }
 
     for (const partnerId of this.consumeForcedConversationPartners(event.agent_id)) {
@@ -210,7 +210,7 @@ export class DiscordEventHandler {
       }
     }
 
-    await this.bot.sendWorldLog(formatWorldLogLeft(event.agent_name, event.cancelled_state, event.cancelled_action_name));
+    await this.bot.sendWorldLog(formatWorldLogLoggedOut(event.agent_name, event.cancelled_state, event.cancelled_action_name));
   }
 
   private async handleMovementStarted(agentName: string, toNodeId: NodeId): Promise<void> {
@@ -291,7 +291,7 @@ export class DiscordEventHandler {
   private async handleConversationRejected(
     initiatorAgentId: string,
     targetName: string,
-    reason: 'rejected' | 'timeout' | 'target_left',
+    reason: 'rejected' | 'timeout' | 'target_logged_out',
   ): Promise<void> {
     const perceptionText = this.getPerceptionText(initiatorAgentId);
     if (!perceptionText) {
@@ -316,7 +316,7 @@ export class DiscordEventHandler {
   }
 
   private async handleConversationEnded(event: Extract<WorldEvent, { type: 'conversation_ended' }>): Promise<void> {
-    if (event.reason === 'partner_left') {
+    if (event.reason === 'partner_logged_out') {
       this.pendingForcedConversationEnds.set(event.conversation_id, {
         initiator_agent_id: event.initiator_agent_id,
         target_agent_id: event.target_agent_id,
@@ -382,8 +382,8 @@ export class DiscordEventHandler {
   }
 
   private getPerceptionText(agentId: string): string {
-    const joinedAgent = this.engine.state.getJoined(agentId);
-    if (!joinedAgent) {
+    const loggedInAgent = this.engine.state.getLoggedIn(agentId);
+    if (!loggedInAgent) {
       return '';
     }
 
@@ -395,12 +395,12 @@ export class DiscordEventHandler {
   }
 
   private async sendToAgent(agentId: string, content: string): Promise<void> {
-    const joinedAgent = this.engine.state.getJoined(agentId);
-    if (!joinedAgent) {
+    const loggedInAgent = this.engine.state.getLoggedIn(agentId);
+    if (!loggedInAgent) {
       return;
     }
 
-    await this.bot.sendAgentMessage(joinedAgent.discord_channel_id, content);
+    await this.bot.sendAgentMessage(loggedInAgent.discord_channel_id, content);
   }
 
   private consumeForcedConversationPartners(agentId: string): string[] {

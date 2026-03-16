@@ -54,10 +54,10 @@ graph TB
     skill -- "操作・データ取得" --> api
 ```
 
-## 2. エージェント登録と参加の分離
+## 2. エージェント登録とログイン/ログアウトの分離
 
-エージェントの登録（APIキー発行）と世界への参加/退出を分離し、
-参加/退出を気軽に繰り返せるようにする。
+エージェントの登録（APIキー発行）と世界へのログイン/ログアウトを分離し、
+ログイン/ログアウトを気軽に繰り返せるようにする。
 
 ### 2.1 フロー概要
 
@@ -68,8 +68,8 @@ graph LR
     end
 
     subgraph runtime["運用時（気軽に繰り返し）"]
-        C["POST /join<br/>→ チャンネル作成・通知開始"]
-        D["POST /leave<br/>→ 通知停止（チャンネルは保持）"]
+        C["POST /login<br/>→ チャンネル作成・通知開始"]
+        D["POST /logout<br/>→ 通知停止（チャンネルは保持）"]
         C <--> D
     end
 
@@ -81,9 +81,9 @@ graph LR
 1. 管理者がサーバーにエージェントを登録し、APIキーを発行する
 2. ユーザーがエージェントにSkillとAPIキーを設定する
 
-この時点では世界には参加しておらず、Discordチャンネルも存在しない。
+この時点では世界にはログインしておらず、Discordチャンネルも存在しない。
 
-### 2.3 参加/退出（ユーザーが任意のタイミングで実施）
+### 2.3 ログイン/ログアウト（ユーザーが任意のタイミングで実施）
 
 APIキーで認証すればエージェントが特定できるため、リクエストは軽量。
 
@@ -159,19 +159,19 @@ sequenceDiagram
     participant Bot as Discord Bot
     participant DC as Discord
 
-    Note over User, DC: 参加（joinリクエスト）
-    User->>WS: POST /api/agents/join<br/>Authorization: Bearer {api_key}
+    Note over User, DC: ログイン（loginリクエスト）
+    User->>WS: POST /api/agents/login<br/>Authorization: Bearer {api_key}
     WS->>WS: APIキーからエージェント特定
     WS->>Bot: チャンネル作成指示
     Bot->>DC: #agent-{name} 作成
     Bot->>DC: 権限設定（@admin + @human + エージェントBot）
-    Bot->>DC: #world-log に「{name}が参加」投稿
+    Bot->>DC: #world-log に「{name}がログイン」投稿
     WS-->>User: { channel_id }
 
-    Note over User, DC: 退出（leaveリクエスト）
-    User->>WS: POST /api/agents/leave<br/>Authorization: Bearer {api_key}
+    Note over User, DC: ログアウト（logoutリクエスト）
+    User->>WS: POST /api/agents/logout<br/>Authorization: Bearer {api_key}
     WS->>WS: 状態更新・通知停止
-    Bot->>DC: #world-log に「{name}が退出」投稿
+    Bot->>DC: #world-log に「{name}がログアウト」投稿
     WS-->>User: 200 OK
 ```
 
@@ -203,16 +203,16 @@ sequenceDiagram
 }
 ```
 
-### 5.2 参加/退出（ユーザー用）
+### 5.2 ログイン/ログアウト（ユーザー用）
 
 認証: `Authorization: Bearer {api_key}`（事前発行済み）
 
 | Method | Path | 説明 |
 |--------|------|------|
-| POST | `/api/agents/join` | 世界に参加（チャンネル作成・通知開始） |
-| POST | `/api/agents/leave` | 世界から退出（通知停止。チャンネルは保持） |
+| POST | `/api/agents/login` | 世界にログイン（チャンネル作成・通知開始） |
+| POST | `/api/agents/logout` | 世界からログアウト（通知停止。チャンネルは保持） |
 
-#### POST /api/agents/join
+#### POST /api/agents/login
 
 ```json
 // Response
@@ -221,7 +221,7 @@ sequenceDiagram
 }
 ```
 
-#### POST /api/agents/leave
+#### POST /api/agents/logout
 
 ```json
 // Response

@@ -146,7 +146,7 @@ Timer 発火:
 
 ## 4. 移動中のエージェント位置
 
-移動中（`moving` 状態）のエージェントの位置は、内部状態（`JoinedAgent.node_id`）を直接更新するのではなく、タイマー情報から参照時に算出する。中間地点への到着に対するDiscord通知・WebSocketイベントは発行しない（`movement_started` は移動開始時に発行される）。
+移動中（`moving` 状態）のエージェントの位置は、内部状態（`LoggedInAgent.node_id`）を直接更新するのではなく、タイマー情報から参照時に算出する。中間地点への到着に対するDiscord通知・WebSocketイベントは発行しない（`movement_started` は移動開始時に発行される）。
 
 ### 4.1 位置の算出
 
@@ -168,13 +168,13 @@ steps_completed = floor(elapsed / MovementConfig.duration_ms)
 - スナップショット（`GET /api/snapshot`、WebSocket初回送信）も同様にセクション4.1に基づく現在位置を返す
 - サーバーイベントは移動完了後に遅延通知される（03-world-engine.md セクション3.4参照）
 
-## 5. 移動中のleave処理
+## 5. 移動中のログアウト処理
 
-`moving` 状態のエージェントがleaveした場合、03-world-engine.md セクション6 のクリーンアップの一部として以下が実行される:
+`moving` 状態のエージェントがlogoutした場合、03-world-engine.md セクション6 のクリーンアップの一部として以下が実行される:
 
 1. `movement` タイマーをキャンセル
 2. サーバーイベント保留リストを破棄
 
-leave処理の全体フローは 02-agent-lifecycle.md セクション3.2を参照。
+ログアウト処理の全体フローは 02-agent-lifecycle.md セクション3.2を参照。
 
-`AgentLeftEvent.node_id` にはセクション4.1に基づく現在位置が設定される。
+`AgentLoggedOutEvent.node_id` にはセクション4.1に基づく現在位置が設定される。

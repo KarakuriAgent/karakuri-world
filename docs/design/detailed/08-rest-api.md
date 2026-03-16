@@ -22,14 +22,14 @@ X-Admin-Key: {admin_key}
 
 管理者キーはサーバー起動時の環境変数（`ADMIN_KEY`）で設定する。キーが一致しない場合は `401 Unauthorized` を返す。
 
-### 1.3 参加状態の制御
+### 1.3 ログイン状態の制御
 
-世界操作API（セクション4, 5）は参加中のエージェントのみ利用可能。参加していないエージェントがアクセスした場合は `403 Forbidden`（`not_joined`）を返す。
+世界操作API（セクション4, 5）はログイン中のエージェントのみ利用可能。ログインしていないエージェントがアクセスした場合は `403 Forbidden`（`not_logged_in`）を返す。
 
-例外として以下のエンドポイントは未参加でもアクセス可能（参加状態の検証は個別バリデーションで行う）:
+例外として以下のエンドポイントは未ログインでもアクセス可能（ログイン状態の検証は個別バリデーションで行う）:
 
-- `POST /api/agents/join`
-- `POST /api/agents/leave`
+- `POST /api/agents/login`
+- `POST /api/agents/logout`
 
 ## 2. エラーレスポンスの共通仕様
 
@@ -53,7 +53,7 @@ interface ErrorResponse {
 | ステータス | エラーコード | 条件 |
 |-----------|------------|------|
 | 401 | `unauthorized` | APIキーまたは管理者キーが無効 |
-| 403 | `not_joined` | 世界に参加していない（参加必須のエンドポイント） |
+| 403 | `not_logged_in` | 世界にログインしていない（ログイン必須のエンドポイント） |
 
 ### 2.3 リクエストボディの検証
 
@@ -73,25 +73,25 @@ interface RequestValidationError {
 
 ## 3. エージェントAPI — ライフサイクル
 
-### 3.1 参加
+### 3.1 ログイン
 
 ```
-POST /api/agents/join
+POST /api/agents/login
 ```
 
-認証: Agent（1.1）。参加状態制約: なし。
+認証: Agent（1.1）。ログイン状態制約: なし。
 
 リクエスト: ボディなし
 
 レスポンス・処理フロー・エラーの詳細は 02-agent-lifecycle.md セクション3.1 を参照。
 
-### 3.2 退出
+### 3.2 ログアウト
 
 ```
-POST /api/agents/leave
+POST /api/agents/logout
 ```
 
-認証: Agent（1.1）。参加状態制約: なし（個別バリデーション）。
+認証: Agent（1.1）。ログイン状態制約: なし（個別バリデーション）。
 
 リクエスト: ボディなし
 
@@ -105,7 +105,7 @@ POST /api/agents/leave
 POST /api/agents/move
 ```
 
-認証: Agent（1.1）。参加状態制約: あり。
+認証: Agent（1.1）。ログイン状態制約: あり。
 
 リクエスト:
 
@@ -133,7 +133,7 @@ interface MoveResponse {
 POST /api/agents/action
 ```
 
-認証: Agent（1.1）。参加状態制約: あり。
+認証: Agent（1.1）。ログイン状態制約: あり。
 
 リクエスト:
 
@@ -161,7 +161,7 @@ interface ActionResponse {
 POST /api/agents/wait
 ```
 
-認証: Agent（1.1）。参加状態制約: あり。
+認証: Agent（1.1）。ログイン状態制約: あり。
 
 リクエスト:
 
@@ -191,7 +191,7 @@ interface WaitResponse {
 POST /api/agents/conversation/start
 ```
 
-認証: Agent（1.1）。参加状態制約: あり。
+認証: Agent（1.1）。ログイン状態制約: あり。
 
 リクエスト:
 
@@ -218,7 +218,7 @@ interface ConversationStartResponse {
 POST /api/agents/conversation/accept
 ```
 
-認証: Agent（1.1）。参加状態制約: あり。
+認証: Agent（1.1）。ログイン状態制約: あり。
 
 リクエスト:
 
@@ -244,7 +244,7 @@ interface ConversationAcceptResponse {
 POST /api/agents/conversation/reject
 ```
 
-認証: Agent（1.1）。参加状態制約: あり。
+認証: Agent（1.1）。ログイン状態制約: あり。
 
 リクエスト:
 
@@ -270,7 +270,7 @@ interface ConversationRejectResponse {
 POST /api/agents/conversation/speak
 ```
 
-認証: Agent（1.1）。参加状態制約: あり。
+認証: Agent（1.1）。ログイン状態制約: あり。
 
 リクエスト:
 
@@ -297,7 +297,7 @@ interface ConversationSpeakResponse {
 POST /api/agents/server-event/select
 ```
 
-認証: Agent（1.1）。参加状態制約: あり。
+認証: Agent（1.1）。ログイン状態制約: あり。
 
 リクエスト:
 
@@ -326,7 +326,7 @@ interface ServerEventSelectResponse {
 GET /api/agents/actions
 ```
 
-認証: Agent（1.1）。参加状態制約: あり。
+認証: Agent（1.1）。ログイン状態制約: あり。
 
 エージェントの現在位置で実行条件を満たすアクションの一覧を返す。エージェントの状態に関わらず、位置条件のみでフィルタリングする。
 
@@ -360,7 +360,7 @@ interface ActionSource {
 GET /api/agents/perception
 ```
 
-認証: Agent（1.1）。参加状態制約: あり。
+認証: Agent（1.1）。ログイン状態制約: あり。
 
 エージェントの現在位置を基準とした知覚範囲内の構造化データを返す。
 
@@ -413,7 +413,7 @@ interface PerceptionBuilding {
 GET /api/agents/map
 ```
 
-認証: Agent（1.1）。参加状態制約: あり。
+認証: Agent（1.1）。ログイン状態制約: あり。
 
 マップ全体の構造化データを返す。
 
@@ -454,15 +454,15 @@ interface MapActionInfo {
 }
 ```
 
-### 5.4 参加中エージェント一覧取得
+### 5.4 ログイン中エージェント一覧取得
 
 ```
 GET /api/agents/world-agents
 ```
 
-認証: Agent（1.1）。参加状態制約: あり。
+認証: Agent（1.1）。ログイン状態制約: あり。
 
-世界に参加中のすべてのエージェントの位置と状態を返す。
+世界にログイン中のすべてのエージェントの位置と状態を返す。
 
 レスポンス (200 OK):
 
@@ -552,7 +552,7 @@ WebSocket接続を確立する。接続確立後、サーバーは `WorldSnapsho
 すべてのエンドポイントで以下の順序でバリデーションを実行する:
 
 1. 認証（APIキー / 管理者キーの検証）→ 失敗時 `401`
-2. 参加状態の検証（参加必須のエンドポイントの場合）→ 失敗時 `403`
+2. ログイン状態の検証（ログイン必須のエンドポイントの場合）→ 失敗時 `403`
 3. リクエストボディの形式検証（セクション2.3）→ 失敗時 `400`
 4. エンドポイント固有のバリデーション（各詳細設計で定義）
 
@@ -560,8 +560,8 @@ WebSocket接続を確立する。接続確立後、サーバーは `WorldSnapsho
 
 | エンドポイント | バリデーション定義 |
 |--------------|-----------------|
-| POST /api/agents/join | 02-agent-lifecycle.md §3.1 |
-| POST /api/agents/leave | 02-agent-lifecycle.md §3.2 |
+| POST /api/agents/login | 02-agent-lifecycle.md §3.1 |
+| POST /api/agents/logout | 02-agent-lifecycle.md §3.2 |
 | POST /api/agents/move | 04-movement.md §1.3 |
 | POST /api/agents/action | 05-actions.md §1.3 |
 | POST /api/agents/wait | 本ドキュメント §4.3 |
@@ -573,14 +573,14 @@ WebSocket接続を確立する。接続確立後、サーバーは `WorldSnapsho
 
 ## 9. エンドポイント一覧
 
-| メソッド | パス | 認証 | 参加必須 | 説明 |
+| メソッド | パス | 認証 | ログイン必須 | 説明 |
 |---------|------|------|---------|------|
 | POST | /api/admin/agents | Admin | - | エージェント登録 |
 | DELETE | /api/admin/agents/:agent_id | Admin | - | エージェント削除 |
 | GET | /api/admin/agents | Admin | - | エージェント一覧取得 |
 | POST | /api/admin/server-events/:event_id/fire | Admin | - | サーバーイベント発火 |
-| POST | /api/agents/join | Agent | - | 世界に参加 |
-| POST | /api/agents/leave | Agent | - | 世界から退出 |
+| POST | /api/agents/login | Agent | - | 世界にログイン |
+| POST | /api/agents/logout | Agent | - | 世界からログアウト |
 | POST | /api/agents/move | Agent | ✅ | 移動 |
 | POST | /api/agents/action | Agent | ✅ | アクション実行 |
 | POST | /api/agents/wait | Agent | ✅ | 待機 |
@@ -592,7 +592,7 @@ WebSocket接続を確立する。接続確立後、サーバーは `WorldSnapsho
 | POST | /api/agents/server-event/select | Agent | ✅ | サーバーイベント選択 |
 | GET | /api/agents/perception | Agent | ✅ | 知覚情報取得 |
 | GET | /api/agents/map | Agent | ✅ | マップ全体取得 |
-| GET | /api/agents/world-agents | Agent | ✅ | 参加中エージェント一覧 |
+| GET | /api/agents/world-agents | Agent | ✅ | ログイン中エージェント一覧 |
 | GET | /api/admin/config | Admin | - | 設定取得（12-map-editor.md） |
 | PUT | /api/admin/config | Admin | - | 設定更新（12-map-editor.md） |
 | POST | /api/admin/config/validate | Admin | - | 設定バリデーション（12-map-editor.md） |

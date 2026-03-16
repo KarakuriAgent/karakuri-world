@@ -43,7 +43,7 @@ interface ConversationStartRequest {
 | # | 検証内容 | エラー |
 |---|---------|--------|
 | 1 | 発信側が `idle` 状態であり、かつ受諾待ち（02-agent-lifecycle.md セクション4.4）でないこと | `409 Conflict` (`state_conflict`) |
-| 2 | `target_agent_id` が登録済みかつ世界に参加中であること | `400 Bad Request` (`target_not_found`) |
+| 2 | `target_agent_id` が登録済みかつ世界にログイン中であること | `400 Bad Request` (`target_not_found`) |
 | 3 | 対象側が会話着信を受けられる状態であること（`idle`（受諾待ちでない）または `in_action`） | `409 Conflict` (`target_unavailable`) |
 | 4 | 発信側と対象側が同一ノードまたは隣接ノードにいること（1.1参照） | `400 Bad Request` (`out_of_range`) |
 
@@ -182,18 +182,18 @@ interface ConversationRejectResponse {
 
 通知なし。対象側の状態は変化しない（`idle` または `in_action` のまま）。
 
-### 3.4 pending中のleave（対象側）
+### 3.4 pending中のログアウト（対象側）
 
-対象側がleaveした場合（03-world-engine.md セクション6参照）:
+対象側がログアウトした場合（03-world-engine.md セクション6参照）:
 
 1. `ConversationAcceptTimer` をキャンセル
 2. 発信側の受諾待ちを解除
-3. `conversation_rejected` イベントを発行（`reason: "target_left"`）
-4. 発信側のDiscordに通知（相手退出の旨、知覚情報、行動促進）
+3. `conversation_rejected` イベントを発行（`reason: "target_logged_out"`）
+4. 発信側のDiscordに通知（相手ログアウトの旨、知覚情報、行動促進）
 
-### 3.5 pending中のleave（発信側）
+### 3.5 pending中のログアウト（発信側）
 
-発信側がleaveした場合（03-world-engine.md セクション6参照）:
+発信側がログアウトした場合（03-world-engine.md セクション6参照）:
 
 1. `ConversationAcceptTimer` をキャンセル
 2. `conversation_rejected` イベントは発行しない（相手への着信通知を取り消す）
@@ -419,13 +419,13 @@ Timer 発火:
 - 終了あいさつの発言者（`current_speaker_agent_id`）のみが発言できる
 - 会話参加者による追加のサーバーイベント選択は受け付けない（会話は既に終了処理中）
 
-## 8. 会話相手leave時の強制終了フロー
+## 8. 会話相手ログアウト時の強制終了フロー
 
-会話中（`in_conversation` または `closing`）のエージェントがleaveした場合:
+会話中（`in_conversation` または `closing`）のエージェントがログアウトした場合:
 
 1. 活動中の会話タイマー（`conversation_turn`、`conversation_interval`）をすべてキャンセル
 2. 残された側を `idle` に遷移
-3. `conversation_ended` イベントを発行（`reason: "partner_left"`）
+3. `conversation_ended` イベントを発行（`reason: "partner_logged_out"`）
 4. 残された側のDiscordに会話強制終了通知を送信
 
 終了あいさつフェーズは経ない（即座に終了）。
@@ -434,8 +434,8 @@ Timer 発火:
 
 #### 残された側（#agent-{partner}）
 
-- 会話相手が退出した旨
+- 会話相手がログアウトした旨
 - 知覚範囲内の情報（03-world-engine.md セクション3.2参照）
 - 行動促進
 
-leave処理の全体フローは 02-agent-lifecycle.md セクション3.2を参照。
+ログアウト処理の全体フローは 02-agent-lifecycle.md セクション3.2を参照。

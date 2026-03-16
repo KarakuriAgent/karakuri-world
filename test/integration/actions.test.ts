@@ -17,13 +17,13 @@ describe('actions integration', () => {
   it('executes an NPC action end-to-end', async () => {
     const { engine } = createTestWorld();
     const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
-    await engine.joinAgent(alice.agent_id);
+    await engine.loginAgent(alice.agent_id);
     engine.state.setNode(alice.agent_id, '1-1');
 
     const response = engine.executeAction(alice.agent_id, { action_id: 'greet-gatekeeper' });
     expect(response.action_id).toBe('greet-gatekeeper');
 
     vi.advanceTimersByTime(1200);
-    expect(engine.state.getJoined(alice.agent_id)?.state).toBe('idle');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('idle');
   });
 });

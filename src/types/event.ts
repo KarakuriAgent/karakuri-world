@@ -4,8 +4,8 @@ import type { ConversationClosureReason, ConversationRejectionReason } from './c
 import type { ServerEventChoiceConfig } from './server-event.js';
 
 export type EventType =
-  | 'agent_joined'
-  | 'agent_left'
+  | 'agent_logged_in'
+  | 'agent_logged_out'
   | 'movement_started'
   | 'movement_completed'
   | 'action_started'
@@ -27,16 +27,16 @@ export interface EventBase {
   occurred_at: number;
 }
 
-export interface AgentJoinedEvent extends EventBase {
-  type: 'agent_joined';
+export interface AgentLoggedInEvent extends EventBase {
+  type: 'agent_logged_in';
   agent_id: string;
   agent_name: string;
   node_id: NodeId;
   discord_channel_id: string;
 }
 
-export interface AgentLeftEvent extends EventBase {
-  type: 'agent_left';
+export interface AgentLoggedOutEvent extends EventBase {
+  type: 'agent_logged_out';
   agent_id: string;
   agent_name: string;
   node_id: NodeId;
@@ -169,8 +169,8 @@ export interface IdleReminderFiredEvent extends EventBase {
 }
 
 export type WorldEvent =
-  | AgentJoinedEvent
-  | AgentLeftEvent
+  | AgentLoggedInEvent
+  | AgentLoggedOutEvent
   | MovementStartedEvent
   | MovementCompletedEvent
   | ActionStartedEvent

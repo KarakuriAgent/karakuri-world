@@ -1,7 +1,7 @@
 import type { WorldEngine } from '../engine/world-engine.js';
 import type { ActionRequest, ActionResponse, AvailableActionSummary } from '../types/api.js';
 import { WorldError } from '../types/api.js';
-import type { JoinedAgent } from '../types/agent.js';
+import type { LoggedInAgent } from '../types/agent.js';
 import type { ActionConfig, BuildingConfig, NpcConfig } from '../types/data-model.js';
 import type { ActionTimer } from '../types/timer.js';
 import { cancelIdleReminder, startIdleReminder } from './idle-reminder.js';
@@ -22,10 +22,10 @@ type ActionSource =
       action: ActionConfig;
     };
 
-function requireActionReadyAgent(engine: WorldEngine, agentId: string): JoinedAgent {
-  const agent = engine.state.getJoined(agentId);
+function requireActionReadyAgent(engine: WorldEngine, agentId: string): LoggedInAgent {
+  const agent = engine.state.getLoggedIn(agentId);
   if (!agent) {
-    throw new WorldError(403, 'not_joined', `Agent is not joined: ${agentId}`);
+    throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
   }
 
   if (agent.state !== 'idle' || agent.pending_conversation_id) {
@@ -50,9 +50,9 @@ function mapActionSource(source: ActionSource): AvailableActionSummary {
 }
 
 export function getAvailableActionSources(engine: WorldEngine, agentId: string): ActionSource[] {
-  const agent = engine.state.getJoined(agentId);
+  const agent = engine.state.getLoggedIn(agentId);
   if (!agent) {
-    throw new WorldError(403, 'not_joined', `Agent is not joined: ${agentId}`);
+    throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
   }
 
   const sources: ActionSource[] = [];
@@ -119,7 +119,7 @@ export function getAvailableActions(engine: WorldEngine, agentId: string): { act
 }
 
 export function validateAction(engine: WorldEngine, agentId: string, request: ActionRequest): {
-  agent: JoinedAgent;
+  agent: LoggedInAgent;
   source: ActionSource;
 } {
   const agent = requireActionReadyAgent(engine, agentId);
@@ -182,7 +182,7 @@ export function cancelActiveAction(engine: WorldEngine, agentId: string): Action
   }
 
   engine.timerManager.cancel(timer.timer_id);
-  const agent = engine.state.getJoined(agentId);
+  const agent = engine.state.getLoggedIn(agentId);
   if (agent && agent.state === 'in_action') {
     engine.state.setState(agentId, 'idle');
   }
@@ -191,7 +191,7 @@ export function cancelActiveAction(engine: WorldEngine, agentId: string): Action
 }
 
 export function handleActionCompleted(engine: WorldEngine, timer: ActionTimer): void {
-  const agent = engine.state.getJoined(timer.agent_id);
+  const agent = engine.state.getLoggedIn(timer.agent_id);
   if (!agent) {
     return;
   }

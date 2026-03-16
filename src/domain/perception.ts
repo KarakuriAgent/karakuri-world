@@ -1,5 +1,5 @@
 import type { WorldEngine } from '../engine/world-engine.js';
-import type { JoinedAgent } from '../types/agent.js';
+import type { LoggedInAgent } from '../types/agent.js';
 import type { PerceptionResponse } from '../types/api.js';
 import { WorldError } from '../types/api.js';
 import type { MapConfig, NodeId } from '../types/data-model.js';
@@ -9,27 +9,27 @@ import { getAgentCurrentNode } from './movement.js';
 export type PerceptionData = PerceptionResponse;
 
 export function getPerceptionData(engine: WorldEngine, agentId: string): PerceptionData {
-  const joinedAgent = engine.state.getJoined(agentId);
-  if (!joinedAgent) {
-    throw new WorldError(403, 'not_joined', `Agent is not joined: ${agentId}`);
+  const loggedInAgent = engine.state.getLoggedIn(agentId);
+  if (!loggedInAgent) {
+    throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
   }
 
   const now = Date.now();
-  const joinedAgents = engine.state.listJoined().map((agent) => ({
+  const loggedInAgents = engine.state.listLoggedIn().map((agent) => ({
     ...agent,
     node_id: getAgentCurrentNode(engine, agent, now),
   }));
-  const currentAgent = joinedAgents.find((agent) => agent.agent_id === agentId);
+  const currentAgent = loggedInAgents.find((agent) => agent.agent_id === agentId);
   if (!currentAgent) {
-    throw new WorldError(403, 'not_joined', `Agent is not joined: ${agentId}`);
+    throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
   }
 
-  return buildPerceptionData(currentAgent, joinedAgents, engine.config.map, engine.config.perception.range);
+  return buildPerceptionData(currentAgent, loggedInAgents, engine.config.map, engine.config.perception.range);
 }
 
 export function buildPerceptionData(
-  agent: Pick<JoinedAgent, 'agent_id' | 'node_id'>,
-  joinedAgents: ReadonlyArray<JoinedAgent>,
+  agent: Pick<LoggedInAgent, 'agent_id' | 'node_id'>,
+  loggedInAgents: ReadonlyArray<LoggedInAgent>,
   mapConfig: MapConfig,
   range: number,
 ): PerceptionData {
@@ -50,7 +50,7 @@ export function buildPerceptionData(
         distance: manhattanDistance(agent.node_id, nodeId),
       };
     }),
-    agents: joinedAgents
+    agents: loggedInAgents
       .filter((otherAgent) => otherAgent.agent_id !== agent.agent_id && nodeSet.has(otherAgent.node_id))
       .map((otherAgent) => ({
         agent_id: otherAgent.agent_id,

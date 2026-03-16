@@ -27,8 +27,8 @@ describe('server events integration', () => {
     });
     const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
     const bob = engine.registerAgent({ agent_name: 'bob', discord_bot_id: 'bot-bob' });
-    await engine.joinAgent(alice.agent_id);
-    await engine.joinAgent(bob.agent_id);
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
     engine.state.setNode(bob.agent_id, '3-2');
 
     const started = engine.startConversation(alice.agent_id, {

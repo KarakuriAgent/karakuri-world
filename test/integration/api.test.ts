@@ -72,12 +72,12 @@ describe('REST API', () => {
         agent_id: registered.data.agent_id,
         agent_name: 'alice',
         discord_bot_id: 'discord-alice',
-        is_joined: false,
+        is_logged_in: false,
       },
     ]);
     expect(listed.data.agents[0]).not.toHaveProperty('api_key');
 
-    const joined = await requestJson(app, '/api/agents/join', {
+    const joined = await requestJson(app, '/api/agents/login', {
       method: 'POST',
       headers: { Authorization: `Bearer ${registered.data.api_key}` },
     });
@@ -93,7 +93,7 @@ describe('REST API', () => {
         agent_id: registered.data.agent_id,
         agent_name: 'alice',
         discord_bot_id: 'discord-alice',
-        is_joined: true,
+        is_logged_in: true,
       },
     ]);
 
@@ -124,7 +124,7 @@ describe('REST API', () => {
     expect(snapshot.response.status).toBe(200);
     expect(snapshot.data.agents).toHaveLength(1);
 
-    const left = await requestJson(app, '/api/agents/leave', {
+    const left = await requestJson(app, '/api/agents/logout', {
       method: 'POST',
       headers: { Authorization: `Bearer ${registered.data.api_key}` },
     });
@@ -158,16 +158,16 @@ describe('REST API', () => {
       headers: { Authorization: `Bearer ${registered.data.api_key}` },
     });
     expect(notJoined.response.status).toBe(403);
-    expect(notJoined.data.error).toBe('not_joined');
+    expect(notJoined.data.error).toBe('not_logged_in');
 
-    const leaveBeforeJoin = await requestJson(app, '/api/agents/leave', {
+    const leaveBeforeJoin = await requestJson(app, '/api/agents/logout', {
       method: 'POST',
       headers: { Authorization: `Bearer ${registered.data.api_key}` },
     });
     expect(leaveBeforeJoin.response.status).toBe(409);
     expect(leaveBeforeJoin.data.error).toBe('state_conflict');
 
-    await requestJson(app, '/api/agents/join', {
+    await requestJson(app, '/api/agents/login', {
       method: 'POST',
       headers: { Authorization: `Bearer ${registered.data.api_key}` },
     });
@@ -210,11 +210,11 @@ describe('REST API', () => {
     const alice = await registerAgent(app, 'alice');
     const bob = await registerAgent(app, 'bob');
 
-    await requestJson(app, '/api/agents/join', {
+    await requestJson(app, '/api/agents/login', {
       method: 'POST',
       headers: { Authorization: `Bearer ${alice.data.api_key}` },
     });
-    await requestJson(app, '/api/agents/join', {
+    await requestJson(app, '/api/agents/login', {
       method: 'POST',
       headers: { Authorization: `Bearer ${bob.data.api_key}` },
     });

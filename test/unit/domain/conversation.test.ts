@@ -15,8 +15,8 @@ async function setupConversationWorld(options?: { max_turns?: number }) {
   });
   const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
   const bob = engine.registerAgent({ agent_name: 'bob', discord_bot_id: 'bot-bob' });
-  await engine.joinAgent(alice.agent_id);
-  await engine.joinAgent(bob.agent_id);
+  await engine.loginAgent(alice.agent_id);
+  await engine.loginAgent(bob.agent_id);
   engine.state.setNode(bob.agent_id, '3-2');
   return { engine, alice, bob };
 }
@@ -49,11 +49,11 @@ describe('conversation domain', () => {
       target_agent_id: bob.agent_id,
       message: 'Hello Bob',
     });
-    expect(engine.state.getJoined(alice.agent_id)?.pending_conversation_id).toBe(started.conversation_id);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.pending_conversation_id).toBe(started.conversation_id);
 
     engine.acceptConversation(bob.agent_id, { conversation_id: started.conversation_id });
-    expect(engine.state.getJoined(alice.agent_id)?.state).toBe('in_conversation');
-    expect(engine.state.getJoined(bob.agent_id)?.state).toBe('in_conversation');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('in_conversation');
+    expect(engine.state.getLoggedIn(bob.agent_id)?.state).toBe('in_conversation');
 
     expect(
       engine.speak(bob.agent_id, { conversation_id: started.conversation_id, message: 'Hello Alice' }),
@@ -86,8 +86,8 @@ describe('conversation domain', () => {
     vi.advanceTimersByTime(500);
 
     expect(engine.state.conversations.get(started.conversation_id)).toBeNull();
-    expect(engine.state.getJoined(alice.agent_id)?.state).toBe('idle');
-    expect(engine.state.getJoined(bob.agent_id)?.state).toBe('idle');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('idle');
+    expect(engine.state.getLoggedIn(bob.agent_id)?.state).toBe('idle');
     unsubscribe();
   });
 
@@ -120,7 +120,7 @@ describe('conversation domain', () => {
     vi.advanceTimersByTime(1000);
 
     expect(engine.state.conversations.get(started.conversation_id)).toBeNull();
-    expect(engine.state.getJoined(alice.agent_id)?.state).toBe('idle');
-    expect(engine.state.getJoined(bob.agent_id)?.state).toBe('idle');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('idle');
+    expect(engine.state.getLoggedIn(bob.agent_id)?.state).toBe('idle');
   });
 });

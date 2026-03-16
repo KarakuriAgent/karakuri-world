@@ -194,8 +194,8 @@ WorldState
 
 | イベント | 状態更新 |
 |---------|---------|
-| `agent_joined` | エージェントを追加（node_id, state: idle） |
-| `agent_left` | エージェントを削除 |
+| `agent_logged_in` | エージェントを追加（node_id, state: idle） |
+| `agent_logged_out` | エージェントを削除 |
 | `movement_started` | エージェントのstate → moving、path・arrives_atを設定 |
 | `movement_completed` | エージェントのnode_id更新、state → idle、movement情報クリア |
 | `action_started` | エージェントのstate → in_action、action情報を設定 |
@@ -340,8 +340,8 @@ arrives_at: number  # 到着予定時刻（Unix timestamp ms）
 
 | イベント | アニメーション |
 |---------|-------------|
-| `agent_joined` | フェードインでスポーン地点に出現 |
-| `agent_left` | フェードアウトで消去 |
+| `agent_logged_in` | フェードインでスポーン地点に出現 |
+| `agent_logged_out` | フェードアウトで消去 |
 
 ## 6. 会話表示
 
@@ -400,7 +400,7 @@ arrives_at: number  # 到着予定時刻（Unix timestamp ms）
 
 ### 8.1 エージェント一覧
 
-サイドパネル上部に参加中エージェントの一覧を表示する。
+サイドパネル上部にログイン中エージェントの一覧を表示する。
 
 | 列 | 内容 |
 |----|------|
@@ -429,7 +429,7 @@ arrives_at: number  # 到着予定時刻（Unix timestamp ms）
 |------|------|
 | 接続状態 | disconnected / connecting / synced |
 | ワールド名 | `WorldConfig.name` |
-| エージェント数 | 参加中のエージェント数 |
+| エージェント数 | ログイン中のエージェント数 |
 
 ## 9. テーマシステム
 

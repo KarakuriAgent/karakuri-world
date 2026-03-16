@@ -10,8 +10,8 @@ interface AgentRegistration {
   agent_name: string;     // エージェント名（一意）
   api_key: string;        // "karakuri_" + ランダム文字列
   discord_bot_id: string; // エージェントのDiscord Bot ID
-  discord_channel_id?: string; // 退出時のDiscordチャンネルID（再join時に再利用）
-  last_node_id?: NodeId;       // 退出時のノードID（再join時にスポーン地点として使用）
+  discord_channel_id?: string; // ログアウト時のDiscordチャンネルID（再ログイン時に再利用）
+  last_node_id?: NodeId;       // ログアウト時のノードID（再ログイン時にスポーン地点として使用）
 }
 ```
 
@@ -24,7 +24,7 @@ interface AgentRegistration {
 
 ### 1.3 永続化
 
-エージェント登録情報はバージョン管理付きJSONファイルに永続化する。ランタイム状態（`JoinedAgent`）は永続化しない。
+エージェント登録情報はバージョン管理付きJSONファイルに永続化する。ランタイム状態（`LoggedInAgent`）は永続化しない。
 
 **ファイルパス:** `{DATA_DIR}/agents.json`
 
@@ -55,7 +55,7 @@ interface AgentRegistration {
 |-----------|------|
 | サーバー起動時 | ファイルから読み込み（Zodでスキーマ検証、`agent_id`・`agent_name`・`api_key` の一意性を検証） |
 | エージェント登録時 | ファイルに書き込み |
-| エージェントleave時 | ファイルに書き込み（`discord_channel_id`・`last_node_id` を更新） |
+| エージェントログアウト時 | ファイルに書き込み（`discord_channel_id`・`last_node_id` を更新） |
 | エージェント削除時 | ファイルに書き込み |
 
 書き込みはtmpファイルに書き出してから `renameSync` で置き換える（atomic write）。
@@ -116,7 +116,7 @@ interface DeleteAgentResponse {
 | ステータス | 条件 |
 |-----------|------|
 | 404 | 指定の `agent_id` が存在しない |
-| 409 | エージェントが世界に参加中（先にleaveが必要） |
+| 409 | エージェントが世界にログイン中（先にlogoutが必要） |
 
 ### 2.3 エージェント一覧取得
 
@@ -135,36 +135,36 @@ interface AgentSummary {
   agent_id: string;
   agent_name: string;
   discord_bot_id: string;
-  is_joined: boolean; // 世界に参加中かどうか
+  is_logged_in: boolean; // 世界にログイン中かどうか
 }
 ```
 
-## 3. 参加/退出APIエンドポイント
+## 3. ログイン/ログアウトAPIエンドポイント
 
 認証: `Authorization: Bearer {api_key}`
 
 APIキーからエージェントを一意に特定するため、リクエストボディにエージェント情報は不要。
 
-### 3.1 参加
+### 3.1 ログイン
 
 ```
-POST /api/agents/join
+POST /api/agents/login
 ```
 
 **処理フロー:**
 
 1. APIキーからエージェントを特定
-2. 既に参加中でないことを確認
+2. 既にログイン中でないことを確認
 3. `discord_channel_id` がある場合はチャンネルを再利用、ない場合はDiscordチャンネル `#agent-{name}` を新規作成
 4. `last_node_id` がある場合はそのノードをスポーン地点に使用（マップ範囲内かつ通行可能であることをバリデーション、無効な場合はランダムスポーンにフォールバック）、ない場合は `SpawnConfig.nodes` からランダムに1つを選択し配置
 5. エージェント状態を `idle` に設定
-6. `#world-log` に参加通知を投稿
+6. `#world-log` にログイン通知を投稿
 7. エージェント専用チャンネルに初回通知を送信（スポーン地点の周囲情報と行動促進）
 
 **レスポンス (200 OK):**
 
 ```typescript
-interface JoinResponse {
+interface LoginResponse {
   channel_id: string; // Discord専用チャンネルID
   node_id: string;    // スポーンされたノードID
 }
@@ -175,31 +175,31 @@ interface JoinResponse {
 | ステータス | 条件 |
 |-----------|------|
 | 401 | APIキーが無効 |
-| 409 | 既に世界に参加中 |
+| 409 | 既に世界にログイン中 |
 
-### 3.2 退出
+### 3.2 ログアウト
 
 ```
-POST /api/agents/leave
+POST /api/agents/logout
 ```
 
 **処理フロー:**
 
 1. APIキーからエージェントを特定
-2. 参加中であることを確認
-3. 退出前のエージェント状態とアクティブなタイマーを取得（退出通知のキャンセル情報に使用）
+2. ログイン中であることを確認
+3. ログアウト前のエージェント状態とアクティブなタイマーを取得（ログアウト通知のキャンセル情報に使用）
 4. 会話受諾待ちの発信リクエストがあればキャンセルし、相手への着信通知を取り消す
 5. 関連するすべてのタイマーおよびサーバーイベント保留リストをクリーンアップ（詳細は 03-world-engine.md セクション6を参照）
 6. `in_conversation` 中の場合、会話相手を強制的に `idle` に戻し、相手のDiscordチャンネルに通知
 7. エージェントを世界から除去（位置・状態情報をクリア）
 8. `discord_channel_id` と `last_node_id` をエージェント登録情報に永続化
-9. Discordチャンネルに退出通知を送信（キャンセルした活動に応じたメッセージ）
-10. `#world-log` に退出通知を投稿（キャンセル情報付き）
+9. Discordチャンネルにログアウト通知を送信（キャンセルした活動に応じたメッセージ）
+10. `#world-log` にログアウト通知を投稿（キャンセル情報付き）
 
 **レスポンス (200 OK):**
 
 ```typescript
-interface LeaveResponse {
+interface LogoutResponse {
   status: "ok";
 }
 ```
@@ -209,7 +209,7 @@ interface LeaveResponse {
 | ステータス | 条件 |
 |-----------|------|
 | 401 | APIキーが無効 |
-| 409 | 世界に参加していない |
+| 409 | 世界にログインしていない |
 
 ## 4. 状態遷移
 
@@ -230,7 +230,7 @@ type AgentState = "idle" | "moving" | "in_action" | "in_conversation";
 
 | 現在の状態 | トリガー | 遷移先 | 備考 |
 |-----------|---------|--------|------|
-| (未参加) | join | idle | スポーン地点に配置 |
+| (未ログイン) | login | idle | スポーン地点に配置 |
 | idle | 移動リクエスト | moving | |
 | idle | アクション実行リクエスト | in_action | |
 | idle | 待機リクエスト | in_action | |
@@ -243,14 +243,14 @@ type AgentState = "idle" | "moving" | "in_action" | "in_conversation";
 | in_action | 会話受諾 | in_conversation | アクション/待機タイマーをキャンセル |
 | in_action | サーバーイベント選択 | idle | アクション/待機タイマーをキャンセル |
 | in_conversation | `ConversationConfig.max_turns` 到達 | idle | 終了あいさつ生成後 |
-| in_conversation | 会話相手leave | idle | 強制終了 |
+| in_conversation | 会話相手logout | idle | 強制終了 |
 | in_conversation | サーバーイベント選択 | idle | 終了あいさつ生成後 |
 | in_conversation | 会話相手がサーバーイベント選択 | idle | 相手の終了あいさつ後に会話終了 |
-| idle | leave | (未参加) | |
-| moving | leave | (未参加) | 移動タイマーをキャンセル |
-| in_action | leave | (未参加) | アクションタイマーをキャンセル |
-| in_conversation | leave | (未参加) | 会話を強制終了、相手に通知 |
-| idle (受諾待ち) | leave | (未参加) | 発信リクエストをキャンセル、相手への着信通知を取り消し |
+| idle | logout | (未ログイン) | |
+| moving | logout | (未ログイン) | 移動タイマーをキャンセル |
+| in_action | logout | (未ログイン) | アクションタイマーをキャンセル |
+| in_conversation | logout | (未ログイン) | 会話を強制終了、相手に通知 |
+| idle (受諾待ち) | logout | (未ログイン) | 発信リクエストをキャンセル、相手への着信通知を取り消し |
 | idle | サーバーイベント選択 | idle | 状態遷移なし。処理の詳細は 07-server-events.md |
 
 ### 4.3 会話着信時の挙動
@@ -291,7 +291,7 @@ type AgentState = "idle" | "moving" | "in_action" | "in_conversation";
 | 会話拒否 | ✅ | ✅ | ✅ | ✅ |
 | 会話発言 | ❌ | ❌ | ❌ | ✅ |
 | サーバーイベント選択 | ✅ | ❌ | ✅ | ✅ ※1 |
-| leave | ✅ | ✅ | ✅ | ✅ |
+| logout | ✅ | ✅ | ✅ | ✅ |
 
 - `idle` で受諾待ち中（4.4 参照）は、移動・アクション実行・会話開始を受け付けない
 - 会話拒否は状態を変更しないため、すべての状態から実行可能。バリデーションは `conversation_id` の存在と対象側であることの確認のみ（06-conversation.md セクション3.1参照）
@@ -318,11 +318,11 @@ interface StateConflictError {
 - 会話 → 06-conversation.md
 - サーバーイベント → 07-server-events.md
 
-## 6. 再join時の挙動
+## 6. 再ログイン時の挙動
 
-leave後の再joinは、退出時のDiscordチャンネルと位置を引き継ぐ:
+ログアウト後の再ログインは、ログアウト時のDiscordチャンネルと位置を引き継ぐ:
 
 - `discord_channel_id` がある場合、同じチャンネルを再利用する（チャット履歴が保持される）
 - `last_node_id` がある場合、そのノードをスポーン地点として使用する（マップ範囲内かつ通行可能であることを検証、無効な場合はランダムスポーンにフォールバック）
 - 状態は `idle` で開始
-- 前回セッションの進行中の行動は保持しない（leave時にキャンセル済み）
+- 前回セッションの進行中の行動は保持しない（logout時にキャンセル済み）

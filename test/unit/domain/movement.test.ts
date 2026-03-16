@@ -45,7 +45,7 @@ describe('movement domain', () => {
       },
     });
     const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
-    await engine.joinAgent(alice.agent_id);
+    await engine.loginAgent(alice.agent_id);
 
     const response = engine.move(alice.agent_id, { target_node_id: '2-4' });
     expect(response).toEqual({
@@ -53,7 +53,7 @@ describe('movement domain', () => {
       to_node_id: '2-4',
       arrives_at: Date.now() + 4000,
     });
-    expect(engine.state.getJoined(alice.agent_id)?.state).toBe('moving');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('moving');
 
     const movementTimer = engine.timerManager.find(
       (timer): timer is MovementTimer => timer.type === 'movement' && timer.agent_id === alice.agent_id,
@@ -67,7 +67,7 @@ describe('movement domain', () => {
 
     vi.advanceTimersByTime(4000);
 
-    expect(engine.state.getJoined(alice.agent_id)).toMatchObject({
+    expect(engine.state.getLoggedIn(alice.agent_id)).toMatchObject({
       node_id: response.to_node_id,
       state: 'idle',
     });
@@ -82,7 +82,7 @@ describe('movement domain', () => {
       },
     });
     const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
-    await engine.joinAgent(alice.agent_id);
+    await engine.loginAgent(alice.agent_id);
 
     try {
       engine.move(alice.agent_id, { target_node_id: '1-1' });
@@ -107,7 +107,7 @@ describe('movement domain', () => {
       },
     });
     const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
-    await engine.joinAgent(alice.agent_id);
+    await engine.loginAgent(alice.agent_id);
 
     const events: Array<{ type: string; node_id?: string }> = [];
     const unsubscribe = engine.eventBus.onAny((event) => {
@@ -117,11 +117,11 @@ describe('movement domain', () => {
     engine.move(alice.agent_id, { target_node_id: '2-4' });
     vi.advanceTimersByTime(2000);
 
-    await engine.leaveAgent(alice.agent_id);
+    await engine.logoutAgent(alice.agent_id);
     unsubscribe();
 
-    expect(events.find((event) => event.type === 'agent_left')).toMatchObject({
-      type: 'agent_left',
+    expect(events.find((event) => event.type === 'agent_logged_out')).toMatchObject({
+      type: 'agent_logged_out',
       node_id: '3-3',
     });
   });
@@ -147,7 +147,7 @@ describe('movement domain', () => {
   it('rejects impassable moves and moves while a conversation is pending', async () => {
     const { engine } = createTestWorld();
     const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
-    await engine.joinAgent(alice.agent_id);
+    await engine.loginAgent(alice.agent_id);
     engine.state.setNode(alice.agent_id, '1-1');
 
     expect(() => engine.move(alice.agent_id, { target_node_id: '1-2' })).toThrowError(WorldError);

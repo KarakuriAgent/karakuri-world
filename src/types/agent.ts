@@ -12,7 +12,7 @@ export interface AgentRegistration {
   last_node_id?: NodeId;
 }
 
-export interface JoinedAgent {
+export interface LoggedInAgent {
   agent_id: string;
   agent_name: string;
   node_id: NodeId;

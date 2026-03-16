@@ -23,7 +23,7 @@ function createTimeoutTimer(engine: WorldEngine, agentId: string, serverEvent: S
 
 function maybeCleanupServerEvent(engine: WorldEngine, serverEventId: string): void {
   const hasPending = engine.state
-    .listJoined()
+    .listLoggedIn()
     .some((agent) => agent.pending_server_event_ids.includes(serverEventId));
   const hasTimeout = engine.timerManager
     .list()
@@ -52,7 +52,7 @@ export function fireServerEvent(engine: WorldEngine, eventId: string): FireServe
     pending_agent_ids: [],
   };
 
-  for (const agent of engine.state.listJoined()) {
+  for (const agent of engine.state.listLoggedIn()) {
     if (agent.state === 'moving') {
       engine.state.addPendingServerEvent(agent.agent_id, serverEvent.server_event_id);
       serverEvent.pending_agent_ids.push(agent.agent_id);
@@ -80,7 +80,7 @@ export function fireServerEvent(engine: WorldEngine, eventId: string): FireServe
 }
 
 export function handlePendingServerEvents(engine: WorldEngine, agentId: string): string[] {
-  const agent = engine.state.getJoined(agentId);
+  const agent = engine.state.getLoggedIn(agentId);
   if (!agent) {
     return [];
   }
@@ -118,9 +118,9 @@ export function handlePendingServerEvents(engine: WorldEngine, agentId: string):
 }
 
 export function selectServerEvent(engine: WorldEngine, agentId: string, request: ServerEventSelectRequest): OkResponse {
-  const agent = engine.state.getJoined(agentId);
+  const agent = engine.state.getLoggedIn(agentId);
   if (!agent) {
-    throw new WorldError(403, 'not_joined', `Agent is not joined: ${agentId}`);
+    throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
   }
 
   const sourceState = agent.state;

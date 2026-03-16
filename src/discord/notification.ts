@@ -21,12 +21,12 @@ function formatReasonMessage(targetName: string, reason: ConversationRejectionRe
       return `${targetName} が会話を拒否しました。`;
     case 'timeout':
       return `${targetName} が応答しませんでした。`;
-    case 'target_left':
-      return `${targetName} が世界から退出しました。`;
+    case 'target_logged_out':
+      return `${targetName} が世界からログアウトしました。`;
   }
 }
 
-function formatClosureReason(reason: Exclude<ConversationClosureReason, 'partner_left'>): string {
+function formatClosureReason(reason: Exclude<ConversationClosureReason, 'partner_logged_out'>): string {
   switch (reason) {
     case 'max_turns':
       return '最大ターン数に到達しました';
@@ -45,8 +45,8 @@ export function formatPerceptionMessage(perception: PerceptionResponse): string 
   return buildPerceptionText(perception);
 }
 
-export function formatAgentJoinedMessage(perceptionText: string, skillName: string): string {
-  return joinSections('世界に参加しました。', perceptionText, formatActionPrompt(skillName));
+export function formatAgentLoggedInMessage(perceptionText: string, skillName: string): string {
+  return joinSections('世界にログインしました。', perceptionText, formatActionPrompt(skillName));
 }
 
 export function formatMovementCompletedMessage(toNodeId: string, label: string | undefined, perceptionText: string, skillName: string): string {
@@ -122,7 +122,7 @@ export function formatConversationServerEventClosingPromptMessage(eventName: str
 }
 
 export function formatConversationEndedMessage(
-  reason: Exclude<ConversationClosureReason, 'partner_left'>,
+  reason: Exclude<ConversationClosureReason, 'partner_logged_out'>,
   perceptionText: string,
   skillName: string,
 ): string {
@@ -130,7 +130,7 @@ export function formatConversationEndedMessage(
 }
 
 export function formatConversationForcedEndedMessage(partnerName: string, perceptionText: string, skillName: string): string {
-  return joinSections(`${partnerName} が世界から退出したため、会話が強制終了されました。`, perceptionText, formatActionPrompt(skillName));
+  return joinSections(`${partnerName} が世界からログアウトしたため、会話が強制終了されました。`, perceptionText, formatActionPrompt(skillName));
 }
 
 export function formatServerEventMessage(
@@ -154,38 +154,38 @@ export function formatServerEventSelectedMessage(eventName: string, choiceLabel:
   );
 }
 
-export function formatWorldLogJoined(agentName: string): string {
-  return `${agentName} が世界に参加しました`;
+export function formatWorldLogLoggedIn(agentName: string): string {
+  return `${agentName} が世界にログインしました`;
 }
 
-export function formatAgentLeftMessage(cancelledState: AgentState, cancelledActionName?: string): string {
+export function formatAgentLoggedOutMessage(cancelledState: AgentState, cancelledActionName?: string): string {
   switch (cancelledState) {
     case 'in_action':
       return cancelledActionName
-        ? `「${cancelledActionName}」をキャンセルし、退出しました。`
-        : '待機をキャンセルし、退出しました。';
+        ? `「${cancelledActionName}」をキャンセルし、ログアウトしました。`
+        : '待機をキャンセルし、ログアウトしました。';
     case 'moving':
-      return '移動をキャンセルし、退出しました。';
+      return '移動をキャンセルし、ログアウトしました。';
     case 'in_conversation':
-      return '会話を終了し、退出しました。';
+      return '会話を終了し、ログアウトしました。';
     case 'idle':
-      return '退出しました。';
+      return 'ログアウトしました。';
   }
 }
 
-export function formatWorldLogLeft(agentName: string, cancelledState: AgentState, cancelledActionName?: string): string {
+export function formatWorldLogLoggedOut(agentName: string, cancelledState: AgentState, cancelledActionName?: string): string {
   switch (cancelledState) {
     case 'in_action':
       if (cancelledActionName) {
-        return `${agentName} が「${cancelledActionName}」をキャンセルし、退出しました`;
+        return `${agentName} が「${cancelledActionName}」をキャンセルし、ログアウトしました`;
       }
-      return `${agentName} が待機をキャンセルし、退出しました`;
+      return `${agentName} が待機をキャンセルし、ログアウトしました`;
     case 'moving':
-      return `${agentName} が移動をキャンセルし、退出しました`;
+      return `${agentName} が移動をキャンセルし、ログアウトしました`;
     case 'in_conversation':
-      return `${agentName} が会話を終了し、退出しました`;
+      return `${agentName} が会話を終了し、ログアウトしました`;
     case 'idle':
-      return `${agentName} が世界から退出しました`;
+      return `${agentName} が世界からログアウトしました`;
   }
 }
 

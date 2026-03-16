@@ -1,0 +1,54 @@
+services:
+  agent-1:
+    build: .
+    restart: unless-stopped
+    environment:
+      DISCORD_TOKEN: ${ADVENTURER_DISCORD_TOKEN}
+      DISCORD_PUBLIC_KEY: ${ADVENTURER_DISCORD_PUBLIC_KEY}
+      DISCORD_APPLICATION_ID: ${ADVENTURER_DISCORD_APPLICATION_ID}
+      DISCORD_MENTION_ROLE_IDS: ${ADVENTURER_DISCORD_MENTION_ROLE_IDS:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_MODEL: ${ADVENTURER_OPENAI_MODEL:-gpt-4o}
+      KARAKURI_MCP_URL: ${KARAKURI_MCP_URL:-http://host.docker.internal:3000/mcp}
+      KARAKURI_API_KEY: ${ADVENTURER_KARAKURI_API_KEY}
+      AGENT_DIR: /app/agents/adventurer
+      BOT_NAME: adventurer
+      DATA_DIR: /app/data
+      PORT: ${ADVENTURER_PORT:-3101}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    ports:
+      - ${ADVENTURER_PORT:-3101}:${ADVENTURER_PORT:-3101}
+    volumes:
+      - ./agents:/app/agents:ro
+      - agent-1-data:/app/data
+
+  agent-2:
+    build: .
+    restart: unless-stopped
+    environment:
+      DISCORD_TOKEN: ${SCHOLAR_DISCORD_TOKEN}
+      DISCORD_PUBLIC_KEY: ${SCHOLAR_DISCORD_PUBLIC_KEY}
+      DISCORD_APPLICATION_ID: ${SCHOLAR_DISCORD_APPLICATION_ID}
+      DISCORD_MENTION_ROLE_IDS: ${SCHOLAR_DISCORD_MENTION_ROLE_IDS:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_MODEL: ${SCHOLAR_OPENAI_MODEL:-gpt-4o-mini}
+      KARAKURI_MCP_URL: ${KARAKURI_MCP_URL:-http://host.docker.internal:3000/mcp}
+      KARAKURI_API_KEY: ${SCHOLAR_KARAKURI_API_KEY}
+      AGENT_DIR: /app/agents/scholar
+      BOT_NAME: scholar
+      DATA_DIR: /app/data
+      PORT: ${SCHOLAR_PORT:-3102}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    ports:
+      - ${SCHOLAR_PORT:-3102}:${SCHOLAR_PORT:-3102}
+    volumes:
+      - ./agents:/app/agents:ro
+      - agent-2-data:/app/data
+
+volumes:
+  agent-1-data:
+  agent-2-data:

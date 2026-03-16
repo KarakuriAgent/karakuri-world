@@ -27,8 +27,8 @@ describe('conversation integration', () => {
     });
     const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
     const bob = engine.registerAgent({ agent_name: 'bob', discord_bot_id: 'bot-bob' });
-    await engine.joinAgent(alice.agent_id);
-    await engine.joinAgent(bob.agent_id);
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
 
     engine.state.setNode(alice.agent_id, '3-1');
     engine.state.setNode(bob.agent_id, '1-1');
@@ -41,7 +41,7 @@ describe('conversation integration', () => {
     });
     engine.acceptConversation(bob.agent_id, { conversation_id: started.conversation_id });
 
-    expect(engine.state.getJoined(bob.agent_id)?.state).toBe('in_conversation');
+    expect(engine.state.getLoggedIn(bob.agent_id)?.state).toBe('in_conversation');
     expect(engine.timerManager.list().some((timer) => timer.type === 'action' && timer.agent_id === bob.agent_id)).toBe(false);
   });
 });

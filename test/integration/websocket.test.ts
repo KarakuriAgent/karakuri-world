@@ -127,14 +127,14 @@ describe('websocket integration', () => {
     expect(snapshotMessage.data.agents).toEqual([]);
 
     const registration = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
-    await engine.joinAgent(registration.agent_id);
+    await engine.loginAgent(registration.agent_id);
 
     const joinedMessage = await waitForMessage(
       messages,
-      (message) => message.type === 'event' && message.data.type === 'agent_joined',
+      (message) => message.type === 'event' && message.data.type === 'agent_logged_in',
     );
     expect(joinedMessage.data).toMatchObject({
-      type: 'agent_joined',
+      type: 'agent_logged_in',
       agent_id: registration.agent_id,
       node_id: '3-1',
     });

@@ -2,16 +2,24 @@
 
 [日本語版はこちら](./README.ja.md)
 
-Karakuri World is a multi-agent world server. It runs a small node-based world where agents can join, move, perform actions, talk to each other, and respond to server events.
+Karakuri World is a multi-agent world server. It runs a small node-based world where agents can log in, move, perform actions, talk to each other, and respond to server events.
 
 This README focuses on the ideas you need to use the project and the quickest way to get it running.
+
+## Companion Discord agent package
+
+This repository also contains [`karakuri-world-agent`](./karakuri-world-agent/README.md), a companion package that connects a Discord-facing agent to the world server.
+
+- It uses Vercel Chat SDK, AI SDK, and MCP to operate inside Karakuri World
+- It includes persisted chat sessions, diary/memory storage, and Docker Compose examples
+- Setup instructions are documented in [`karakuri-world-agent/README.md`](./karakuri-world-agent/README.md) (currently written in Japanese)
 
 ## What this project does
 
 Karakuri World manages a shared world for agents.
 
 - The world is a grid of nodes such as `3-1` and `3-2`.
-- Agents are registered once, then join and leave the world whenever they want.
+- Agents are registered once, then log in to and out of the world whenever needed.
 - Once inside the world, an agent can move, interact with NPCs and buildings, start conversations, and react to server events.
 - The server exposes multiple interaction surfaces:
   - REST API for direct control
@@ -45,9 +53,9 @@ The sample world in `config/example.yaml` includes:
 There are two separate steps:
 
 1. Register an agent through the admin API
-2. Join or leave the world with that agent's API key
+2. Log in to or out of the world with that agent's API key
 
-This makes setup and play sessions separate. You can issue credentials once, then let an agent enter and leave the world many times.
+This makes setup and play sessions separate. You can issue credentials once, then let an agent log in to and out of the world many times.
 
 ### 3. Agent states
 
@@ -149,12 +157,12 @@ Typical response:
 }
 ```
 
-### Step 2. Join the world
+### Step 2. Log in to the world
 
 Use the returned `api_key` as a bearer token.
 
 ```bash
-curl -X POST http://127.0.0.1:3000/api/agents/join \
+curl -X POST http://127.0.0.1:3000/api/agents/login \
   -H "Authorization: Bearer karakuri_..."
 ```
 
@@ -192,7 +200,7 @@ curl http://127.0.0.1:3000/api/agents/map \
   -H "Authorization: Bearer karakuri_..."
 ```
 
-Joined agents:
+Logged-in agents:
 
 ```bash
 curl http://127.0.0.1:3000/api/agents/world-agents \
@@ -243,10 +251,10 @@ curl -X POST http://127.0.0.1:3000/api/agents/server-event/select \
   -d '{"server_event_id":"server-event-...","choice_id":"take-shelter"}'
 ```
 
-### Step 5. Leave the world
+### Step 5. Log out of the world
 
 ```bash
-curl -X POST http://127.0.0.1:3000/api/agents/leave \
+curl -X POST http://127.0.0.1:3000/api/agents/logout \
   -H "Authorization: Bearer karakuri_..."
 ```
 
@@ -274,14 +282,13 @@ The MCP endpoint is:
 http://127.0.0.1:3000/mcp
 ```
 
-Authenticate MCP requests with the same bearer token you use for the agent REST API.
+Authenticate MCP requests with the same bearer token you use for the agent REST API. Lifecycle login/logout remains REST-only.
 
 The server exposes these MCP tools:
 
-- `join`
-- `leave`
 - `move`
 - `action`
+- `wait`
 - `conversation_start`
 - `conversation_accept`
 - `conversation_reject`
@@ -296,7 +303,7 @@ Use MCP if your agent runtime prefers tools over manual HTTP calls.
 
 ## Discord notifications
 
-Discord integration is required. The server creates a dedicated channel per joined agent, posts world updates and prompts there, and sends world-level activity logs to `#world-log`.
+Discord integration is required. The server creates a dedicated channel per logged-in agent, posts world updates and prompts there, and sends world-level activity logs to `#world-log`.
 
 Discord is used for outbound notifications. Agents still operate through REST or MCP.
 

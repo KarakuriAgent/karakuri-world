@@ -11,7 +11,7 @@ import type {
   OkResponse,
 } from '../types/api.js';
 import { WorldError } from '../types/api.js';
-import type { JoinedAgent } from '../types/agent.js';
+import type { LoggedInAgent } from '../types/agent.js';
 import type { ConversationClosureReason, ConversationData, ConversationStatus } from '../types/conversation.js';
 import type {
   ConversationAcceptTimer,
@@ -23,10 +23,10 @@ import { cancelIdleReminder, startIdleReminder } from './idle-reminder.js';
 import { manhattanDistance } from './map-utils.js';
 import { cancelActiveWait } from './wait.js';
 
-function requireJoinedAgent(engine: WorldEngine, agentId: string): JoinedAgent {
-  const agent = engine.state.getJoined(agentId);
+function requireLoggedInAgent(engine: WorldEngine, agentId: string): LoggedInAgent {
+  const agent = engine.state.getLoggedIn(agentId);
   if (!agent) {
-    throw new WorldError(403, 'not_joined', `Agent is not joined: ${agentId}`);
+    throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
   }
   return agent;
 }
@@ -79,7 +79,7 @@ function endConversation(
   engine.state.conversations.delete(conversationId);
 
   for (const participantId of getConversationParticipants(conversation)) {
-    const agent = engine.state.getJoined(participantId);
+    const agent = engine.state.getLoggedIn(participantId);
     if (!agent) {
       continue;
     }
@@ -128,10 +128,10 @@ export function findConversationByAgent(
 }
 
 export function validateConversationStart(engine: WorldEngine, agentId: string, request: ConversationStartRequest): {
-  initiator: JoinedAgent;
-  target: JoinedAgent;
+  initiator: LoggedInAgent;
+  target: LoggedInAgent;
 } {
-  const initiator = requireJoinedAgent(engine, agentId);
+  const initiator = requireLoggedInAgent(engine, agentId);
   if (initiator.state !== 'idle' || initiator.pending_conversation_id) {
     throw new WorldError(409, 'state_conflict', 'Initiator cannot start a conversation right now.');
   }
@@ -145,7 +145,7 @@ export function validateConversationStart(engine: WorldEngine, agentId: string, 
     throw new WorldError(400, 'target_not_found', `Unknown target agent: ${request.target_agent_id}`);
   }
 
-  const target = engine.state.getJoined(request.target_agent_id);
+  const target = engine.state.getLoggedIn(request.target_agent_id);
   if (!target || !['idle', 'in_action'].includes(target.state) || target.pending_conversation_id) {
     throw new WorldError(409, 'target_unavailable', 'Target agent cannot receive a conversation right now.');
   }
@@ -207,8 +207,8 @@ export function acceptConversation(engine: WorldEngine, agentId: string, request
     throw new WorldError(403, 'not_target', 'Only the target agent can accept this conversation.');
   }
 
-  const initiator = engine.state.getJoined(conversation.initiator_agent_id);
-  const target = engine.state.getJoined(conversation.target_agent_id);
+  const initiator = engine.state.getLoggedIn(conversation.initiator_agent_id);
+  const target = engine.state.getLoggedIn(conversation.target_agent_id);
   if (!initiator || !target || !['idle', 'in_action'].includes(target.state)) {
     cancelConversationTimers(engine, conversation.conversation_id);
     engine.state.conversations.delete(conversation.conversation_id);
@@ -259,8 +259,8 @@ export function rejectConversation(engine: WorldEngine, agentId: string, request
   cancelConversationTimers(engine, conversation.conversation_id);
   engine.state.conversations.delete(conversation.conversation_id);
 
-  const initiator = engine.state.getJoined(conversation.initiator_agent_id);
-  const target = engine.state.getJoined(conversation.target_agent_id);
+  const initiator = engine.state.getLoggedIn(conversation.initiator_agent_id);
+  const target = engine.state.getLoggedIn(conversation.target_agent_id);
   if (initiator) {
     engine.state.setPendingConversation(initiator.agent_id, null);
     startIdleReminder(engine, initiator.agent_id);
@@ -287,8 +287,8 @@ export function handleAcceptTimeout(engine: WorldEngine, timer: ConversationAcce
   }
 
   engine.state.conversations.delete(conversation.conversation_id);
-  const initiator = engine.state.getJoined(conversation.initiator_agent_id);
-  const target = engine.state.getJoined(conversation.target_agent_id);
+  const initiator = engine.state.getLoggedIn(conversation.initiator_agent_id);
+  const target = engine.state.getLoggedIn(conversation.target_agent_id);
   if (initiator) {
     engine.state.setPendingConversation(initiator.agent_id, null);
     startIdleReminder(engine, initiator.agent_id);
@@ -307,7 +307,7 @@ export function handleAcceptTimeout(engine: WorldEngine, timer: ConversationAcce
 }
 
 export function speak(engine: WorldEngine, agentId: string, request: ConversationSpeakRequest): ConversationSpeakResponse {
-  const agent = requireJoinedAgent(engine, agentId);
+  const agent = requireLoggedInAgent(engine, agentId);
   if (agent.state !== 'in_conversation') {
     throw new WorldError(409, 'state_conflict', 'Agent is not in a conversation.');
   }
@@ -367,10 +367,10 @@ export function handleConversationInterval(engine: WorldEngine, timer: Conversat
     return;
   }
 
-  const speaker = engine.state.getJoined(timer.speaker_agent_id);
-  const listener = engine.state.getJoined(timer.listener_agent_id);
+  const speaker = engine.state.getLoggedIn(timer.speaker_agent_id);
+  const listener = engine.state.getLoggedIn(timer.listener_agent_id);
   if (!speaker || !listener) {
-    endConversation(engine, conversation.conversation_id, 'partner_left');
+    endConversation(engine, conversation.conversation_id, 'partner_logged_out');
     return;
   }
 
@@ -434,8 +434,8 @@ export function cancelPendingConversation(engine: WorldEngine, agentId: string):
 
   cancelConversationTimers(engine, conversation.conversation_id);
   engine.state.conversations.delete(conversation.conversation_id);
-  const initiator = engine.state.getJoined(conversation.initiator_agent_id);
-  const target = engine.state.getJoined(conversation.target_agent_id);
+  const initiator = engine.state.getLoggedIn(conversation.initiator_agent_id);
+  const target = engine.state.getLoggedIn(conversation.target_agent_id);
   if (initiator) {
     engine.state.setPendingConversation(initiator.agent_id, null);
   }
@@ -452,7 +452,7 @@ export function cancelPendingConversation(engine: WorldEngine, agentId: string):
       conversation_id: conversation.conversation_id,
       initiator_agent_id: conversation.initiator_agent_id,
       target_agent_id: conversation.target_agent_id,
-      reason: 'target_left',
+      reason: 'target_logged_out',
     });
   }
 }
@@ -463,5 +463,5 @@ export function forceEndConversation(engine: WorldEngine, agentId: string): void
     return;
   }
 
-  endConversation(engine, conversation.conversation_id, 'partner_left');
+  endConversation(engine, conversation.conversation_id, 'partner_logged_out');
 }

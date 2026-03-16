@@ -4,7 +4,7 @@ import { z } from 'zod';
 import type { WorldEngine } from '../../engine/world-engine.js';
 import type { ApiEnv } from '../context.js';
 import { agentAuth } from '../middleware/auth.js';
-import { requireJoined } from '../middleware/joined.js';
+import { requireLoggedIn } from '../middleware/logged-in.js';
 import { validateBody } from '../middleware/validate.js';
 
 const startConversationSchema = z.object({
@@ -25,7 +25,7 @@ export function registerAgentConversationRoutes(app: Hono<ApiEnv>, engine: World
   app.post(
     '/api/agents/conversation/start',
     agentAuth(engine),
-    requireJoined(engine),
+    requireLoggedIn(engine),
     validateBody(startConversationSchema),
     (c) => {
       const agentId = c.get('agentId') as string;
@@ -36,7 +36,7 @@ export function registerAgentConversationRoutes(app: Hono<ApiEnv>, engine: World
   app.post(
     '/api/agents/conversation/accept',
     agentAuth(engine),
-    requireJoined(engine),
+    requireLoggedIn(engine),
     validateBody(conversationIdSchema),
     (c) => {
       const agentId = c.get('agentId') as string;
@@ -47,7 +47,7 @@ export function registerAgentConversationRoutes(app: Hono<ApiEnv>, engine: World
   app.post(
     '/api/agents/conversation/reject',
     agentAuth(engine),
-    requireJoined(engine),
+    requireLoggedIn(engine),
     validateBody(conversationIdSchema),
     (c) => {
       const agentId = c.get('agentId') as string;
@@ -58,7 +58,7 @@ export function registerAgentConversationRoutes(app: Hono<ApiEnv>, engine: World
   app.post(
     '/api/agents/conversation/speak',
     agentAuth(engine),
-    requireJoined(engine),
+    requireLoggedIn(engine),
     validateBody(speakSchema),
     (c) => {
       const agentId = c.get('agentId') as string;

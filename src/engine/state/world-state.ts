@@ -1,6 +1,6 @@
-import type { AgentRegistration, AgentState, JoinedAgent } from '../../types/agent.js';
+import type { AgentRegistration, AgentState, LoggedInAgent } from '../../types/agent.js';
 import type { NodeId } from '../../types/data-model.js';
-import { AgentStateStore, type JoinAgentParams } from './agent-state.js';
+import { AgentStateStore, type LoginAgentParams } from './agent-state.js';
 import { ConversationStateStore } from './conversation-state.js';
 import { ServerEventStateStore } from './server-event-state.js';
 
@@ -33,47 +33,47 @@ export class WorldState {
     return this.agents.list();
   }
 
-  join(params: JoinAgentParams): JoinedAgent {
-    return this.agents.join(params);
+  login(params: LoginAgentParams): LoggedInAgent {
+    return this.agents.login(params);
   }
 
-  leave(agentId: string): JoinedAgent | null {
-    return this.agents.leave(agentId);
+  logout(agentId: string): LoggedInAgent | null {
+    return this.agents.logout(agentId);
   }
 
-  getJoined(agentId: string): JoinedAgent | null {
-    return this.agents.getJoined(agentId);
+  getLoggedIn(agentId: string): LoggedInAgent | null {
+    return this.agents.getLoggedIn(agentId);
   }
 
-  listJoined(): JoinedAgent[] {
-    return this.agents.listJoined();
+  listLoggedIn(): LoggedInAgent[] {
+    return this.agents.listLoggedIn();
   }
 
-  isJoined(agentId: string): boolean {
-    return this.agents.isJoined(agentId);
+  isLoggedIn(agentId: string): boolean {
+    return this.agents.isLoggedIn(agentId);
   }
 
-  setState(agentId: string, state: AgentState): JoinedAgent {
+  setState(agentId: string, state: AgentState): LoggedInAgent {
     return this.agents.setState(agentId, state);
   }
 
-  setNode(agentId: string, nodeId: NodeId): JoinedAgent {
+  setNode(agentId: string, nodeId: NodeId): LoggedInAgent {
     return this.agents.setNode(agentId, nodeId);
   }
 
-  setPendingConversation(agentId: string, conversationId: string | null): JoinedAgent {
+  setPendingConversation(agentId: string, conversationId: string | null): LoggedInAgent {
     return this.agents.setPendingConversation(agentId, conversationId);
   }
 
-  addPendingServerEvent(agentId: string, serverEventId: string): JoinedAgent {
+  addPendingServerEvent(agentId: string, serverEventId: string): LoggedInAgent {
     return this.agents.addPendingServerEvent(agentId, serverEventId);
   }
 
-  removePendingServerEvent(agentId: string, serverEventId: string): JoinedAgent {
+  removePendingServerEvent(agentId: string, serverEventId: string): LoggedInAgent {
     return this.agents.removePendingServerEvent(agentId, serverEventId);
   }
 
-  clearPendingServerEvents(agentId: string): JoinedAgent {
+  clearPendingServerEvents(agentId: string): LoggedInAgent {
     return this.agents.clearPendingServerEvents(agentId);
   }
 }

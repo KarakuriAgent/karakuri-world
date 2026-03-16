@@ -5,7 +5,7 @@ import type { WorldSnapshot } from './snapshot.js';
 
 export type ApiErrorCode =
   | 'unauthorized'
-  | 'not_joined'
+  | 'not_logged_in'
   | 'invalid_request'
   | 'state_conflict'
   | 'out_of_bounds'
@@ -58,7 +58,7 @@ export interface AdminAgentSummary {
   agent_id: string;
   agent_name: string;
   discord_bot_id: string;
-  is_joined: boolean;
+  is_logged_in: boolean;
 }
 
 export interface AdminRegisterAgentRequest {
@@ -94,12 +94,12 @@ export interface ConfigValidationErrorResponse extends ErrorResponse {
   details: ConfigValidationIssue[];
 }
 
-export interface JoinResponse {
+export interface LoginResponse {
   channel_id: string;
   node_id: NodeId;
 }
 
-export interface LeaveResponse {
+export interface LogoutResponse {
   status: 'ok';
 }
 

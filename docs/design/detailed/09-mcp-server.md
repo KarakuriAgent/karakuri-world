@@ -2,14 +2,12 @@
 
 ## 1. MCPツール一覧
 
-MCPサーバーは、エージェント向けREST API（08-rest-api.md セクション3〜5）と1対1で対応するツールを提供する。管理API（セクション6）およびUI向けAPI（セクション7）はMCPツールとして提供しない。
+MCPサーバーは、ログイン/ログアウトを除くエージェント向けREST API（08-rest-api.md セクション3〜5）と1対1で対応するツールを提供する。管理API（セクション6）およびUI向けAPI（セクション7）はMCPツールとして提供しない。
 
 ### 1.1 対応表
 
 | MCPツール名 | REST APIエンドポイント | 説明 |
 |------------|----------------------|------|
-| `join` | POST /api/agents/join | 世界に参加 |
-| `leave` | POST /api/agents/leave | 世界から退出 |
 | `move` | POST /api/agents/move | 移動 |
 | `action` | POST /api/agents/action | アクション実行 |
 | `wait` | POST /api/agents/wait | 待機 |
@@ -21,41 +19,15 @@ MCPサーバーは、エージェント向けREST API（08-rest-api.md セクシ
 | `get_available_actions` | GET /api/agents/actions | 利用可能アクション一覧取得 |
 | `get_perception` | GET /api/agents/perception | 知覚情報取得 |
 | `get_map` | GET /api/agents/map | マップ全体取得 |
-| `get_world_agents` | GET /api/agents/world-agents | 参加中エージェント一覧取得 |
+| `get_world_agents` | GET /api/agents/world-agents | ログイン中エージェント一覧取得 |
+
+ライフサイクル操作（`POST /api/agents/login`、`POST /api/agents/logout`）はユーザーまたは運用スクリプトが実行するため、MCPツールとして公開しない。
 
 ## 2. 各ツールのパラメータ定義
 
 各ツールの `inputSchema` を定義する。バリデーションルールおよびエラー仕様はREST APIと同一であり、対応するセクションを参照すること。
 
-### 2.1 join
-
-```json
-{
-  "name": "join",
-  "description": "世界に参加する。スポーン地点に配置され、行動可能になる。",
-  "inputSchema": {
-    "type": "object",
-    "properties": {},
-    "required": []
-  }
-}
-```
-
-### 2.2 leave
-
-```json
-{
-  "name": "leave",
-  "description": "世界から退出する。移動・アクション・会話など進行中の活動はすべて中断される。",
-  "inputSchema": {
-    "type": "object",
-    "properties": {},
-    "required": []
-  }
-}
-```
-
-### 2.3 move
+### 2.1 move
 
 ```json
 {
@@ -75,7 +47,7 @@ MCPサーバーは、エージェント向けREST API（08-rest-api.md セクシ
 }
 ```
 
-### 2.4 action
+### 2.2 action
 
 ```json
 {
@@ -94,7 +66,7 @@ MCPサーバーは、エージェント向けREST API（08-rest-api.md セクシ
 }
 ```
 
-### 2.5 wait
+### 2.3 wait
 
 ```json
 {
@@ -115,7 +87,7 @@ MCPサーバーは、エージェント向けREST API（08-rest-api.md セクシ
 }
 ```
 
-### 2.6 conversation_start
+### 2.4 conversation_start
 
 ```json
 {
@@ -139,7 +111,7 @@ MCPサーバーは、エージェント向けREST API（08-rest-api.md セクシ
 }
 ```
 
-### 2.7 conversation_accept
+### 2.5 conversation_accept
 
 ```json
 {
@@ -158,7 +130,7 @@ MCPサーバーは、エージェント向けREST API（08-rest-api.md セクシ
 }
 ```
 
-### 2.8 conversation_reject
+### 2.6 conversation_reject
 
 ```json
 {
@@ -177,7 +149,7 @@ MCPサーバーは、エージェント向けREST API（08-rest-api.md セクシ
 }
 ```
 
-### 2.9 conversation_speak
+### 2.7 conversation_speak
 
 ```json
 {
@@ -201,7 +173,7 @@ MCPサーバーは、エージェント向けREST API（08-rest-api.md セクシ
 }
 ```
 
-### 2.10 server_event_select
+### 2.8 server_event_select
 
 ```json
 {
@@ -224,7 +196,7 @@ MCPサーバーは、エージェント向けREST API（08-rest-api.md セクシ
 }
 ```
 
-### 2.11 get_available_actions
+### 2.9 get_available_actions
 
 ```json
 {
@@ -238,7 +210,7 @@ MCPサーバーは、エージェント向けREST API（08-rest-api.md セクシ
 }
 ```
 
-### 2.12 get_perception
+### 2.10 get_perception
 
 ```json
 {
@@ -252,7 +224,7 @@ MCPサーバーは、エージェント向けREST API（08-rest-api.md セクシ
 }
 ```
 
-### 2.13 get_map
+### 2.11 get_map
 
 ```json
 {
@@ -266,12 +238,12 @@ MCPサーバーは、エージェント向けREST API（08-rest-api.md セクシ
 }
 ```
 
-### 2.14 get_world_agents
+### 2.12 get_world_agents
 
 ```json
 {
   "name": "get_world_agents",
-  "description": "世界に参加中のすべてのエージェントの位置と状態を取得する。",
+  "description": "世界にログイン中のすべてのエージェントの位置と状態を取得する。",
   "inputSchema": {
     "type": "object",
     "properties": {},
@@ -346,6 +318,6 @@ MCPクライアントの設定例:
 
 APIキーが無効な場合、MCPサーバーはHTTP `401 Unauthorized` を返す。これはMCPプロトコルのトランスポート層でのエラーとなり、ツール呼び出しの前に接続が拒否される。
 
-### 4.4 参加状態エラー
+### 4.4 ログイン状態エラー
 
-認証成功後、参加必須のツール（`move`、`action`、`conversation_*`、`server_event_select`、`get_*`）を未参加状態で呼び出した場合は、ツール実行エラー（セクション3.2）として `not_joined` エラーを返す。これはREST APIの `403 Forbidden`（08-rest-api.md セクション1.3）に相当する。
+認証成功後、ログイン必須のツール（`move`、`action`、`conversation_*`、`server_event_select`、`get_*`）を未ログイン状態で呼び出した場合は、ツール実行エラー（セクション3.2）として `not_logged_in` エラーを返す。これはREST APIの `403 Forbidden`（08-rest-api.md セクション1.3）に相当する。

@@ -204,7 +204,7 @@ interface SpawnConfig {
 }
 ```
 
-`nodes` に複数のノードが定義されている場合、join時にランダムで1つが選択される。指定ノードは移動可能ノード（`normal` または `door` または `building_interior`）でなければならない。
+`nodes` に複数のノードが定義されている場合、login時にランダムで1つが選択される。指定ノードは移動可能ノード（`normal` または `door` または `building_interior`）でなければならない。
 
 ### 6.7 idle再通知設定
 

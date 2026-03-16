@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildPerceptionData, buildPerceptionText } from '../../../src/domain/perception.js';
-import type { JoinedAgent } from '../../../src/types/agent.js';
+import type { LoggedInAgent } from '../../../src/types/agent.js';
 import { createTestMapConfig } from '../../helpers/test-map.js';
 
-const joinedAgents: JoinedAgent[] = [
+const loggedInAgents: LoggedInAgent[] = [
   {
     agent_id: 'agent-alice',
     agent_name: 'Alice',
@@ -27,7 +27,7 @@ const joinedAgents: JoinedAgent[] = [
 
 describe('perception', () => {
   it('builds structured perception data', () => {
-    const data = buildPerceptionData(joinedAgents[0], joinedAgents, createTestMapConfig(), 3);
+    const data = buildPerceptionData(loggedInAgents[0], loggedInAgents, createTestMapConfig(), 3);
 
     expect(data.current_node.node_id).toBe('2-1');
     expect(data.agents).toEqual([
@@ -54,7 +54,7 @@ describe('perception', () => {
   });
 
   it('builds readable perception text', () => {
-    const data = buildPerceptionData(joinedAgents[0], joinedAgents, createTestMapConfig(), 3);
+    const data = buildPerceptionData(loggedInAgents[0], loggedInAgents, createTestMapConfig(), 3);
     const text = buildPerceptionText(data);
 
     expect(text).toContain('現在地: 2-1');

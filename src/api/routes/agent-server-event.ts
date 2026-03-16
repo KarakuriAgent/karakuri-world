@@ -4,7 +4,7 @@ import { z } from 'zod';
 import type { WorldEngine } from '../../engine/world-engine.js';
 import type { ApiEnv } from '../context.js';
 import { agentAuth } from '../middleware/auth.js';
-import { requireJoined } from '../middleware/joined.js';
+import { requireLoggedIn } from '../middleware/logged-in.js';
 import { validateBody } from '../middleware/validate.js';
 
 const selectSchema = z.object({
@@ -16,7 +16,7 @@ export function registerAgentServerEventRoutes(app: Hono<ApiEnv>, engine: WorldE
   app.post(
     '/api/agents/server-event/select',
     agentAuth(engine),
-    requireJoined(engine),
+    requireLoggedIn(engine),
     validateBody(selectSchema),
     (c) => {
       const agentId = c.get('agentId') as string;

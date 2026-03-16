@@ -1,93 +1,763 @@
 world:
-  name: Karakuri World
-  description: Clockwork agents roam a small experimental city.
+  name: からくり町
+  description: どこにでもありそうな日本の小さな町。神社や学校、商店街に駅。穏やかな日常が流れている。
   skill_name: karakuri-world
 movement:
   duration_ms: 1000
 conversation:
   max_turns: 10
-  interval_ms: 500
+  interval_ms: 10000
   accept_timeout_ms: 60000
   turn_timeout_ms: 60000
 perception:
-  range: 3
+  range: 5
 spawn:
   nodes:
-    - 3-1
-    - 3-2
+    - 20-1
+    - 20-8
+    - 20-15
+    - 20-22
+    - 20-29
 map:
-  rows: 3
-  cols: 5
+  rows: 20
+  cols: 30
   nodes:
-    1-2:
-      type: npc
-      label: Gatekeeper
-      npc_id: npc-gatekeeper
-    1-3:
-      type: wall
-      building_id: building-workshop
-    1-4:
-      type: wall
-      building_id: building-workshop
-    1-5:
-      type: wall
-      building_id: building-workshop
-    2-3:
-      type: wall
-      building_id: building-workshop
-    2-4:
-      type: building_interior
-      label: Workshop Interior
-      building_id: building-workshop
-    2-5:
-      type: wall
-      building_id: building-workshop
-    3-4:
-      type: door
-      label: Workshop Door
-      building_id: building-workshop
+    # ==========================================
+    # 北地区 (rows 1-3, south-facing)
+    # ==========================================
+
+    # --- 神社 (5w, cols 1-5) ---
+    1-1: { type: wall, building_id: building-shrine }
+    1-2: { type: wall, building_id: building-shrine }
+    1-3: { type: wall, building_id: building-shrine }
+    1-4: { type: wall, building_id: building-shrine }
+    1-5: { type: wall, building_id: building-shrine }
+    2-1: { type: wall, building_id: building-shrine }
+    2-2: { type: building_interior, label: 本殿, building_id: building-shrine }
+    2-3: { type: building_interior, label: 拝殿, building_id: building-shrine }
+    2-4: { type: building_interior, label: 社務所, building_id: building-shrine }
+    2-5: { type: wall, building_id: building-shrine }
+    3-1: { type: wall, building_id: building-shrine }
+    3-2: { type: wall, building_id: building-shrine }
+    3-3: { type: door, label: 鳥居, building_id: building-shrine }
+    3-4: { type: wall, building_id: building-shrine }
+    3-5: { type: wall, building_id: building-shrine }
+
+    # --- 住宅A (3w, cols 8-10) ---
+    1-8: { type: wall, building_id: building-house-a }
+    1-9: { type: wall, building_id: building-house-a }
+    1-10: { type: wall, building_id: building-house-a }
+    2-8: { type: wall, building_id: building-house-a }
+    2-9: { type: building_interior, label: 住宅A 居間, building_id: building-house-a }
+    2-10: { type: wall, building_id: building-house-a }
+    3-8: { type: wall, building_id: building-house-a }
+    3-9: { type: door, label: 住宅A 玄関, building_id: building-house-a }
+    3-10: { type: wall, building_id: building-house-a }
+
+    # --- 住宅B (3w, cols 13-15) ---
+    1-13: { type: wall, building_id: building-house-b }
+    1-14: { type: wall, building_id: building-house-b }
+    1-15: { type: wall, building_id: building-house-b }
+    2-13: { type: wall, building_id: building-house-b }
+    2-14: { type: building_interior, label: 住宅B 居間, building_id: building-house-b }
+    2-15: { type: wall, building_id: building-house-b }
+    3-13: { type: wall, building_id: building-house-b }
+    3-14: { type: door, label: 住宅B 玄関, building_id: building-house-b }
+    3-15: { type: wall, building_id: building-house-b }
+
+    # --- 学校 (7w, cols 19-25) ---
+    1-19: { type: wall, building_id: building-school }
+    1-20: { type: wall, building_id: building-school }
+    1-21: { type: wall, building_id: building-school }
+    1-22: { type: wall, building_id: building-school }
+    1-23: { type: wall, building_id: building-school }
+    1-24: { type: wall, building_id: building-school }
+    1-25: { type: wall, building_id: building-school }
+    2-19: { type: wall, building_id: building-school }
+    2-20: { type: building_interior, label: 教室, building_id: building-school }
+    2-21: { type: building_interior, label: 職員室, building_id: building-school }
+    2-22: { type: building_interior, label: 図書室, building_id: building-school }
+    2-23: { type: building_interior, label: 理科室, building_id: building-school }
+    2-24: { type: building_interior, label: 体育館, building_id: building-school }
+    2-25: { type: wall, building_id: building-school }
+    3-19: { type: wall, building_id: building-school }
+    3-20: { type: wall, building_id: building-school }
+    3-21: { type: wall, building_id: building-school }
+    3-22: { type: door, label: 学校 正門, building_id: building-school }
+    3-23: { type: wall, building_id: building-school }
+    3-24: { type: wall, building_id: building-school }
+    3-25: { type: wall, building_id: building-school }
+
+    # --- 住宅C (3w, cols 28-30) ---
+    1-28: { type: wall, building_id: building-house-c }
+    1-29: { type: wall, building_id: building-house-c }
+    1-30: { type: wall, building_id: building-house-c }
+    2-28: { type: wall, building_id: building-house-c }
+    2-29: { type: building_interior, label: 住宅C 居間, building_id: building-house-c }
+    2-30: { type: wall, building_id: building-house-c }
+    3-28: { type: wall, building_id: building-house-c }
+    3-29: { type: door, label: 住宅C 玄関, building_id: building-house-c }
+    3-30: { type: wall, building_id: building-house-c }
+
+    # ==========================================
+    # Row 4: 北の通り (NPCs)
+    # ==========================================
+    4-6: { type: npc, label: 巫女, npc_id: npc-miko }
+
+    # ==========================================
+    # 商店街 北側 (rows 5-7, south-facing)
+    # ==========================================
+
+    # --- パン屋 (3w, cols 1-3) ---
+    5-1: { type: wall, building_id: building-bakery }
+    5-2: { type: wall, building_id: building-bakery }
+    5-3: { type: wall, building_id: building-bakery }
+    6-1: { type: wall, building_id: building-bakery }
+    6-2: { type: building_interior, label: パン屋 店内, building_id: building-bakery }
+    6-3: { type: wall, building_id: building-bakery }
+    7-1: { type: wall, building_id: building-bakery }
+    7-2: { type: door, label: パン屋 入口, building_id: building-bakery }
+    7-3: { type: wall, building_id: building-bakery }
+
+    # --- 本屋 (3w, cols 5-7) ---
+    5-5: { type: wall, building_id: building-bookstore }
+    5-6: { type: wall, building_id: building-bookstore }
+    5-7: { type: wall, building_id: building-bookstore }
+    6-5: { type: wall, building_id: building-bookstore }
+    6-6: { type: building_interior, label: 本屋 店内, building_id: building-bookstore }
+    6-7: { type: wall, building_id: building-bookstore }
+    7-5: { type: wall, building_id: building-bookstore }
+    7-6: { type: door, label: 本屋 入口, building_id: building-bookstore }
+    7-7: { type: wall, building_id: building-bookstore }
+
+    # --- 喫茶店 (3w, cols 10-12) ---
+    5-10: { type: wall, building_id: building-cafe }
+    5-11: { type: wall, building_id: building-cafe }
+    5-12: { type: wall, building_id: building-cafe }
+    6-10: { type: wall, building_id: building-cafe }
+    6-11: { type: building_interior, label: 喫茶店 店内, building_id: building-cafe }
+    6-12: { type: wall, building_id: building-cafe }
+    7-10: { type: wall, building_id: building-cafe }
+    7-11: { type: door, label: 喫茶店 入口, building_id: building-cafe }
+    7-12: { type: wall, building_id: building-cafe }
+
+    # --- コンビニ (3w, cols 15-17) ---
+    5-15: { type: wall, building_id: building-konbini }
+    5-16: { type: wall, building_id: building-konbini }
+    5-17: { type: wall, building_id: building-konbini }
+    6-15: { type: wall, building_id: building-konbini }
+    6-16: { type: building_interior, label: コンビニ 店内, building_id: building-konbini }
+    6-17: { type: wall, building_id: building-konbini }
+    7-15: { type: wall, building_id: building-konbini }
+    7-16: { type: door, label: コンビニ 入口, building_id: building-konbini }
+    7-17: { type: wall, building_id: building-konbini }
+
+    # --- ラーメン屋 (3w, cols 20-22) ---
+    5-20: { type: wall, building_id: building-ramen }
+    5-21: { type: wall, building_id: building-ramen }
+    5-22: { type: wall, building_id: building-ramen }
+    6-20: { type: wall, building_id: building-ramen }
+    6-21: { type: building_interior, label: ラーメン屋 店内, building_id: building-ramen }
+    6-22: { type: wall, building_id: building-ramen }
+    7-20: { type: wall, building_id: building-ramen }
+    7-21: { type: door, label: ラーメン屋 入口, building_id: building-ramen }
+    7-22: { type: wall, building_id: building-ramen }
+
+    # --- 花屋 (3w, cols 25-27) ---
+    5-25: { type: wall, building_id: building-florist }
+    5-26: { type: wall, building_id: building-florist }
+    5-27: { type: wall, building_id: building-florist }
+    6-25: { type: wall, building_id: building-florist }
+    6-26: { type: building_interior, label: 花屋 店内, building_id: building-florist }
+    6-27: { type: wall, building_id: building-florist }
+    7-25: { type: wall, building_id: building-florist }
+    7-26: { type: door, label: 花屋 入口, building_id: building-florist }
+    7-27: { type: wall, building_id: building-florist }
+
+    # ==========================================
+    # Row 8: 商店街通り (NPCs)
+    # ==========================================
+    8-13: { type: npc, label: おまわりさん, npc_id: npc-police }
+
+    # ==========================================
+    # 商店街 南側 (rows 9-11, north-facing)
+    # ==========================================
+
+    # --- 銭湯 (3w, cols 1-3) ---
+    9-1: { type: wall, building_id: building-sento }
+    9-2: { type: door, label: 銭湯 入口, building_id: building-sento }
+    9-3: { type: wall, building_id: building-sento }
+    10-1: { type: wall, building_id: building-sento }
+    10-2: { type: building_interior, label: 銭湯 脱衣所, building_id: building-sento }
+    10-3: { type: wall, building_id: building-sento }
+    11-1: { type: wall, building_id: building-sento }
+    11-2: { type: wall, building_id: building-sento }
+    11-3: { type: wall, building_id: building-sento }
+
+    # --- 交番 (3w, cols 5-7) ---
+    9-5: { type: wall, building_id: building-koban }
+    9-6: { type: door, label: 交番 入口, building_id: building-koban }
+    9-7: { type: wall, building_id: building-koban }
+    10-5: { type: wall, building_id: building-koban }
+    10-6: { type: building_interior, label: 交番 内部, building_id: building-koban }
+    10-7: { type: wall, building_id: building-koban }
+    11-5: { type: wall, building_id: building-koban }
+    11-6: { type: wall, building_id: building-koban }
+    11-7: { type: wall, building_id: building-koban }
+
+    # --- 床屋 (3w, cols 10-12) ---
+    9-10: { type: wall, building_id: building-barber }
+    9-11: { type: door, label: 床屋 入口, building_id: building-barber }
+    9-12: { type: wall, building_id: building-barber }
+    10-10: { type: wall, building_id: building-barber }
+    10-11: { type: building_interior, label: 床屋 店内, building_id: building-barber }
+    10-12: { type: wall, building_id: building-barber }
+    11-10: { type: wall, building_id: building-barber }
+    11-11: { type: wall, building_id: building-barber }
+    11-12: { type: wall, building_id: building-barber }
+
+    # --- 公民館 (5w, cols 15-19) ---
+    9-15: { type: wall, building_id: building-community }
+    9-16: { type: wall, building_id: building-community }
+    9-17: { type: door, label: 公民館 入口, building_id: building-community }
+    9-18: { type: wall, building_id: building-community }
+    9-19: { type: wall, building_id: building-community }
+    10-15: { type: wall, building_id: building-community }
+    10-16: { type: building_interior, label: 公民館 ホール, building_id: building-community }
+    10-17: { type: building_interior, label: 公民館 会議室, building_id: building-community }
+    10-18: { type: building_interior, label: 公民館 図書室, building_id: building-community }
+    10-19: { type: wall, building_id: building-community }
+    11-15: { type: wall, building_id: building-community }
+    11-16: { type: wall, building_id: building-community }
+    11-17: { type: wall, building_id: building-community }
+    11-18: { type: wall, building_id: building-community }
+    11-19: { type: wall, building_id: building-community }
+
+    # --- 酒屋 (3w, cols 25-27) ---
+    9-25: { type: wall, building_id: building-sakaya }
+    9-26: { type: door, label: 酒屋 入口, building_id: building-sakaya }
+    9-27: { type: wall, building_id: building-sakaya }
+    10-25: { type: wall, building_id: building-sakaya }
+    10-26: { type: building_interior, label: 酒屋 店内, building_id: building-sakaya }
+    10-27: { type: wall, building_id: building-sakaya }
+    11-25: { type: wall, building_id: building-sakaya }
+    11-26: { type: wall, building_id: building-sakaya }
+    11-27: { type: wall, building_id: building-sakaya }
+
+    # ==========================================
+    # Row 12: 南の通り (NPCs)
+    # ==========================================
+    12-9: { type: npc, label: 猫, npc_id: npc-cat }
+    12-24: { type: npc, label: おじいさん, npc_id: npc-ojiisan }
+
+    # ==========================================
+    # 南地区 (rows 13-15, south-facing)
+    # ==========================================
+
+    # --- 住宅D (3w, cols 1-3) ---
+    13-1: { type: wall, building_id: building-house-d }
+    13-2: { type: wall, building_id: building-house-d }
+    13-3: { type: wall, building_id: building-house-d }
+    14-1: { type: wall, building_id: building-house-d }
+    14-2: { type: building_interior, label: 住宅D 居間, building_id: building-house-d }
+    14-3: { type: wall, building_id: building-house-d }
+    15-1: { type: wall, building_id: building-house-d }
+    15-2: { type: door, label: 住宅D 玄関, building_id: building-house-d }
+    15-3: { type: wall, building_id: building-house-d }
+
+    # --- 住宅E (3w, cols 5-7) ---
+    13-5: { type: wall, building_id: building-house-e }
+    13-6: { type: wall, building_id: building-house-e }
+    13-7: { type: wall, building_id: building-house-e }
+    14-5: { type: wall, building_id: building-house-e }
+    14-6: { type: building_interior, label: 住宅E 居間, building_id: building-house-e }
+    14-7: { type: wall, building_id: building-house-e }
+    15-5: { type: wall, building_id: building-house-e }
+    15-6: { type: door, label: 住宅E 玄関, building_id: building-house-e }
+    15-7: { type: wall, building_id: building-house-e }
+
+    # --- 駅 (7w, cols 12-18) ---
+    13-12: { type: wall, building_id: building-station }
+    13-13: { type: wall, building_id: building-station }
+    13-14: { type: wall, building_id: building-station }
+    13-15: { type: wall, building_id: building-station }
+    13-16: { type: wall, building_id: building-station }
+    13-17: { type: wall, building_id: building-station }
+    13-18: { type: wall, building_id: building-station }
+    14-12: { type: wall, building_id: building-station }
+    14-13: { type: building_interior, label: 改札, building_id: building-station }
+    14-14: { type: building_interior, label: 待合室, building_id: building-station }
+    14-15: { type: building_interior, label: ホーム, building_id: building-station }
+    14-16: { type: building_interior, label: 売店, building_id: building-station }
+    14-17: { type: building_interior, label: 事務室, building_id: building-station }
+    14-18: { type: wall, building_id: building-station }
+    15-12: { type: wall, building_id: building-station }
+    15-13: { type: wall, building_id: building-station }
+    15-14: { type: wall, building_id: building-station }
+    15-15: { type: door, label: 駅 入口, building_id: building-station }
+    15-16: { type: wall, building_id: building-station }
+    15-17: { type: wall, building_id: building-station }
+    15-18: { type: wall, building_id: building-station }
+
+    # --- 住宅F (3w, cols 25-27) ---
+    13-25: { type: wall, building_id: building-house-f }
+    13-26: { type: wall, building_id: building-house-f }
+    13-27: { type: wall, building_id: building-house-f }
+    14-25: { type: wall, building_id: building-house-f }
+    14-26: { type: building_interior, label: 住宅F 居間, building_id: building-house-f }
+    14-27: { type: wall, building_id: building-house-f }
+    15-25: { type: wall, building_id: building-house-f }
+    15-26: { type: door, label: 住宅F 玄関, building_id: building-house-f }
+    15-27: { type: wall, building_id: building-house-f }
+
+    # ==========================================
+    # Row 16: 駅前通り (NPCs)
+    # ==========================================
+    16-16: { type: npc, label: 駅員, npc_id: npc-ekiin }
+
+    # ==========================================
+    # 南端 住宅 (rows 17-19, south-facing)
+    # ==========================================
+
+    # --- 住宅G (3w, cols 1-3) ---
+    17-1: { type: wall, building_id: building-house-g }
+    17-2: { type: wall, building_id: building-house-g }
+    17-3: { type: wall, building_id: building-house-g }
+    18-1: { type: wall, building_id: building-house-g }
+    18-2: { type: building_interior, label: 住宅G 居間, building_id: building-house-g }
+    18-3: { type: wall, building_id: building-house-g }
+    19-1: { type: wall, building_id: building-house-g }
+    19-2: { type: door, label: 住宅G 玄関, building_id: building-house-g }
+    19-3: { type: wall, building_id: building-house-g }
+
+    # --- 住宅H (3w, cols 5-7) ---
+    17-5: { type: wall, building_id: building-house-h }
+    17-6: { type: wall, building_id: building-house-h }
+    17-7: { type: wall, building_id: building-house-h }
+    18-5: { type: wall, building_id: building-house-h }
+    18-6: { type: building_interior, label: 住宅H 居間, building_id: building-house-h }
+    18-7: { type: wall, building_id: building-house-h }
+    19-5: { type: wall, building_id: building-house-h }
+    19-6: { type: door, label: 住宅H 玄関, building_id: building-house-h }
+    19-7: { type: wall, building_id: building-house-h }
+
+  # ==========================================
+  # 建物定義
+  # ==========================================
   buildings:
-    - building_id: building-workshop
-      name: Clockwork Workshop
-      description: A small workshop filled with gears and steam.
-      wall_nodes:
-        - 1-3
-        - 1-4
-        - 1-5
-        - 2-3
-        - 2-5
-      interior_nodes:
-        - 2-4
-      door_nodes:
-        - 3-4
+    - building_id: building-shrine
+      name: 神社
+      description: 赤い鳥居が立つ小さな神社。境内には古い桜の木があり、石畳の参道が本殿へと続いている。
+      wall_nodes: [1-1, 1-2, 1-3, 1-4, 1-5, 2-1, 2-5, 3-1, 3-2, 3-4, 3-5]
+      interior_nodes: [2-2, 2-3, 2-4]
+      door_nodes: [3-3]
       actions:
-        - action_id: polish-gears
-          name: Gears polishing
-          description: Carefully polish the workshop gears.
-          duration_ms: 900000
-          result_description: The workshop gleams with fresh polish.
+        - action_id: pray
+          name: お参りする
+          description: 賽銭を入れて二礼二拍手一礼。
+          duration_ms: 600000
+          result_description: 静かに手を合わせた。清々しい気持ちになった。
+        - action_id: draw-omikuji
+          name: おみくじを引く
+          description: おみくじ箱を振って一本引く。
+          duration_ms: 360000
+          result_description: おみくじを引いた。今日の運勢が気になる。
+
+    - building_id: building-house-a
+      name: 住宅A
+      description: 瓦屋根の小さな一軒家。庭に洗濯物が干してある。
+      wall_nodes: [1-8, 1-9, 1-10, 2-8, 2-10, 3-8, 3-10]
+      interior_nodes: [2-9]
+      door_nodes: [3-9]
+      actions:
+        - action_id: rest-house-a
+          name: 休憩する
+          description: 居間で少し休む。
+          duration_ms: 600000
+          result_description: 静かな部屋でひと休みした。
+
+    - building_id: building-house-b
+      name: 住宅B
+      description: 古い木造の家。玄関先に鉢植えが並んでいる。
+      wall_nodes: [1-13, 1-14, 1-15, 2-13, 2-15, 3-13, 3-15]
+      interior_nodes: [2-14]
+      door_nodes: [3-14]
+      actions:
+        - action_id: rest-house-b
+          name: 休憩する
+          description: 居間で少し休む。
+          duration_ms: 600000
+          result_description: 静かな部屋でひと休みした。
+
+    - building_id: building-school
+      name: 学校
+      description: 二階建ての小さな学校。校庭には桜の木が植えられ、チャイムの音が時折聞こえる。
+      wall_nodes: [1-19, 1-20, 1-21, 1-22, 1-23, 1-24, 1-25, 2-19, 2-25, 3-19, 3-20, 3-21, 3-23, 3-24, 3-25]
+      interior_nodes: [2-20, 2-21, 2-22, 2-23, 2-24]
+      door_nodes: [3-22]
+      actions:
+        - action_id: study
+          name: 勉強する
+          description: 教室の机に座って勉強する。
+          duration_ms: 3600000
+          result_description: 集中して勉強した。少し賢くなった気がする。
+        - action_id: use-gym
+          name: 体育館で運動する
+          description: 体育館でストレッチや軽い運動をする。
+          duration_ms: 3600000
+          result_description: いい汗をかいた。体がすっきりした。
+
+    - building_id: building-house-c
+      name: 住宅C
+      description: 二階建ての家。ベランダに布団が干してある。
+      wall_nodes: [1-28, 1-29, 1-30, 2-28, 2-30, 3-28, 3-30]
+      interior_nodes: [2-29]
+      door_nodes: [3-29]
+      actions:
+        - action_id: rest-house-c
+          name: 休憩する
+          description: 居間で少し休む。
+          duration_ms: 600000
+          result_description: 静かな部屋でひと休みした。
+
+    - building_id: building-bakery
+      name: パン屋「小麦の風」
+      description: 焼きたてパンの香ばしい香りが漂う小さなパン屋。
+      wall_nodes: [5-1, 5-2, 5-3, 6-1, 6-3, 7-1, 7-3]
+      interior_nodes: [6-2]
+      door_nodes: [7-2]
+      actions:
+        - action_id: buy-bread
+          name: パンを買う
+          description: 焼きたてのパンを選んで買う。
+          duration_ms: 360000
+          result_description: 温かいパンを手に入れた。いい香りがする。
+
+    - building_id: building-bookstore
+      name: 本屋「栞」
+      description: 古書から新刊まで揃う町の本屋。奥の棚には珍しい本もある。
+      wall_nodes: [5-5, 5-6, 5-7, 6-5, 6-7, 7-5, 7-7]
+      interior_nodes: [6-6]
+      door_nodes: [7-6]
+      actions:
+        - action_id: browse-books
+          name: 本を探す
+          description: 棚を眺めながら気になる本を探す。
+          duration_ms: 600000
+          result_description: 面白そうな本を見つけた。
+        - action_id: read-book
+          name: 立ち読みする
+          description: 気になる本を手に取ってぱらぱらとめくる。
+          duration_ms: 3600000
+          result_description: しばらく読みふけってしまった。
+
+    - building_id: building-cafe
+      name: 喫茶店「さくら」
+      description: 昔ながらの喫茶店。カウンターにはマスターが立ち、コーヒーの香りが漂っている。
+      wall_nodes: [5-10, 5-11, 5-12, 6-10, 6-12, 7-10, 7-12]
+      interior_nodes: [6-11]
+      door_nodes: [7-11]
+      actions:
+        - action_id: drink-coffee
+          name: コーヒーを飲む
+          description: マスターが淹れたコーヒーをゆっくり味わう。
+          duration_ms: 3600000
+          result_description: 深い味わいのコーヒーを楽しんだ。心が落ち着いた。
+        - action_id: eat-napolitan
+          name: ナポリタンを食べる
+          description: 喫茶店名物の昔ながらのナポリタンを注文する。
+          duration_ms: 3600000
+          result_description: 懐かしい味のナポリタンを堪能した。
+
+    - building_id: building-konbini
+      name: コンビニ
+      description: 24時間営業のコンビニ。明るい照明が通りを照らしている。
+      wall_nodes: [5-15, 5-16, 5-17, 6-15, 6-17, 7-15, 7-17]
+      interior_nodes: [6-16]
+      door_nodes: [7-16]
+      actions:
+        - action_id: buy-onigiri
+          name: おにぎりを買う
+          description: 棚からおにぎりを選んで買う。
+          duration_ms: 360000
+          result_description: おにぎりを買った。小腹が満たされた。
+        - action_id: buy-drink
+          name: 飲み物を買う
+          description: 冷蔵ケースから好きな飲み物を選ぶ。
+          duration_ms: 240000
+          result_description: 冷たい飲み物を手に入れた。
+
+    - building_id: building-ramen
+      name: ラーメン屋「一番星」
+      description: 湯気の立つ暖簾をくぐると、豚骨スープの香りが広がる。
+      wall_nodes: [5-20, 5-21, 5-22, 6-20, 6-22, 7-20, 7-22]
+      interior_nodes: [6-21]
+      door_nodes: [7-21]
+      actions:
+        - action_id: eat-ramen
+          name: ラーメンを食べる
+          description: カウンターに座って熱々のラーメンをすする。
+          duration_ms: 3600000
+          result_description: 美味しいラーメンを食べた。体が温まった。
+
+    - building_id: building-florist
+      name: 花屋
+      description: 色とりどりの花が並ぶ小さな花屋。甘い香りが漂う。
+      wall_nodes: [5-25, 5-26, 5-27, 6-25, 6-27, 7-25, 7-27]
+      interior_nodes: [6-26]
+      door_nodes: [7-26]
+      actions:
+        - action_id: buy-flowers
+          name: 花を買う
+          description: 季節の花束を選んで買う。
+          duration_ms: 360000
+          result_description: きれいな花束を手に入れた。
+
+    - building_id: building-sento
+      name: 銭湯「松の湯」
+      description: 煙突から湯気が立ち上る昔ながらの銭湯。のれんが風に揺れている。
+      wall_nodes: [9-1, 9-3, 10-1, 10-3, 11-1, 11-2, 11-3]
+      interior_nodes: [10-2]
+      door_nodes: [9-2]
+      actions:
+        - action_id: take-bath
+          name: お風呂に入る
+          description: 番台で料金を払い、ゆっくり湯船に浸かる。
+          duration_ms: 2400000
+          result_description: 温かいお湯で体がぽかぽかになった。極楽極楽。
+
+    - building_id: building-koban
+      name: 交番
+      description: 町の安全を守る小さな交番。掲示板には迷い猫のチラシが貼ってある。
+      wall_nodes: [9-5, 9-7, 10-5, 10-7, 11-5, 11-6, 11-7]
+      interior_nodes: [10-6]
+      door_nodes: [9-6]
+      actions:
+        - action_id: check-bulletin
+          name: 掲示板を見る
+          description: 交番の掲示板に貼られたお知らせを確認する。
+          duration_ms: 240000
+          result_description: 町のお知らせや注意喚起を確認した。
+
+    - building_id: building-barber
+      name: 床屋
+      description: 赤・青・白のサインポールが回る昔ながらの床屋。
+      wall_nodes: [9-10, 9-12, 10-10, 10-12, 11-10, 11-11, 11-12]
+      interior_nodes: [10-11]
+      door_nodes: [9-11]
+      actions:
+        - action_id: get-haircut
+          name: 髪を切る
+          description: 椅子に座って散髪してもらう。
+          duration_ms: 3600000
+          result_description: さっぱりした髪型になった。気分も爽快。
+
+    - building_id: building-community
+      name: 公民館
+      description: 町の集会やイベントに使われる公民館。玄関には今月の予定表が貼られている。
+      wall_nodes: [9-15, 9-16, 9-18, 9-19, 10-15, 10-19, 11-15, 11-16, 11-17, 11-18, 11-19]
+      interior_nodes: [10-16, 10-17, 10-18]
+      door_nodes: [9-17]
+      actions:
+        - action_id: check-events
+          name: 予定表を確認する
+          description: 玄関の予定表で今月のイベントを確認する。
+          duration_ms: 240000
+          result_description: 今月の町内イベントの予定を確認した。
+        - action_id: use-library
+          name: 図書室で本を読む
+          description: 公民館の図書室で静かに本を読む。
+          duration_ms: 3600000
+          result_description: 静かな図書室でゆっくり読書を楽しんだ。
+
+    - building_id: building-sakaya
+      name: 酒屋
+      description: 地酒や焼酎が並ぶ老舗の酒屋。店主のおすすめが壁に貼ってある。
+      wall_nodes: [9-25, 9-27, 10-25, 10-27, 11-25, 11-26, 11-27]
+      interior_nodes: [10-26]
+      door_nodes: [9-26]
+      actions:
+        - action_id: buy-sake
+          name: お酒を買う
+          description: 棚から地酒を一本選ぶ。
+          duration_ms: 360000
+          result_description: 店主おすすめの地酒を手に入れた。
+
+    - building_id: building-house-d
+      name: 住宅D
+      description: 生垣に囲まれた平屋の家。郵便受けに新聞が刺さっている。
+      wall_nodes: [13-1, 13-2, 13-3, 14-1, 14-3, 15-1, 15-3]
+      interior_nodes: [14-2]
+      door_nodes: [15-2]
+      actions:
+        - action_id: rest-house-d
+          name: 休憩する
+          description: 居間で少し休む。
+          duration_ms: 600000
+          result_description: 静かな部屋でひと休みした。
+
+    - building_id: building-house-e
+      name: 住宅E
+      description: 白い壁の家。窓辺に猫がいるのが見える。
+      wall_nodes: [13-5, 13-6, 13-7, 14-5, 14-7, 15-5, 15-7]
+      interior_nodes: [14-6]
+      door_nodes: [15-6]
+      actions:
+        - action_id: rest-house-e
+          name: 休憩する
+          description: 居間で少し休む。
+          duration_ms: 600000
+          result_description: 静かな部屋でひと休みした。
+
+    - building_id: building-station
+      name: 駅
+      description: 一日に数本しか電車が来ない小さな駅。木造の駅舎は味わいがある。
+      wall_nodes: [13-12, 13-13, 13-14, 13-15, 13-16, 13-17, 13-18, 14-12, 14-18, 15-12, 15-13, 15-14, 15-16, 15-17, 15-18]
+      interior_nodes: [14-13, 14-14, 14-15, 14-16, 14-17]
+      door_nodes: [15-15]
+      actions:
+        - action_id: wait-train
+          name: 電車を待つ
+          description: ベンチに座って次の電車を待つ。
+          duration_ms: 3600000
+          result_description: のんびりと電車を待った。ホームに風が吹き抜けた。
+        - action_id: buy-ticket
+          name: 切符を買う
+          description: 券売機で切符を購入する。
+          duration_ms: 240000
+          result_description: 切符を購入した。どこへ行こうか。
+
+    - building_id: building-house-f
+      name: 住宅F
+      description: 築年数の長い二階建て。庭に柿の木がある。
+      wall_nodes: [13-25, 13-26, 13-27, 14-25, 14-27, 15-25, 15-27]
+      interior_nodes: [14-26]
+      door_nodes: [15-26]
+      actions:
+        - action_id: rest-house-f
+          name: 休憩する
+          description: 居間で少し休む。
+          duration_ms: 600000
+          result_description: 静かな部屋でひと休みした。
+
+    - building_id: building-house-g
+      name: 住宅G
+      description: 小さな平屋。玄関に傘立てがある。
+      wall_nodes: [17-1, 17-2, 17-3, 18-1, 18-3, 19-1, 19-3]
+      interior_nodes: [18-2]
+      door_nodes: [19-2]
+      actions:
+        - action_id: rest-house-g
+          name: 休憩する
+          description: 居間で少し休む。
+          duration_ms: 600000
+          result_description: 静かな部屋でひと休みした。
+
+    - building_id: building-house-h
+      name: 住宅H
+      description: 瓦屋根の家。軒先に風鈴が揺れている。
+      wall_nodes: [17-5, 17-6, 17-7, 18-5, 18-7, 19-5, 19-7]
+      interior_nodes: [18-6]
+      door_nodes: [19-6]
+      actions:
+        - action_id: rest-house-h
+          name: 休憩する
+          description: 居間で少し休む。
+          duration_ms: 600000
+          result_description: 静かな部屋でひと休みした。
+
+  # ==========================================
+  # NPC定義
+  # ==========================================
   npcs:
-    - npc_id: npc-gatekeeper
-      name: Gatekeeper
-      description: Watches the town gate with a calm expression.
-      node_id: 1-2
+    - npc_id: npc-miko
+      name: 巫女
+      description: 神社の境内を掃除している巫女さん。穏やかな笑顔をしている。
+      node_id: 4-6
       actions:
-        - action_id: greet-gatekeeper
-          name: Greet the gatekeeper
-          description: Offer a respectful greeting.
-          duration_ms: 300000
-          result_description: The gatekeeper returns the greeting with a nod.
+        - action_id: ask-fortune
+          name: 運勢を聞く
+          description: 今日の運勢について巫女さんに尋ねる。
+          duration_ms: 600000
+          result_description: 巫女さんが優しく今日の運勢を教えてくれた。
+
+    - npc_id: npc-police
+      name: おまわりさん
+      description: 交番の前に立っているおまわりさん。町の安全を見守っている。
+      node_id: 8-13
+      actions:
+        - action_id: ask-directions
+          name: 道を聞く
+          description: 町のことについておまわりさんに聞く。
+          duration_ms: 360000
+          result_description: おまわりさんが親切に教えてくれた。
+
+    - npc_id: npc-cat
+      name: 猫
+      description: 町をうろうろしている三毛猫。人懐っこくて撫でさせてくれる。
+      node_id: 12-9
+      actions:
+        - action_id: pet-cat
+          name: 猫を撫でる
+          description: しゃがんで猫の頭を撫でる。
+          duration_ms: 600000
+          result_description: 猫がゴロゴロと喉を鳴らした。癒された。
+
+    - npc_id: npc-ojiisan
+      name: おじいさん
+      description: 公園のベンチに座っているおじいさん。鳩にパンくずをあげている。
+      node_id: 12-24
+      actions:
+        - action_id: chat-with-ojiisan
+          name: おじいさんと話す
+          description: ベンチに座っておじいさんと世間話をする。
+          duration_ms: 3600000
+          result_description: おじいさんが昔の町の話を聞かせてくれた。
+
+    - npc_id: npc-ekiin
+      name: 駅員
+      description: 駅の改札に立っている駅員さん。丁寧な対応が評判。
+      node_id: 16-16
+      actions:
+        - action_id: ask-schedule
+          name: 時刻表を聞く
+          description: 次の電車の時間を駅員さんに聞く。
+          duration_ms: 240000
+          result_description: 駅員さんが次の電車の時間を教えてくれた。
+
 idle_reminder:
-  interval_ms: 60000
+  interval_ms: 600000
 server_events:
-  - event_id: sudden-rain
-    name: Sudden Rain
-    description: Dark clouds gather and rain starts to pour.
+  - event_id: yudachi
+    name: 夕立
+    description: 急に空が暗くなり、激しい雨が降り始めた。
     timeout_ms: 5000
     choices:
       - choice_id: take-shelter
-        label: Take shelter
-        description: Rush toward the nearest roof.
-      - choice_id: observe-rain
-        label: Observe the rain
-        description: Stay put and study the weather.
+        label: 雨宿りする
+        description: 近くの建物に駆け込んで雨宿りする。
+      - choice_id: enjoy-rain
+        label: 雨を楽しむ
+        description: 雨に打たれながら空を見上げる。
+  - event_id: festival-drums
+    name: 祭りの太鼓
+    description: どこからか祭り太鼓の音が聞こえてくる。町が賑やかになってきた。
+    timeout_ms: 5000
+    choices:
+      - choice_id: follow-sound
+        label: 音のする方へ行く
+        description: 太鼓の音を頼りに祭りの方へ向かう。
+      - choice_id: stay-put
+        label: ここで聞く
+        description: その場で耳を澄ませて祭りの音を楽しむ。
+  - event_id: sunset-chime
+    name: 夕焼けチャイム
+    description: 午後5時のチャイムが町に響き渡る。空がオレンジ色に染まっていく。
+    timeout_ms: 5000
+    choices:
+      - choice_id: head-home
+        label: 帰り道を歩く
+        description: チャイムを聞きながらゆっくり歩き出す。
+      - choice_id: watch-sunset
+        label: 夕焼けを眺める
+        description: 立ち止まって夕焼けに見とれる。

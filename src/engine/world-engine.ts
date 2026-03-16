@@ -40,8 +40,8 @@ import type {
   ConversationStartRequest,
   ConversationStartResponse,
   FireServerEventResponse,
-  JoinResponse,
-  LeaveResponse,
+  LoginResponse,
+  LogoutResponse,
   MoveRequest,
   MoveResponse,
   OkResponse,
@@ -80,7 +80,7 @@ export class WorldEngine {
   readonly eventBus = new EventBus();
   readonly state: WorldState;
   private readonly onRegistrationChanged?: (agents: AgentRegistration[]) => void;
-  private readonly joiningAgentIds = new Set<string>();
+  private readonly loggingInAgentIds = new Set<string>();
 
   constructor(
     readonly config: ServerConfig,
@@ -134,12 +134,12 @@ export class WorldEngine {
   }
 
   async deleteAgent(agentId: string): Promise<boolean> {
-    if (this.joiningAgentIds.has(agentId)) {
-      throw new WorldError(409, 'state_conflict', `Agent is currently joining: ${agentId}`);
+    if (this.loggingInAgentIds.has(agentId)) {
+      throw new WorldError(409, 'state_conflict', `Agent is currently logging in: ${agentId}`);
     }
 
-    if (this.state.isJoined(agentId)) {
-      throw new WorldError(409, 'state_conflict', `Agent is currently joined: ${agentId}`);
+    if (this.state.isLoggedIn(agentId)) {
+      throw new WorldError(409, 'state_conflict', `Agent is currently logged in: ${agentId}`);
     }
 
     const registration = this.state.getById(agentId);
@@ -179,29 +179,29 @@ export class WorldEngine {
       agent_id: agent.agent_id,
       agent_name: agent.agent_name,
       discord_bot_id: agent.discord_bot_id,
-      is_joined: this.state.isJoined(agent.agent_id),
+      is_logged_in: this.state.isLoggedIn(agent.agent_id),
     }));
   }
 
-  async joinAgent(agentId: string): Promise<JoinResponse> {
+  async loginAgent(agentId: string): Promise<LoginResponse> {
     const agent = this.state.getById(agentId);
     if (!agent) {
       throw new WorldError(404, 'not_found', `Agent not found: ${agentId}`);
     }
 
-    if (this.joiningAgentIds.has(agentId)) {
-      throw new WorldError(409, 'state_conflict', `Agent is already joining: ${agentId}`);
+    if (this.loggingInAgentIds.has(agentId)) {
+      throw new WorldError(409, 'state_conflict', `Agent is already logging in: ${agentId}`);
     }
 
-    if (this.state.isJoined(agentId)) {
-      throw new WorldError(409, 'state_conflict', `Agent is already joined: ${agentId}`);
+    if (this.state.isLoggedIn(agentId)) {
+      throw new WorldError(409, 'state_conflict', `Agent is already logged in: ${agentId}`);
     }
 
     if (this.config.spawn.nodes.length === 0) {
       throw new WorldError(500, 'invalid_config', 'Spawn nodes are not configured.');
     }
 
-    this.joiningAgentIds.add(agentId);
+    this.loggingInAgentIds.add(agentId);
     let channelId = '';
     let channelCreated = false;
 
@@ -215,7 +215,7 @@ export class WorldEngine {
 
       const spawnNodeId = this.resolveSpawnNode(agent.last_node_id);
 
-      const joinedAgent = this.state.join({
+      const loggedInAgent = this.state.login({
         agent_id: agentId,
         node_id: spawnNodeId,
         discord_channel_id: channelId,
@@ -224,16 +224,16 @@ export class WorldEngine {
       startIdleReminder(this, agentId);
 
       this.emitEvent({
-        type: 'agent_joined',
-        agent_id: joinedAgent.agent_id,
-        agent_name: joinedAgent.agent_name,
-        node_id: joinedAgent.node_id,
-        discord_channel_id: joinedAgent.discord_channel_id,
+        type: 'agent_logged_in',
+        agent_id: loggedInAgent.agent_id,
+        agent_name: loggedInAgent.agent_name,
+        node_id: loggedInAgent.node_id,
+        discord_channel_id: loggedInAgent.discord_channel_id,
       });
 
       return {
         channel_id: channelId,
-        node_id: joinedAgent.node_id,
+        node_id: loggedInAgent.node_id,
       };
     } catch (error) {
       if (channelCreated && channelId) {
@@ -241,18 +241,18 @@ export class WorldEngine {
       }
       throw error;
     } finally {
-      this.joiningAgentIds.delete(agentId);
+      this.loggingInAgentIds.delete(agentId);
     }
   }
 
-  async leaveAgent(agentId: string): Promise<LeaveResponse> {
-    const joinedAgent = this.state.getJoined(agentId);
-    if (!joinedAgent) {
-      throw new WorldError(409, 'state_conflict', `Agent is not joined: ${agentId}`);
+  async logoutAgent(agentId: string): Promise<LogoutResponse> {
+    const loggedInAgent = this.state.getLoggedIn(agentId);
+    if (!loggedInAgent) {
+      throw new WorldError(409, 'state_conflict', `Agent is not logged in: ${agentId}`);
     }
 
-    const leftNodeId = getAgentCurrentNode(this, joinedAgent);
-    const { cancelledState, cancelledActionName } = this.describeCancelledActivity(joinedAgent.state, agentId);
+    const leftNodeId = getAgentCurrentNode(this, loggedInAgent);
+    const { cancelledState, cancelledActionName } = this.describeCancelledActivity(loggedInAgent.state, agentId);
 
     // Persist channel ID and position before tearing down runtime state.
     // This follows the same persist-then-mutate pattern as registerAgent/deleteAgent.
@@ -261,11 +261,11 @@ export class WorldEngine {
       this.persistRegistrations(
         this.state.list().map((agent) =>
           agent.agent_id === agentId
-            ? { ...agent, discord_channel_id: joinedAgent.discord_channel_id, last_node_id: leftNodeId }
+            ? { ...agent, discord_channel_id: loggedInAgent.discord_channel_id, last_node_id: leftNodeId }
             : agent,
         ),
       );
-      registration.discord_channel_id = joinedAgent.discord_channel_id;
+      registration.discord_channel_id = loggedInAgent.discord_channel_id;
       registration.last_node_id = leftNodeId;
     }
 
@@ -275,14 +275,14 @@ export class WorldEngine {
     cleanupServerEventsForAgent(this, agentId);
     this.state.setPendingConversation(agentId, null);
     this.state.clearPendingServerEvents(agentId);
-    this.state.leave(agentId);
+    this.state.logout(agentId);
 
     this.emitEvent({
-      type: 'agent_left',
-      agent_id: joinedAgent.agent_id,
-      agent_name: joinedAgent.agent_name,
+      type: 'agent_logged_out',
+      agent_id: loggedInAgent.agent_id,
+      agent_name: loggedInAgent.agent_name,
       node_id: leftNodeId,
-      discord_channel_id: joinedAgent.discord_channel_id,
+      discord_channel_id: loggedInAgent.discord_channel_id,
       cancelled_state: cancelledState,
       cancelled_action_name: cancelledActionName,
     });
@@ -341,7 +341,7 @@ export class WorldEngine {
   getWorldAgents(): WorldAgentsResponse {
     const now = Date.now();
     return {
-      agents: this.state.listJoined().map((agent) => ({
+      agents: this.state.listLoggedIn().map((agent) => ({
         agent_id: agent.agent_id,
         agent_name: agent.agent_name,
         node_id: getAgentCurrentNode(this, agent, now),
@@ -356,7 +356,7 @@ export class WorldEngine {
     return {
       world: this.config.world,
       map: this.config.map,
-      agents: this.state.listJoined().map((agent) => {
+      agents: this.state.listLoggedIn().map((agent) => {
         const movementTimer = agent.state === 'moving' ? getMovementTimer(this, agent.agent_id) : null;
 
         return {

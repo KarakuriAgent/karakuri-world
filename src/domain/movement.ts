@@ -1,17 +1,17 @@
 import type { WorldEngine } from '../engine/world-engine.js';
 import type { MoveRequest, MoveResponse } from '../types/api.js';
 import { WorldError } from '../types/api.js';
-import type { JoinedAgent } from '../types/agent.js';
+import type { LoggedInAgent } from '../types/agent.js';
 import type { NodeId } from '../types/data-model.js';
 import type { MovementTimer } from '../types/timer.js';
 import { cancelIdleReminder, startIdleReminder } from './idle-reminder.js';
 import { findPath, getNodeConfig, isNodeWithinBounds, isPassable } from './map-utils.js';
 import { handlePendingServerEvents } from './server-events.js';
 
-function requireMoveReadyAgent(engine: WorldEngine, agentId: string): JoinedAgent {
-  const agent = engine.state.getJoined(agentId);
+function requireMoveReadyAgent(engine: WorldEngine, agentId: string): LoggedInAgent {
+  const agent = engine.state.getLoggedIn(agentId);
   if (!agent) {
-    throw new WorldError(403, 'not_joined', `Agent is not joined: ${agentId}`);
+    throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
   }
 
   if (agent.state !== 'idle') {
@@ -26,7 +26,7 @@ function requireMoveReadyAgent(engine: WorldEngine, agentId: string): JoinedAgen
 }
 
 export function validateMove(engine: WorldEngine, agentId: string, request: MoveRequest): {
-  agent: JoinedAgent;
+  agent: LoggedInAgent;
   to_node_id: NodeId;
   path: NodeId[];
 } {
@@ -120,7 +120,7 @@ export function getCurrentMovementPosition(timer: MovementTimer, durationMs: num
 
 export function getAgentCurrentNode(
   engine: WorldEngine,
-  agent: Pick<JoinedAgent, 'agent_id' | 'node_id' | 'state'>,
+  agent: Pick<LoggedInAgent, 'agent_id' | 'node_id' | 'state'>,
   now = Date.now(),
 ): NodeId {
   if (agent.state !== 'moving') {
@@ -136,7 +136,7 @@ export function getAgentCurrentNode(
 }
 
 export function handleMovementCompleted(engine: WorldEngine, timer: MovementTimer): void {
-  const agent = engine.state.getJoined(timer.agent_id);
+  const agent = engine.state.getLoggedIn(timer.agent_id);
   if (!agent) {
     return;
   }

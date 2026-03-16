@@ -1,7 +1,7 @@
-import type { AgentRegistration, AgentState, JoinedAgent } from '../../types/agent.js';
+import type { AgentRegistration, AgentState, LoggedInAgent } from '../../types/agent.js';
 import type { NodeId } from '../../types/data-model.js';
 
-export interface JoinAgentParams {
+export interface LoginAgentParams {
   agent_id: string;
   node_id: NodeId;
   discord_channel_id: string;
@@ -10,7 +10,7 @@ export interface JoinAgentParams {
 export class AgentStateStore {
   private readonly registrations = new Map<string, AgentRegistration>();
   private readonly registrationsByApiKey = new Map<string, AgentRegistration>();
-  private readonly joinedAgents = new Map<string, JoinedAgent>();
+  private readonly loggedInAgents = new Map<string, LoggedInAgent>();
 
   constructor(initialRegistrations: AgentRegistration[] = []) {
     for (const registration of initialRegistrations) {
@@ -32,7 +32,7 @@ export class AgentStateStore {
 
     this.registrations.delete(agentId);
     this.registrationsByApiKey.delete(registration.api_key);
-    this.joinedAgents.delete(agentId);
+    this.loggedInAgents.delete(agentId);
     return registration;
   }
 
@@ -50,13 +50,13 @@ export class AgentStateStore {
     );
   }
 
-  join(params: JoinAgentParams): JoinedAgent {
+  login(params: LoginAgentParams): LoggedInAgent {
     const registration = this.getById(params.agent_id);
     if (!registration) {
       throw new Error(`Unknown agent: ${params.agent_id}`);
     }
 
-    const joinedAgent: JoinedAgent = {
+    const loggedInAgent: LoggedInAgent = {
       agent_id: registration.agent_id,
       agent_name: registration.agent_name,
       node_id: params.node_id,
@@ -66,76 +66,76 @@ export class AgentStateStore {
       pending_server_event_ids: [],
     };
 
-    this.joinedAgents.set(registration.agent_id, joinedAgent);
-    return joinedAgent;
+    this.loggedInAgents.set(registration.agent_id, loggedInAgent);
+    return loggedInAgent;
   }
 
-  leave(agentId: string): JoinedAgent | null {
-    const joinedAgent = this.joinedAgents.get(agentId) ?? null;
-    if (joinedAgent) {
-      this.joinedAgents.delete(agentId);
+  logout(agentId: string): LoggedInAgent | null {
+    const loggedInAgent = this.loggedInAgents.get(agentId) ?? null;
+    if (loggedInAgent) {
+      this.loggedInAgents.delete(agentId);
     }
-    return joinedAgent;
+    return loggedInAgent;
   }
 
-  getJoined(agentId: string): JoinedAgent | null {
-    return this.joinedAgents.get(agentId) ?? null;
+  getLoggedIn(agentId: string): LoggedInAgent | null {
+    return this.loggedInAgents.get(agentId) ?? null;
   }
 
-  listJoined(): JoinedAgent[] {
-    return [...this.joinedAgents.values()].sort(
+  listLoggedIn(): LoggedInAgent[] {
+    return [...this.loggedInAgents.values()].sort(
       (left, right) => left.agent_name.localeCompare(right.agent_name) || left.agent_id.localeCompare(right.agent_id),
     );
   }
 
-  isJoined(agentId: string): boolean {
-    return this.joinedAgents.has(agentId);
+  isLoggedIn(agentId: string): boolean {
+    return this.loggedInAgents.has(agentId);
   }
 
-  setState(agentId: string, state: AgentState): JoinedAgent {
-    const joinedAgent = this.mustGetJoined(agentId);
-    joinedAgent.state = state;
-    return joinedAgent;
+  setState(agentId: string, state: AgentState): LoggedInAgent {
+    const loggedInAgent = this.mustGetLoggedIn(agentId);
+    loggedInAgent.state = state;
+    return loggedInAgent;
   }
 
-  setNode(agentId: string, nodeId: NodeId): JoinedAgent {
-    const joinedAgent = this.mustGetJoined(agentId);
-    joinedAgent.node_id = nodeId;
-    return joinedAgent;
+  setNode(agentId: string, nodeId: NodeId): LoggedInAgent {
+    const loggedInAgent = this.mustGetLoggedIn(agentId);
+    loggedInAgent.node_id = nodeId;
+    return loggedInAgent;
   }
 
-  setPendingConversation(agentId: string, conversationId: string | null): JoinedAgent {
-    const joinedAgent = this.mustGetJoined(agentId);
-    joinedAgent.pending_conversation_id = conversationId;
-    return joinedAgent;
+  setPendingConversation(agentId: string, conversationId: string | null): LoggedInAgent {
+    const loggedInAgent = this.mustGetLoggedIn(agentId);
+    loggedInAgent.pending_conversation_id = conversationId;
+    return loggedInAgent;
   }
 
-  addPendingServerEvent(agentId: string, serverEventId: string): JoinedAgent {
-    const joinedAgent = this.mustGetJoined(agentId);
-    if (!joinedAgent.pending_server_event_ids.includes(serverEventId)) {
-      joinedAgent.pending_server_event_ids.push(serverEventId);
-      joinedAgent.pending_server_event_ids.sort();
+  addPendingServerEvent(agentId: string, serverEventId: string): LoggedInAgent {
+    const loggedInAgent = this.mustGetLoggedIn(agentId);
+    if (!loggedInAgent.pending_server_event_ids.includes(serverEventId)) {
+      loggedInAgent.pending_server_event_ids.push(serverEventId);
+      loggedInAgent.pending_server_event_ids.sort();
     }
-    return joinedAgent;
+    return loggedInAgent;
   }
 
-  removePendingServerEvent(agentId: string, serverEventId: string): JoinedAgent {
-    const joinedAgent = this.mustGetJoined(agentId);
-    joinedAgent.pending_server_event_ids = joinedAgent.pending_server_event_ids.filter((id) => id !== serverEventId);
-    return joinedAgent;
+  removePendingServerEvent(agentId: string, serverEventId: string): LoggedInAgent {
+    const loggedInAgent = this.mustGetLoggedIn(agentId);
+    loggedInAgent.pending_server_event_ids = loggedInAgent.pending_server_event_ids.filter((id) => id !== serverEventId);
+    return loggedInAgent;
   }
 
-  clearPendingServerEvents(agentId: string): JoinedAgent {
-    const joinedAgent = this.mustGetJoined(agentId);
-    joinedAgent.pending_server_event_ids = [];
-    return joinedAgent;
+  clearPendingServerEvents(agentId: string): LoggedInAgent {
+    const loggedInAgent = this.mustGetLoggedIn(agentId);
+    loggedInAgent.pending_server_event_ids = [];
+    return loggedInAgent;
   }
 
-  private mustGetJoined(agentId: string): JoinedAgent {
-    const joinedAgent = this.getJoined(agentId);
-    if (!joinedAgent) {
-      throw new Error(`Agent is not joined: ${agentId}`);
+  private mustGetLoggedIn(agentId: string): LoggedInAgent {
+    const loggedInAgent = this.getLoggedIn(agentId);
+    if (!loggedInAgent) {
+      throw new Error(`Agent is not logged in: ${agentId}`);
     }
-    return joinedAgent;
+    return loggedInAgent;
   }
 }

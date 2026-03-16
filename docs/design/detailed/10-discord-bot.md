@@ -110,7 +110,7 @@ Permission Overwriteの値の凡例: Allow / Deny / —（未設定）
 
 ## 5. 動的チャンネルの作成/削除
 
-### 5.1 チャンネル作成（join時）
+### 5.1 チャンネル作成（login時）
 
 02-agent-lifecycle.md セクション3.1 の手順5〜7に対応する処理:
 
@@ -133,7 +133,7 @@ Permission Overwriteの値の凡例: Allow / Deny / —（未設定）
 
 ### 5.3 チャンネル削除
 
-leave時はチャンネルを削除しない。チャンネルはエージェント登録削除時に削除する。
+logout時はチャンネルを削除しない。チャンネルはエージェント登録削除時に削除する。
 
 1. エージェント削除（`DELETE /api/admin/agents/:agent_id`）時に、`discord_channel_id` が永続化されていればそのチャンネルを削除する
 
@@ -180,7 +180,7 @@ leave時はチャンネルを削除しない。チャンネルはエージェン
 
 | # | 通知名 | トリガー | 知覚情報 | 行動促進 |
 |---|--------|---------|---------|---------|
-| 1 | 参加初回通知 | `agent_joined` | あり | あり |
+| 1 | ログイン初回通知 | `agent_logged_in` | あり | あり |
 | 2 | 移動完了通知 | `movement_completed` | あり | あり |
 | 3 | アクション完了通知 | `action_completed` | あり | あり |
 | 3.5 | 待機完了通知 | `wait_completed` | あり | あり |
@@ -190,20 +190,20 @@ leave時はチャンネルを削除しない。チャンネルはエージェン
 | 7 | 会話メッセージ通知 | `conversation_interval` タイマー発火 | — | — |
 | 8 | 終了あいさつ指示通知 | 終了あいさつフェーズ移行時 | — | — |
 | 9 | 会話終了通知 | `conversation_ended` | あり | あり |
-| 10 | 会話強制終了通知 | `agent_left`（`in_conversation` 中） | あり | あり |
+| 10 | 会話強制終了通知 | `agent_logged_out`（`in_conversation` 中） | あり | あり |
 | 11 | サーバーイベント通知 | `server_event_fired` / 遅延通知 | — | — |
 | 12 | サーバーイベント選択後通知 | `in_action` → `idle` 遷移時 | あり | あり |
 | 13 | idle再通知 | `idle_reminder` タイマー発火 | あり | あり |
-| 14 | 退出通知 | `agent_left` | — | — |
+| 14 | ログアウト通知 | `agent_logged_out` | — | — |
 
 ### 6.4 各通知のフォーマット
 
-#### 1. 参加初回通知
+#### 1. ログイン初回通知
 
 送信先: #agent-{name}（当該エージェント）
 
 ```
-世界に参加しました。
+世界にログインしました。
 
 {知覚情報テキスト}
 
@@ -283,7 +283,7 @@ conversation_id: {conversation_id}
 |----------|-----------|
 | `rejected` | `{target_name} が会話を拒否しました。` |
 | `timeout` | `{target_name} が応答しませんでした。` |
-| `target_left` | `{target_name} が世界から退出しました。` |
+| `target_logged_out` | `{target_name} が世界からログアウトしました。` |
 
 ```
 {理由メッセージ}
@@ -363,16 +363,16 @@ conversation_id: {conversation_id}
 | `turn_timeout` | 応答がタイムアウトしました |
 | `server_event` | サーバーイベントにより終了しました |
 
-`partner_left` の場合は会話強制終了通知（#10）で処理するため、会話終了通知は送信しない。
+`partner_logged_out` の場合は会話強制終了通知（#10）で処理するため、会話終了通知は送信しない。
 
 #### 10. 会話強制終了通知
 
 送信先: #agent-{partner}（残された側のエージェント）
 
-`in_conversation` 中のエージェントがleaveした場合に、残された側のエージェントに送信する（03-world-engine.md セクション3.1、06-conversation.md セクション8参照）。`agent_left` イベントをトリガーとし、`conversation_ended` の Discord通知とは別の通知として扱う。
+`in_conversation` 中のエージェントがlogoutした場合に、残された側のエージェントに送信する（03-world-engine.md セクション3.1、06-conversation.md セクション8参照）。`agent_logged_out` イベントをトリガーとし、`conversation_ended` の Discord通知とは別の通知として扱う。
 
 ```
-{partner_name} が世界から退出したため、会話が強制終了されました。
+{partner_name} が世界からログアウトしたため、会話が強制終了されました。
 
 {知覚情報テキスト}
 
@@ -429,19 +429,19 @@ server_event_id: {server_event_id}
 
 `{elapsed_text}` はidle状態に入ってからの経過時間を分単位（1分以上の場合）または秒単位で表示する。
 
-#### 14. 退出通知
+#### 14. ログアウト通知
 
-送信先: #agent-{name}（退出するエージェント。`agent_left` イベントの `discord_channel_id` を使用して直接送信）
+送信先: #agent-{name}（ログアウトするエージェント。`agent_logged_out` イベントの `discord_channel_id` を使用して直接送信）
 
-退出時の状態に応じてメッセージが変わる:
+ログアウト時の状態に応じてメッセージが変わる:
 
 | `cancelled_state` | `cancelled_action_name` | メッセージ |
 |-------------------|------------------------|-----------|
-| `idle` | — | `退出しました。` |
-| `moving` | — | `移動をキャンセルし、退出しました。` |
-| `in_action` | あり | `「{action_name}」をキャンセルし、退出しました。` |
-| `in_action` | なし（待機） | `待機をキャンセルし、退出しました。` |
-| `in_conversation` | — | `会話を終了し、退出しました。` |
+| `idle` | — | `ログアウトしました。` |
+| `moving` | — | `移動をキャンセルし、ログアウトしました。` |
+| `in_action` | あり | `「{action_name}」をキャンセルし、ログアウトしました。` |
+| `in_action` | なし（待機） | `待機をキャンセルし、ログアウトしました。` |
+| `in_conversation` | — | `会話を終了し、ログアウトしました。` |
 
 ## 7. #world-log への投稿フォーマット
 
@@ -449,8 +449,8 @@ server_event_id: {server_event_id}
 
 | トリガーイベント | フォーマット |
 |----------------|------------|
-| `agent_joined` | `{agent_name} が世界に参加しました` |
-| `agent_left` | 状態に応じて変化（idle: `{agent_name} が世界から退出しました`、moving: `{agent_name} が移動をキャンセルし、退出しました`、in_action+アクション名: `{agent_name} が「{action_name}」をキャンセルし、退出しました`、in_action+待機: `{agent_name} が待機をキャンセルし、退出しました`、in_conversation: `{agent_name} が会話を終了し、退出しました`） |
+| `agent_logged_in` | `{agent_name} が世界にログインしました` |
+| `agent_logged_out` | 状態に応じて変化（idle: `{agent_name} が世界からログアウトしました`、moving: `{agent_name} が移動をキャンセルし、ログアウトしました`、in_action+アクション名: `{agent_name} が「{action_name}」をキャンセルし、ログアウトしました`、in_action+待機: `{agent_name} が待機をキャンセルし、ログアウトしました`、in_conversation: `{agent_name} が会話を終了し、ログアウトしました`） |
 | `movement_started` | `{agent_name} が {to_node_id} ({label}) に向かっています` |
 | `movement_completed` | `{agent_name} が {node_id} ({label}) に到着しました` |
 | `action_started` | `{agent_name} が「{action_name}」を開始しました` |

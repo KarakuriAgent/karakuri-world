@@ -26,8 +26,6 @@ describe('MCP tools', () => {
     const definitions = createMcpToolDefinitions(engine, agent.agent_id);
 
     expect(definitions.map((definition) => definition.name)).toEqual([
-      'join',
-      'leave',
       'move',
       'action',
       'wait',
@@ -43,28 +41,25 @@ describe('MCP tools', () => {
     ]);
   });
 
-  it('returns tool errors for not_joined and successful JSON payloads after join', async () => {
+  it('returns tool errors for not_logged_in and successful JSON payloads after engine login', async () => {
     const { engine } = createTestWorld();
     const agent = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
     const definitions = createMcpToolDefinitions(engine, agent.agent_id);
     const getPerception = definitions.find((definition) => definition.name === 'get_perception');
-    const join = definitions.find((definition) => definition.name === 'join');
 
     expect(getPerception).toBeDefined();
-    expect(join).toBeDefined();
 
-    const notJoined = await getPerception!.execute({});
-    expect(notJoined.isError).toBe(true);
-    expect(parseToolText(notJoined)).toEqual(
+    const notLoggedIn = await getPerception!.execute({});
+    expect(notLoggedIn.isError).toBe(true);
+    expect(parseToolText(notLoggedIn)).toEqual(
       expect.objectContaining({
-        error: 'not_joined',
-        message: expect.stringContaining('Agent is not joined'),
+        error: 'not_logged_in',
+        message: expect.stringContaining('Agent is not logged in'),
       }),
     );
 
-    const joined = await join!.execute({});
-    const joinPayload = parseToolText(joined) as { channel_id: string; node_id: string };
-    expect(joinPayload).toEqual(
+    const loginResponse = await engine.loginAgent(agent.agent_id);
+    expect(loginResponse).toEqual(
       expect.objectContaining({
         channel_id: 'channel-Alice',
         node_id: expect.stringMatching(/3-[12]/),
@@ -75,7 +70,7 @@ describe('MCP tools', () => {
     expect(parseToolText(perception)).toEqual(
       expect.objectContaining({
         current_node: expect.objectContaining({
-          node_id: joinPayload.node_id,
+          node_id: loginResponse.node_id,
         }),
       }),
     );
@@ -89,15 +84,13 @@ describe('MCP tools', () => {
     });
     const agent = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
     const definitions = createMcpToolDefinitions(engine, agent.agent_id);
-    const join = definitions.find((definition) => definition.name === 'join');
     const move = definitions.find((definition) => definition.name === 'move');
 
-    expect(join).toBeDefined();
     expect(move).toBeDefined();
     expect(move!.inputSchema.safeParse({ target_node_id: '3-4' }).success).toBe(true);
     expect(move!.inputSchema.safeParse({ direction: 'east' }).success).toBe(false);
 
-    await join!.execute({});
+    await engine.loginAgent(agent.agent_id);
     const moved = await move!.execute({ target_node_id: '3-4' });
 
     expect(moved.isError).not.toBe(true);

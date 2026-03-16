@@ -74,7 +74,7 @@ describe('movement integration', () => {
       publicBaseUrl: 'http://localhost:3000',
     });
     const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
-    await engine.joinAgent(alice.agent_id);
+    await engine.loginAgent(alice.agent_id);
 
     const move = engine.move(alice.agent_id, { target_node_id: '1-1' });
     vi.advanceTimersByTime(1000);

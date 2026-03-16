@@ -18,7 +18,7 @@ describe('actions domain', () => {
   it('lists and executes building actions', async () => {
     const { engine } = createTestWorld();
     const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
-    await engine.joinAgent(alice.agent_id);
+    await engine.loginAgent(alice.agent_id);
     engine.state.setNode(alice.agent_id, '2-4');
 
     expect(engine.getAvailableActions(alice.agent_id).actions).toEqual([
@@ -37,16 +37,16 @@ describe('actions domain', () => {
 
     const response = engine.executeAction(alice.agent_id, { action_id: 'polish-gears' });
     expect(response.completes_at).toBe(Date.now() + 1500);
-    expect(engine.state.getJoined(alice.agent_id)?.state).toBe('in_action');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('in_action');
 
     vi.advanceTimersByTime(1500);
-    expect(engine.state.getJoined(alice.agent_id)?.state).toBe('idle');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('idle');
   });
 
   it('supports NPC actions and rejects invalid/unavailable actions', async () => {
     const { engine } = createTestWorld();
     const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
-    await engine.joinAgent(alice.agent_id);
+    await engine.loginAgent(alice.agent_id);
     engine.state.setNode(alice.agent_id, '1-1');
 
     expect(engine.getAvailableActions(alice.agent_id).actions[0]?.action_id).toBe('greet-gatekeeper');

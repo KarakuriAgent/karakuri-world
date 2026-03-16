@@ -67,18 +67,6 @@ function wrapTool<TArguments>(
 export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): McpToolDefinition[] {
   return [
     {
-      name: 'join',
-      description: '世界に参加する。スポーン地点に配置され、行動可能になる。',
-      inputSchema: emptySchema,
-      execute: wrapTool(emptySchema, async () => engine.joinAgent(agentId)),
-    },
-    {
-      name: 'leave',
-      description: '世界から退出する。移動・アクション・会話など進行中の活動はすべて中断される。',
-      inputSchema: emptySchema,
-      execute: wrapTool(emptySchema, async () => engine.leaveAgent(agentId)),
-    },
-    {
       name: 'move',
       description:
         '指定した目的地ノードへ移動する。サーバーがBFSで最短経路を計算し、経路のマス数に応じた移動時間で一括移動する。idle状態でのみ実行可能。',
@@ -231,7 +219,7 @@ export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): 
     },
     {
       name: 'get_world_agents',
-      description: '世界に参加中のすべてのエージェントの位置と状態を取得する。',
+      description: '世界にログイン中のすべてのエージェントの位置と状態を取得する。',
       inputSchema: emptySchema,
       execute: wrapTool(emptySchema, async () => engine.getWorldAgents()),
     },

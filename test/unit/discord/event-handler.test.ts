@@ -21,28 +21,28 @@ describe('DiscordEventHandler', () => {
     vi.useRealTimers();
   });
 
-  it('sends join notifications and world logs', async () => {
+  it('sends login notifications and world logs', async () => {
     const { engine } = createTestWorld();
     const bot = new RecordingDiscordBot();
     const handler = new DiscordEventHandler(engine, bot as never);
     handler.register();
 
     const alice = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
-    await engine.joinAgent(alice.agent_id);
+    await engine.loginAgent(alice.agent_id);
 
     await vi.waitFor(() => {
       expect(bot.agentMessages).toHaveLength(1);
-      expect(bot.worldLogMessages).toEqual(['Alice が世界に参加しました']);
+      expect(bot.worldLogMessages).toEqual(['Alice が世界にログインしました']);
     });
 
     expect(bot.agentMessages[0]).toMatchObject({
       channelId: 'channel-Alice',
     });
-    expect(bot.agentMessages[0].content).toContain('世界に参加しました。');
+    expect(bot.agentMessages[0].content).toContain('世界にログインしました。');
     handler.dispose();
   });
 
-  it('notifies the remaining participant when a conversation is forced to end by leave', async () => {
+  it('notifies the remaining participant when a conversation is forced to end by logout', async () => {
     const { engine } = createTestWorld();
     const bot = new RecordingDiscordBot();
     const handler = new DiscordEventHandler(engine, bot as never);
@@ -50,8 +50,8 @@ describe('DiscordEventHandler', () => {
 
     const alice = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
     const bob = engine.registerAgent({ agent_name: 'Bob', discord_bot_id: 'bot-bob' });
-    await engine.joinAgent(alice.agent_id);
-    await engine.joinAgent(bob.agent_id);
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
     await vi.waitFor(() => {
       expect(bot.worldLogMessages).toHaveLength(2);
     });
@@ -68,17 +68,17 @@ describe('DiscordEventHandler', () => {
     bot.agentMessages.length = 0;
     bot.worldLogMessages.length = 0;
 
-    await engine.leaveAgent(alice.agent_id);
+    await engine.logoutAgent(alice.agent_id);
 
     await vi.waitFor(() => {
       expect(
         bot.agentMessages.some(
           (message) =>
             message.channelId === 'channel-Bob' &&
-            message.content.includes('Alice が世界から退出したため、会話が強制終了されました。'),
+            message.content.includes('Alice が世界からログアウトしたため、会話が強制終了されました。'),
         ),
       ).toBe(true);
-      expect(bot.worldLogMessages).toContain('Alice が会話を終了し、退出しました');
+      expect(bot.worldLogMessages).toContain('Alice が会話を終了し、ログアウトしました');
     });
 
     handler.dispose();
@@ -92,8 +92,8 @@ describe('DiscordEventHandler', () => {
 
     const alice = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
     const bob = engine.registerAgent({ agent_name: 'Bob', discord_bot_id: 'bot-bob' });
-    await engine.joinAgent(alice.agent_id);
-    await engine.joinAgent(bob.agent_id);
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
     await vi.waitFor(() => {
       expect(bot.worldLogMessages).toHaveLength(2);
     });
@@ -151,8 +151,8 @@ describe('DiscordEventHandler', () => {
 
     const alice = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
     const bob = engine.registerAgent({ agent_name: 'Bob', discord_bot_id: 'bot-bob' });
-    await engine.joinAgent(alice.agent_id);
-    await engine.joinAgent(bob.agent_id);
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
     await vi.waitFor(() => {
       expect(bot.worldLogMessages).toHaveLength(2);
     });
@@ -219,32 +219,32 @@ describe('DiscordEventHandler', () => {
     handler.dispose();
   });
 
-  it('sends leave notification to agent channel and world log', async () => {
+  it('sends logout notification to agent channel and world log', async () => {
     const { engine } = createTestWorld();
     const bot = new RecordingDiscordBot();
     const handler = new DiscordEventHandler(engine, bot as never);
     handler.register();
 
     const alice = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
-    await engine.joinAgent(alice.agent_id);
+    await engine.loginAgent(alice.agent_id);
     await vi.waitFor(() => {
       expect(bot.worldLogMessages).toHaveLength(1);
     });
     bot.agentMessages.length = 0;
     bot.worldLogMessages.length = 0;
 
-    await engine.leaveAgent(alice.agent_id);
+    await engine.logoutAgent(alice.agent_id);
 
     await vi.waitFor(() => {
       expect(
         bot.agentMessages.some(
           (message) =>
             message.channelId === 'channel-Alice' &&
-            message.content === '退出しました。',
+            message.content === 'ログアウトしました。',
         ),
       ).toBe(true);
     });
-    expect(bot.worldLogMessages).toContain('Alice が世界から退出しました');
+    expect(bot.worldLogMessages).toContain('Alice が世界からログアウトしました');
 
     handler.dispose();
   });
@@ -260,7 +260,7 @@ describe('DiscordEventHandler', () => {
     handler.register();
 
     const alice = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
-    await engine.joinAgent(alice.agent_id);
+    await engine.loginAgent(alice.agent_id);
     await vi.waitFor(() => {
       expect(bot.worldLogMessages).toHaveLength(1);
     });

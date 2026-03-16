@@ -1,12 +1,12 @@
 export type ConversationStatus = 'pending' | 'active' | 'closing';
 
-export type ConversationRejectionReason = 'rejected' | 'timeout' | 'target_left';
+export type ConversationRejectionReason = 'rejected' | 'timeout' | 'target_logged_out';
 
 export type ConversationClosureReason =
   | 'max_turns'
   | 'turn_timeout'
   | 'server_event'
-  | 'partner_left';
+  | 'partner_logged_out';
 
 export interface ConversationData {
   conversation_id: string;

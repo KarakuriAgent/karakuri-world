@@ -9,13 +9,13 @@ describe('EventBus', () => {
     const specific = vi.fn();
     const any = vi.fn();
 
-    bus.on('agent_joined', specific);
+    bus.on('agent_logged_in', specific);
     bus.onAny(any);
 
     const event = {
       event_id: 'evt-1',
       occurred_at: 1,
-      type: 'agent_joined' as const,
+      type: 'agent_logged_in' as const,
       agent_id: 'agent-1',
       agent_name: 'Alice',
       node_id: '3-1' as const,

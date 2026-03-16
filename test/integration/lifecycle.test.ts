@@ -54,19 +54,19 @@ class DeferredDiscordBot implements DiscordRuntimeAdapter {
 }
 
 describe('WorldEngine lifecycle', () => {
-  it('registers, joins, leaves, and rejoins an agent', async () => {
+  it('registers, logs in, logs out, and logs back in an agent', async () => {
     const { config, engine, discordBot } = createTestWorld();
     const registration = engine.registerAgent({
       agent_name: 'alice',
       discord_bot_id: 'discord-alice',
     });
 
-    const joinResponse = await engine.joinAgent(registration.agent_id);
+    const joinResponse = await engine.loginAgent(registration.agent_id);
     expect(joinResponse.channel_id).toBe('channel-alice');
     expect(config.spawn.nodes).toContain(joinResponse.node_id);
 
-    const joinedAgent = engine.state.getJoined(registration.agent_id);
-    expect(joinedAgent).toMatchObject({
+    const loggedInAgent = engine.state.getLoggedIn(registration.agent_id);
+    expect(loggedInAgent).toMatchObject({
       agent_id: registration.agent_id,
       agent_name: 'alice',
       node_id: joinResponse.node_id,
@@ -77,41 +77,41 @@ describe('WorldEngine lifecycle', () => {
     expect(engine.getSnapshot().agents).toHaveLength(1);
     expect(discordBot?.createdChannels).toHaveLength(1);
 
-    await engine.leaveAgent(registration.agent_id);
-    expect(engine.state.getJoined(registration.agent_id)).toBeNull();
+    await engine.logoutAgent(registration.agent_id);
+    expect(engine.state.getLoggedIn(registration.agent_id)).toBeNull();
     expect(discordBot?.deletedChannels).toEqual([]);
 
     const updatedReg = engine.getAgentById(registration.agent_id)!;
     expect(updatedReg.discord_channel_id).toBe('channel-alice');
     expect(updatedReg.last_node_id).toBe(joinResponse.node_id);
 
-    const rejoined = await engine.joinAgent(registration.agent_id);
+    const rejoined = await engine.loginAgent(registration.agent_id);
     expect(rejoined.channel_id).toBe('channel-alice');
     expect(rejoined.node_id).toBe(joinResponse.node_id);
     expect(discordBot?.createdChannels).toHaveLength(1);
-    expect(engine.state.getJoined(registration.agent_id)?.node_id).toBe(rejoined.node_id);
+    expect(engine.state.getLoggedIn(registration.agent_id)?.node_id).toBe(rejoined.node_id);
   });
 
-  it('lists agents and prevents deleting joined registrations', async () => {
+  it('lists agents and prevents deleting logged-in registrations', async () => {
     const { engine } = createTestWorld();
     const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
     const bob = engine.registerAgent({ agent_name: 'bob', discord_bot_id: 'bot-bob' });
 
     expect(engine.listAgents().map((agent) => agent.agent_name)).toEqual(['alice', 'bob']);
 
-    await engine.joinAgent(alice.agent_id);
+    await engine.loginAgent(alice.agent_id);
     await expect(engine.deleteAgent(alice.agent_id)).rejects.toMatchObject({
       status: 409,
       code: 'state_conflict',
     });
-    await engine.leaveAgent(alice.agent_id);
+    await engine.logoutAgent(alice.agent_id);
     expect(await engine.deleteAgent(alice.agent_id)).toBe(true);
     expect(engine.getAgentById(alice.agent_id)).toBeNull();
     expect(engine.getSnapshot().agents).toHaveLength(0);
     expect(await engine.deleteAgent(bob.agent_id)).toBe(true);
   });
 
-  it('persists registrations on register, leave, and delete', async () => {
+  it('persists registrations on register, logout, and delete', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'karakuri-world-lifecycle-'));
     const filePath = join(dataDir, 'agents.json');
     const { engine } = createTestWorld({
@@ -129,8 +129,8 @@ describe('WorldEngine lifecycle', () => {
         bob,
       ]);
 
-      const joinResponse = await engine.joinAgent(alice.agent_id);
-      await engine.leaveAgent(alice.agent_id);
+      const joinResponse = await engine.loginAgent(alice.agent_id);
+      await engine.logoutAgent(alice.agent_id);
 
       const persisted = loadAgents(filePath);
       const persistedAlice = persisted.find((a) => a.agent_id === alice.agent_id)!;
@@ -180,7 +180,7 @@ describe('WorldEngine lifecycle', () => {
       },
     });
 
-    const joinResponse = await engine.joinAgent('agent-1');
+    const joinResponse = await engine.loginAgent('agent-1');
     expect(config.spawn.nodes).toContain(joinResponse.node_id);
     expect(joinResponse.channel_id).toBe('channel-alice');
   });
@@ -198,11 +198,11 @@ describe('WorldEngine lifecycle', () => {
     expect(discordBot.deletedChannels).toEqual(['channel-alice']);
   });
 
-  it('prevents deleting an agent while join is in progress', async () => {
+  it('prevents deleting an agent while login is in progress', async () => {
     const discordBot = new DeferredDiscordBot();
     const engine = new WorldEngine(createTestConfig(), discordBot);
     const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
-    const joinPromise = engine.joinAgent(alice.agent_id);
+    const joinPromise = engine.loginAgent(alice.agent_id);
 
     await expect(engine.deleteAgent(alice.agent_id)).rejects.toMatchObject({
       status: 409,
