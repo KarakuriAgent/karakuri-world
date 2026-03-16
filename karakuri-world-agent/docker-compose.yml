@@ -1,5 +1,5 @@
 services:
-  agent-1:
+  adventurer:
     build: .
     restart: unless-stopped
     environment:
@@ -12,8 +12,8 @@ services:
       OPENAI_MODEL: ${ADVENTURER_OPENAI_MODEL:-gpt-4o}
       KARAKURI_MCP_URL: ${KARAKURI_MCP_URL:-http://host.docker.internal:3000/mcp}
       KARAKURI_API_KEY: ${ADVENTURER_KARAKURI_API_KEY}
-      AGENT_DIR: /app/agents/adventurer
-      BOT_NAME: adventurer
+      AGENT_DIR: /app/agent
+      BOT_NAME: ${ADVENTURER_BOT_NAME:-adventurer}
       DATA_DIR: /app/data
       PORT: ${ADVENTURER_PORT:-3101}
     extra_hosts:
@@ -21,10 +21,10 @@ services:
     ports:
       - ${ADVENTURER_PORT:-3101}:${ADVENTURER_PORT:-3101}
     volumes:
-      - ./agents:/app/agents:ro
-      - agent-1-data:/app/data
+      - ${ADVENTURER_AGENT_DIR:-./agents/adventurer}:/app/agent:ro
+      - ${ADVENTURER_DATA_DIR:-./data/adventurer}:/app/data
 
-  agent-2:
+  scholar:
     build: .
     restart: unless-stopped
     environment:
@@ -37,8 +37,8 @@ services:
       OPENAI_MODEL: ${SCHOLAR_OPENAI_MODEL:-gpt-4o-mini}
       KARAKURI_MCP_URL: ${KARAKURI_MCP_URL:-http://host.docker.internal:3000/mcp}
       KARAKURI_API_KEY: ${SCHOLAR_KARAKURI_API_KEY}
-      AGENT_DIR: /app/agents/scholar
-      BOT_NAME: scholar
+      AGENT_DIR: /app/agent
+      BOT_NAME: ${SCHOLAR_BOT_NAME:-scholar}
       DATA_DIR: /app/data
       PORT: ${SCHOLAR_PORT:-3102}
     extra_hosts:
@@ -46,9 +46,5 @@ services:
     ports:
       - ${SCHOLAR_PORT:-3102}:${SCHOLAR_PORT:-3102}
     volumes:
-      - ./agents:/app/agents:ro
-      - agent-2-data:/app/data
-
-volumes:
-  agent-1-data:
-  agent-2-data:
+      - ${SCHOLAR_AGENT_DIR:-./agents/scholar}:/app/agent:ro
+      - ${SCHOLAR_DATA_DIR:-./data/scholar}:/app/data

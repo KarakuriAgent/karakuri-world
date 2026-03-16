@@ -29,10 +29,10 @@ karakuri-world-agent/
 ├── agents/                          # エージェント個別設定 (ユーザーが作成)
 │   ├── adventurer/
 │   │   ├── personality.md           # 性格定義
-│   │   └── skills.md                # karakuri-worldからコピペしたスキル定義
+│   │   └── SKILL.md                 # callable skill tool として読み込むスキル定義
 │   └── scholar/
 │       ├── personality.md
-│       └── skills.md
+│       └── SKILL.md
 ├── src/
 │   ├── index.ts                     # エントリポイント
 │   ├── config.ts                    # 環境変数ベースの設定
@@ -88,11 +88,11 @@ karakuri-world-agent/
 誰とでもフレンドリーに話します。
 ```
 
-### skills.md
+### SKILL.md
 
 karakuri-world の `skills/` ディレクトリからコピペして配置する。
-エージェントはこのファイルを読み取り、instructions の一部としてLLMに渡す。
-スキルの実行自体はMCPツール（action等）経由で行う。
+エージェントはこのファイルの name / description を callable skill tool として公開し、本文は必要になったときだけツール経由でLLMに渡す。
+スキルの実行自体はMCPツール（action等）経由で行う。MCP tool の公開は upfront に行うが、MCP クライアントの初期化と実際のツール解決は最初の MCP tool 実行時まで遅延する。
 
 ```markdown
 # Available Skills
@@ -142,7 +142,7 @@ export const config = {
   agent: {
     personality: readAgentFile('personality.md')
       ?? 'You are a helpful agent living in a virtual world.',
-    skills: readAgentFile('skills.md') ?? '',
+    skillTools: loadAgentSkills(agentDir),
     botName: process.env.BOT_NAME ?? 'karakuri-agent',
   },
   dataDir: process.env.DATA_DIR ?? './data',
@@ -154,7 +154,8 @@ export const config = {
 MCPクライアントで karakuri-world に接続し、ツールを自動取得する。
 MCP接続にはURLとAPIキーだけあればよく、ツール定義はサーバー側で管理されるためメンテ不要。
 
-personality.md と skills.md を結合して instructions とする。
+personality.md を instructions とし、`SKILL.md` は callable skill tool として公開する。
+MCP tool 定義はローカル metadata で upfront 公開し、MCP クライアント生成とサーバー側ツール取得は最初の MCP tool 実行時まで遅延する。
 
 ```ts
 import { ToolLoopAgent, stepCountIs } from 'ai';
@@ -178,11 +179,11 @@ const mcpClient = await createMCPClient({
   },
 });
 
-// personality + skills を結合した instructions
-const instructions = [
+// personality と callable skill hint を組み合わせた instructions
+const instructions = buildInstructions(
   config.agent.personality,
-  config.agent.skills ? `\n\n---\n\n${config.agent.skills}` : '',
-].join('');
+  config.agent.skillTools.length > 0,
+);
 
 export const agent = new ToolLoopAgent({
   model: openai.chat(config.openai.model),
@@ -624,69 +625,84 @@ CMD ["node", "dist/index.js"]
 
 ```yaml
 services:
-  agent-1:
+  adventurer:
     build: .
     restart: unless-stopped
     environment:
-      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - DISCORD_TOKEN=${ADVENTURER_DISCORD_TOKEN}
+      - DISCORD_PUBLIC_KEY=${ADVENTURER_DISCORD_PUBLIC_KEY}
+      - DISCORD_APPLICATION_ID=${ADVENTURER_DISCORD_APPLICATION_ID}
+      - DISCORD_MENTION_ROLE_IDS=${ADVENTURER_DISCORD_MENTION_ROLE_IDS:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
-      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
-      - KARAKURI_MCP_URL=http://karakuri:3000/mcp
-      - KARAKURI_API_KEY=agent-1-api-key
-      - AGENT_DIR=/app/agents/adventurer
-      - BOT_NAME=adventurer
+      - OPENAI_MODEL=${ADVENTURER_OPENAI_MODEL:-gpt-4o}
+      - KARAKURI_MCP_URL=${KARAKURI_MCP_URL:-http://host.docker.internal:3000/mcp}
+      - KARAKURI_API_KEY=${ADVENTURER_KARAKURI_API_KEY}
+      - AGENT_DIR=/app/agent
+      - BOT_NAME=${ADVENTURER_BOT_NAME:-adventurer}
       - DATA_DIR=/app/data
+      - PORT=${ADVENTURER_PORT:-3101}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    ports:
+      - ${ADVENTURER_PORT:-3101}:${ADVENTURER_PORT:-3101}
     volumes:
-      - ./agents:/app/agents:ro
-      - agent-1-data:/app/data
+      - ${ADVENTURER_AGENT_DIR:-./agents/adventurer}:/app/agent:ro
+      - ${ADVENTURER_DATA_DIR:-./data/adventurer}:/app/data
 
-  agent-2:
+  scholar:
     build: .
     restart: unless-stopped
     environment:
-      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - DISCORD_TOKEN=${SCHOLAR_DISCORD_TOKEN}
+      - DISCORD_PUBLIC_KEY=${SCHOLAR_DISCORD_PUBLIC_KEY}
+      - DISCORD_APPLICATION_ID=${SCHOLAR_DISCORD_APPLICATION_ID}
+      - DISCORD_MENTION_ROLE_IDS=${SCHOLAR_DISCORD_MENTION_ROLE_IDS:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
-      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
-      - KARAKURI_MCP_URL=http://karakuri:3000/mcp
-      - KARAKURI_API_KEY=agent-2-api-key
-      - AGENT_DIR=/app/agents/scholar
-      - BOT_NAME=scholar
+      - OPENAI_MODEL=${SCHOLAR_OPENAI_MODEL:-gpt-4o-mini}
+      - KARAKURI_MCP_URL=${KARAKURI_MCP_URL:-http://host.docker.internal:3000/mcp}
+      - KARAKURI_API_KEY=${SCHOLAR_KARAKURI_API_KEY}
+      - AGENT_DIR=/app/agent
+      - BOT_NAME=${SCHOLAR_BOT_NAME:-scholar}
       - DATA_DIR=/app/data
+      - PORT=${SCHOLAR_PORT:-3102}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    ports:
+      - ${SCHOLAR_PORT:-3102}:${SCHOLAR_PORT:-3102}
     volumes:
-      - ./agents:/app/agents:ro
-      - agent-2-data:/app/data
-
-volumes:
-  agent-1-data:
-  agent-2-data:
+      - ${SCHOLAR_AGENT_DIR:-./agents/scholar}:/app/agent:ro
+      - ${SCHOLAR_DATA_DIR:-./data/scholar}:/app/data
 ```
 
 ### エージェント追加手順
 
 1. `agents/{name}/personality.md` を作成 (性格設定)
-2. `agents/{name}/skills.md` を作成 (karakuri-worldのスキル定義をコピペ)
+2. `agents/{name}/SKILL.md` を作成 (karakuri-worldのスキル定義をコピペ)
 3. karakuri-world にエージェントを登録しAPIキーを取得
-4. `docker-compose.yml` にサービスを追加 (環境変数を設定)
-5. `docker compose up -d` で起動
+4. `.env.compose` に `ADVENTURER_*` / `SCHOLAR_*` を設定
+5. 必要なら `docker-compose.yml` にサービスを追加
+6. `docker compose --env-file .env.compose -f docker-compose.yml up -d` で起動
 
 ## データ永続化
 
-全データは `data/` ディレクトリに保存され、Docker volume でエージェントごとに独立する。
+compose 例では全データを `./data/{agent-name}/` に保存し、bind mount でエージェントごとに独立させる。
 再起動しても全データが復元される。
 
 ```
-data/                              # Docker volume (エージェントごとに独立)
-├── diary/                         # 日記: ワールドでの行動記録
-│   ├── 2026-03-15.json            #   その日の行動を追記形式で記録
-│   └── 2026-03-16.json
-├── memories/                      # 重要記憶: ワールドで得た重要情報
-│   ├── {uuid-1}.json              #   「〇〇は鍛冶屋の場所を知っている」
-│   └── {uuid-2}.json              #   「北の森は夜に危険」
-└── sessions/                      # セッション: チャンネル別会話履歴
-    ├── {channelId-1}.json         #   メッセージ追加のたびに書き出し
-    └── {channelId-2}.json         #   起動時にファイルから復元
+data/
+├── adventurer/
+│   ├── diary/                     # 日記: ワールドでの行動記録
+│   │   ├── 2026-03-15.json        #   その日の行動を追記形式で記録
+│   │   └── 2026-03-16.json
+│   ├── memories/                  # 重要記憶: ワールドで得た重要情報
+│   │   ├── {uuid-1}.json          #   「〇〇は鍛冶屋の場所を知っている」
+│   │   └── {uuid-2}.json          #   「北の森は夜に危険」
+│   └── sessions/                  # セッション: チャンネル別会話履歴
+│       ├── {channelId-1}.json     #   メッセージ追加のたびに書き出し
+│       └── {channelId-2}.json     #   起動時にファイルから復元
+└── scholar/
 ```
 
 | データ種別 | 保存単位 | 永続化タイミング | 復元タイミング |
@@ -738,7 +754,7 @@ agent.ts (ToolLoopAgent)
 
 - **Discord adapter は server 型で動かす**: HTTP webhook と Gateway listener を組み合わせて、Discord Interactions と通常メッセージの両方を扱う
 - **MCP接続はURL+APIキーのみ**: ツール定義はkarakuri-world側が管理。サーバー側の更新が即座に反映されメンテ不要
-- **Skills はファイルコピペ方式**: karakuri-worldのskills定義をそのまま `agents/{name}/skills.md` に配置。instructionsに含めてLLMに渡す。ツール実行自体はMCPのactionツール経由
+- **Skills は callable tool 方式**: karakuri-worldのskills定義を `agents/{name}/SKILL.md` に配置し、name / description だけ先に公開する。本文とMCPツールの有効化は必要時に遅延実行し、ツール実行はMCPのactionツール経由
 - **メモリはワールド体験専用**: 日記=その日の行動ログ、重要記憶=ワールドで得た情報。JSONファイルベースで永続化
 - **全データがエージェント単位で分離**: Docker volume が独立しているため、日記・記憶・セッション全てがエージェントごとに自動分離
 - **再起動耐性**: セッションは起動時にファイルから復元。メモリと日記は都度読込のため常に最新

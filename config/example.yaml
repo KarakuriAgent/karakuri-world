@@ -3,7 +3,7 @@ world:
   description: どこにでもありそうな日本の小さな町。神社や学校、商店街に駅。穏やかな日常が流れている。
   skill_name: karakuri-world
 movement:
-  duration_ms: 1000
+  duration_ms: 10000
 conversation:
   max_turns: 10
   interval_ms: 10000

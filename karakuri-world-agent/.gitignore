@@ -1,5 +1,13 @@
 node_modules/
 dist/
+.docker-build/
 .env
 .env.compose
 data/
+
+# サンプルエージェント以外を除外
+agents/*
+!agents/.gitkeep
+!agents/adventurer/
+!agents/scholar/
+docker-compose-*

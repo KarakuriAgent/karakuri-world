@@ -1,21 +1,12 @@
-FROM node:20-slim AS build
-WORKDIR /app
-
-COPY package.json package-lock.json ./
-RUN npm ci
-
-COPY . .
-RUN npm run build
-
-FROM node:20-slim
+FROM node:24-slim
 WORKDIR /app
 ENV NODE_ENV=production
 
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
-
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/agents ./agents
-COPY --from=build /app/DESIGN.md ./DESIGN.md
+COPY .docker-build/package.json ./package.json
+COPY .docker-build/package-lock.json ./package-lock.json
+COPY .docker-build/node_modules ./node_modules
+COPY .docker-build/dist ./dist
+COPY .docker-build/agents ./agents
+COPY .docker-build/DESIGN.md ./DESIGN.md
 
 CMD ["node", "dist/src/index.js"]

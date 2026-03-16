@@ -27,10 +27,19 @@ afterEach(async () => {
 });
 
 describe('config helpers', () => {
-  it('loads personality and skills from the agent directory', async () => {
+  it('loads personality and callable skill metadata from the agent directory', async () => {
     const agentDir = await createAgentDir({
       'personality.md': '# Explorer\nYou are curious.',
-      'skills.md': '# Skills\n- Fishing',
+      'SKILL.md': [
+        '---',
+        'name: karakuri-world',
+        'description: Operate inside Karakuri World through MCP tools.',
+        '---',
+        '',
+        '# World Guide',
+        '',
+        'Use tools carefully.',
+      ].join('\n'),
     });
     const dataDir = await createAgentDir();
 
@@ -47,7 +56,15 @@ describe('config helpers', () => {
 
     expect(loaded.agent.dir).toBe(resolve(agentDir));
     expect(loaded.agent.personality).toBe('# Explorer\nYou are curious.');
-    expect(loaded.agent.skills).toBe('# Skills\n- Fishing');
+    expect(loaded.agent.skillTools).toEqual([
+      {
+        toolName: 'load_skill_karakuri_world',
+        name: 'karakuri-world',
+        description: 'Operate inside Karakuri World through MCP tools.',
+        instructions: '# World Guide\n\nUse tools carefully.',
+        allowedTools: undefined,
+      },
+    ]);
     expect(loaded.dataDir).toBe(resolve(dataDir));
     expect(loaded.agent.botName).toBe('karakuri-agent');
     expect(loaded.openai.model).toBe('gpt-4o');
@@ -71,12 +88,15 @@ describe('config helpers', () => {
     expect(loaded.discord.token).toBe('discord-bot-token');
     expect(loaded.discord.mentionRoleIds).toEqual(['123', '456', '789']);
     expect(loaded.agent.personality).toBe('You are a helpful agent living in a virtual world.');
-    expect(loaded.agent.skills).toBe('');
+    expect(loaded.agent.skillTools).toEqual([]);
   });
 
-  it('builds instructions by appending skills only when present', () => {
-    expect(buildInstructions('personality', 'skills')).toBe('personality\n\n---\n\nskills');
-    expect(buildInstructions('personality', '')).toBe('personality');
+  it('builds instructions by appending callable skill hints when present', () => {
+    expect(buildInstructions('personality')).toBe('personality');
+    expect(buildInstructions('personality', true)).toBe(
+      'personality\n\n---\n\nAdditional agent skill guides are available as callable tools. '
+      + 'Call them when you need more detailed, world-specific guidance before acting.',
+    );
   });
 
   it('parses PORT when provided', async () => {

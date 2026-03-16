@@ -44,6 +44,8 @@ npm install
 ### 2. サンプル環境変数をコピーする
 
 ローカル起動では `.env.example` を `.env` にコピーして使います。
+`.env.example` と `.env.compose.example` は項目名をそろえてあり、
+ローカル起動では単一 agent 用の無接頭辞版、Docker Compose では `ADVENTURER_*` / `SCHOLAR_*` 付きで同じ項目を設定します。
 
 ```bash
 cp .env.example .env
@@ -54,16 +56,18 @@ cp .env.example .env
 ### 3. エージェント設定ディレクトリを用意する
 
 同梱の `agents/adventurer/` と `agents/scholar/` は、そのまま編集して使えるスターターです。
-`personality.md` と `skills.md` の組を増やせば、新しい agent を作れます。
+`personality.md` と `SKILL.md` の組を増やせば、新しい agent を作れます。
+`SKILL.md` は callable skill tool として読み込まれ、モデルには名前と説明だけを先に見せます。
+一方で MCP tool 自体は最初から公開されますが、MCP クライアントへの接続と実際のツール解決は、最初の MCP tool 実行時まで遅延します。
 
 ```text
 agents/
   adventurer/
     personality.md
-    skills.md
+    SKILL.md
   scholar/
     personality.md
-    skills.md
+    SKILL.md
 ```
 
 別名で増やす場合の例:
@@ -72,7 +76,7 @@ agents/
 cp -R agents/adventurer agents/my-agent
 ```
 
-スターターを編集してもよいですし、必要ならルートリポジトリの `skills/` から内容を抜粋して `skills.md` を拡張してください。
+スターターを編集してもよいですし、必要ならルートリポジトリの `skills/` から内容を抜粋して `SKILL.md` を拡張してください。
 
 ### 4. karakuri-world にエージェントを登録する
 
@@ -91,23 +95,23 @@ curl -X POST http://127.0.0.1:3000/api/admin/agents \
 ### 5. `.env` を編集する
 
 `.env.example` にはローカル起動用のひな形を入れてあります。
+`.env.compose.example` と対応するように、共通設定と単一 agent 設定を同じ粒度で並べています。
 最低限、以下は実値に置き換えてください。
 
 ```bash
+OPENAI_API_KEY=your-openai-api-key
+OPENAI_BASE_URL=https://api.openai.com/v1
+KARAKURI_MCP_URL=http://127.0.0.1:3000/mcp
+
 DISCORD_TOKEN=your-discord-bot-token
 DISCORD_PUBLIC_KEY=your-discord-public-key
 DISCORD_APPLICATION_ID=your-discord-application-id
 DISCORD_MENTION_ROLE_IDS=1234567890,0987654321
-
-OPENAI_API_KEY=your-openai-api-key
-OPENAI_BASE_URL=https://api.openai.com/v1
+KARAKURI_API_KEY=karakuri_...
 OPENAI_MODEL=gpt-4o
 
-KARAKURI_MCP_URL=http://127.0.0.1:3000/mcp
-KARAKURI_API_KEY=karakuri_...
-
-AGENT_DIR=./agents/adventurer
 BOT_NAME=adventurer
+AGENT_DIR=./agents/adventurer
 DATA_DIR=./data
 PORT=3001
 ```
@@ -125,7 +129,7 @@ PORT=3001
 | `OPENAI_MODEL` | No | 使用モデル |
 | `KARAKURI_MCP_URL` | Yes | `karakuri-world` の MCP URL |
 | `KARAKURI_API_KEY` | Yes | 管理 API で発行した agent API key |
-| `AGENT_DIR` | Yes | `personality.md` / `skills.md` を置いたディレクトリ |
+| `AGENT_DIR` | Yes | `personality.md` と `SKILL.md` を置いたディレクトリ |
 | `BOT_NAME` | No | Chat SDK 上の bot 名 |
 | `DATA_DIR` | No | 日記・記憶・セッションの保存先 |
 | `PORT` | No | webhook サーバー待受ポート |
@@ -165,25 +169,39 @@ npm start
 
 ## Docker Compose で起動する
 
-同梱の `docker-compose.yml` には `agent-1` / `agent-2` のサンプルが入っています。
-この例では `agents/adventurer/` と `agents/scholar/` を使い、agent ごとに別の Discord application を割り当てる想定です。
+同梱の `docker-compose.yml` には `adventurer` / `scholar` のサンプルが入っています。
+各 service は agent ごとの設定ディレクトリを `/app/agent` に read-only bind mount し、永続データを `/app/data` に bind mount します。
 
 例:
 
 ```bash
+npm run docker:prepare
 cp .env.compose.example .env.compose
 $EDITOR .env.compose
-docker compose --env-file .env.compose up --build
+docker compose --env-file .env.compose -f docker-compose.yml up --build
 ```
 
-`.env.compose.example` では次を設定できます。
+単体で image だけ作る場合も同じで、事前に成果物を用意してから `docker build` します。
+
+```bash
+npm run docker:prepare
+docker build -t karakuri-world-agent .
+```
+
+`npm run docker:prepare` は `.docker-build/` を作成し、通常の `node:24-slim` コンテナ内で
+`npm ci --include=dev` → `npm run build` → `npm prune --omit=dev` を実行して、
+Docker image にその成果物を取り込める状態にします。
+依存関係や `src/` を変更したら、`docker build` / `docker compose up --build` の前に再実行してください。
+
+`.env.compose.example` では、`.env.example` と同じ粒度の設定を `ADVENTURER_*` / `SCHOLAR_*` に分けて指定します。
 
 - `KARAKURI_MCP_URL`
-- `ADVENTURER_KARAKURI_API_KEY`
-- `SCHOLAR_KARAKURI_API_KEY`
-- agent ごとの Discord token / public key / application ID
-- agent ごとのモデル名
-- agent ごとの待受ポート (`ADVENTURER_PORT`, `SCHOLAR_PORT`)
+- `OPENAI_API_KEY` / `OPENAI_BASE_URL`
+- `ADVENTURER_*` と `SCHOLAR_*` の Discord / Karakuri / OpenAI model 設定
+- `ADVENTURER_BOT_NAME` / `SCHOLAR_BOT_NAME`
+- `ADVENTURER_AGENT_DIR` / `SCHOLAR_AGENT_DIR`
+- `ADVENTURER_DATA_DIR` / `SCHOLAR_DATA_DIR`
+- `ADVENTURER_PORT` / `SCHOLAR_PORT`
 
 デフォルトの `KARAKURI_MCP_URL` は、Docker コンテナからホスト上の `karakuri-world` に接続する想定で `http://host.docker.internal:3000/mcp` にしてあります。
 別ホストや別 compose project で動かす場合は、`.env.compose` 側で上書きしてください。

@@ -3,12 +3,15 @@ import { createMCPClient, type MCPClient } from '@ai-sdk/mcp';
 import { createOpenAI } from '@ai-sdk/openai';
 
 import { buildInstructions, getConfig } from './config.js';
+import { createLazyMcpRuntime } from './lazy-mcp.js';
 import { createDiaryTools } from './memory/diary.js';
+import { createMcpProxyTools } from './mcp-tools.js';
 import { createImportantMemoryTools } from './memory/important.js';
+import { createSkillTools } from './skills.js';
 
 interface AgentRuntime {
   agent: ToolLoopAgent<never, any, any>;
-  mcpClient: MCPClient;
+  close: () => Promise<void>;
 }
 
 let runtime: AgentRuntime | undefined;
@@ -20,39 +23,44 @@ async function createAgentRuntime(): Promise<AgentRuntime> {
     apiKey: config.openai.apiKey,
     baseURL: config.openai.baseURL,
   });
-  const instructions = buildInstructions(config.agent.personality, config.agent.skills);
+  const instructions = buildInstructions(config.agent.personality, config.agent.skillTools.length > 0);
   const diaryTools = createDiaryTools({ dataDir: config.dataDir });
   const importantMemoryTools = createImportantMemoryTools({ dataDir: config.dataDir });
-  const mcpClient = await createMCPClient({
-    transport: {
-      type: 'http',
-      url: config.karakuri.mcpUrl,
-      headers: {
-        Authorization: `Bearer ${config.karakuri.apiKey}`,
-      },
-    },
-  });
-
-  try {
-    const mcpTools = await mcpClient.tools();
-
-    return {
-      agent: new ToolLoopAgent({
-        model: openai.chat(config.openai.model),
-        instructions,
-        tools: {
-          ...mcpTools,
-          ...diaryTools,
-          ...importantMemoryTools,
+  const lazyMcp = createLazyMcpRuntime({
+    createClient: async (): Promise<MCPClient> =>
+      createMCPClient({
+        transport: {
+          type: 'http',
+          url: config.karakuri.mcpUrl,
+          headers: {
+            Authorization: `Bearer ${config.karakuri.apiKey}`,
+          },
         },
-        stopWhen: [stepCountIs(10)],
       }),
-      mcpClient,
-    };
-  } catch (error) {
-    await mcpClient.close().catch(() => undefined);
-    throw error;
-  }
+  });
+  const mcpTools = createMcpProxyTools({
+    getRuntimeTools: () => lazyMcp.getTools(),
+    resetRuntime: () => lazyMcp.reset(),
+  });
+  const skillTools = createSkillTools(config.agent.skillTools);
+  const tools = {
+    ...mcpTools,
+    ...diaryTools,
+    ...importantMemoryTools,
+    ...skillTools,
+  };
+
+  return {
+    agent: new ToolLoopAgent({
+      model: openai.chat(config.openai.model),
+      instructions,
+      tools,
+      stopWhen: [stepCountIs(10)],
+    }),
+    close: async () => {
+      await lazyMcp.close();
+    },
+  };
 }
 
 export async function initializeAgent(): Promise<ToolLoopAgent<never, any, any>> {
@@ -82,6 +90,6 @@ export async function closeAgentResources(): Promise<void> {
   runtimePromise = undefined;
 
   if (activeRuntime) {
-    await activeRuntime.mcpClient.close();
+    await activeRuntime.close();
   }
 }
