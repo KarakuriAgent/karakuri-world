@@ -357,4 +357,8 @@ npm run test:watch
 
 ## ライセンス
 
-このプロジェクトは MIT License です。詳細は [`LICENSE`](./LICENSE) を参照してください。
+このリポジトリは PolyForm Noncommercial License 1.0.0 で source-available として公開しています。非商用利用は [`LICENSE`](./LICENSE) の条件に従って許可され、同ライセンスに列挙された公共性のある非営利組織も無料利用の対象です。
+
+商用利用には、株式会社0235との別途書面契約が必要です。概要と問い合わせ先は [`COMMERCIAL-LICENSING.md`](./COMMERCIAL-LICENSING.md) を参照してください。
+
+商用ライセンスの問い合わせ先: <https://0235.co.jp/contact/>
