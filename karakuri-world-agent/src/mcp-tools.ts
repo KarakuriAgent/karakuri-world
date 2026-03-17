@@ -168,7 +168,7 @@ function requireRuntimeTool(
 function isMcpConnectionError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
 
-  const code = (error as Record<string, unknown>).code;
+  const code = 'code' in error ? error.code : undefined;
   if (code === -32002 || code === 'ECONNREFUSED' || code === 'ECONNRESET' || code === 'EPIPE') {
     return true;
   }
