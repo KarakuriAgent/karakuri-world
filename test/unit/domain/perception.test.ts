@@ -13,6 +13,7 @@ const loggedInAgents: LoggedInAgent[] = [
     discord_channel_id: 'channel-alice',
     pending_conversation_id: null,
     pending_server_event_ids: [],
+    last_action_id: null,
   },
   {
     agent_id: 'agent-bob',
@@ -22,6 +23,7 @@ const loggedInAgents: LoggedInAgent[] = [
     discord_channel_id: 'channel-bob',
     pending_conversation_id: null,
     pending_server_event_ids: [],
+    last_action_id: null,
   },
 ];
 

@@ -64,6 +64,7 @@ export class AgentStateStore {
       discord_channel_id: params.discord_channel_id,
       pending_conversation_id: null,
       pending_server_event_ids: [],
+      last_action_id: null,
     };
 
     this.loggedInAgents.set(registration.agent_id, loggedInAgent);
@@ -128,6 +129,12 @@ export class AgentStateStore {
   clearPendingServerEvents(agentId: string): LoggedInAgent {
     const loggedInAgent = this.mustGetLoggedIn(agentId);
     loggedInAgent.pending_server_event_ids = [];
+    return loggedInAgent;
+  }
+
+  setLastAction(agentId: string, actionId: string | null): LoggedInAgent {
+    const loggedInAgent = this.mustGetLoggedIn(agentId);
+    loggedInAgent.last_action_id = actionId;
     return loggedInAgent;
   }
 

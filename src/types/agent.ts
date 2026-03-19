@@ -20,4 +20,5 @@ export interface LoggedInAgent {
   discord_channel_id: string;
   pending_conversation_id: string | null;
   pending_server_event_ids: string[];
+  last_action_id: string | null;
 }

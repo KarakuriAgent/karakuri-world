@@ -76,4 +76,8 @@ export class WorldState {
   clearPendingServerEvents(agentId: string): LoggedInAgent {
     return this.agents.clearPendingServerEvents(agentId);
   }
+
+  setLastAction(agentId: string, actionId: string | null): LoggedInAgent {
+    return this.agents.setLastAction(agentId, actionId);
+  }
 }
