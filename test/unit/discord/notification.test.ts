@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   formatActionCompletedMessage,
   formatAgentLoggedOutMessage,
+  formatConversationClosingPromptMessage,
   formatConversationRequestedMessage,
+  formatConversationReplyPromptMessage,
+  formatConversationServerEventClosingPromptMessage,
   formatServerEventMessage,
   formatWorldLogConversationMessage,
   formatWorldLogLoggedOut,
@@ -34,8 +37,34 @@ describe('discord notifications', () => {
     expect(formatWorldLogLoggedOut('Alice', 'in_conversation')).toBe('Alice が会話を終了し、ログアウトしました');
   });
 
-  it('formats conversation and server event messages', () => {
-    const conversation = formatConversationRequestedMessage('Alice', 'こんにちは。', 'conversation-1');
+  it('formats conversation prompts with the action prompt', () => {
+    const skillName = 'karakuri-world';
+    const conversation = formatConversationRequestedMessage('Alice', 'こんにちは。', 'conversation-1', skillName);
+    const reply = formatConversationReplyPromptMessage('Alice', 'こんにちは。', 'conversation-1', skillName);
+    const closing = formatConversationClosingPromptMessage('Alice', 'またね。', 'conversation-1', skillName);
+    const serverEventClosing = formatConversationServerEventClosingPromptMessage('不思議な装置', 'conversation-1', skillName);
+
+    expect(conversation).toContain('Alice が話しかけています。');
+    expect(conversation).toContain('conversation_id: conversation-1');
+    expect(conversation).toContain('karakuri-world スキルで次の行動を選択してください。');
+
+    expect(reply).toContain('Alice: 「こんにちは。」');
+    expect(reply).toContain('返答してください。');
+    expect(reply).toContain('conversation_id: conversation-1');
+    expect(reply).toContain('karakuri-world スキルで次の行動を選択してください。');
+
+    expect(closing).toContain('Alice: 「またね。」');
+    expect(closing).toContain('これが最後のメッセージです。お別れのメッセージを送ってください。');
+    expect(closing).toContain('conversation_id: conversation-1');
+    expect(closing).toContain('karakuri-world スキルで次の行動を選択してください。');
+
+    expect(serverEventClosing).toContain('サーバーイベント「不思議な装置」の選択により会話を終了します。');
+    expect(serverEventClosing).toContain('お別れのメッセージを送ってください。');
+    expect(serverEventClosing).toContain('conversation_id: conversation-1');
+    expect(serverEventClosing).toContain('karakuri-world スキルで次の行動を選択してください。');
+  });
+
+  it('formats server event messages with the action prompt', () => {
     const serverEvent = formatServerEventMessage(
       '不思議な装置',
       '古い装置が動き出しました。',
@@ -47,13 +76,13 @@ describe('discord notifications', () => {
         },
       ],
       'server-event-1',
+      'karakuri-world',
     );
 
-    expect(conversation).toContain('Alice が話しかけています。');
-    expect(conversation).toContain('conversation_id: conversation-1');
     expect(serverEvent).toContain('【サーバーイベント】不思議な装置');
     expect(serverEvent).toContain('inspect: 調べる - 装置の仕組みを確認する');
     expect(serverEvent).toContain('server_event_id: server-event-1');
+    expect(serverEvent).toContain('karakuri-world スキルで次の行動を選択してください。');
   });
 
   it('formats world log conversation messages', () => {

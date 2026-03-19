@@ -8,6 +8,10 @@ export function formatActionPrompt(skillName: string): string {
   return `${skillName} スキルで次の行動を選択してください。`;
 }
 
+function formatPromptInstruction(instruction: string, skillName: string, identifierLine: string): string {
+  return [instruction, formatActionPrompt(skillName), identifierLine].join('\n');
+}
+
 function joinSections(...sections: Array<string | undefined>): string {
   return sections
     .map((section) => section?.trim())
@@ -73,11 +77,12 @@ export function formatConversationRequestedMessage(
   initiatorName: string,
   initialMessage: string,
   conversationId: string,
+  skillName: string,
 ): string {
   return joinSections(
     `${initiatorName} が話しかけています。`,
     `「${initialMessage}」`,
-    `会話を受諾するか拒否してください。\nconversation_id: ${conversationId}`,
+    formatPromptInstruction('会話を受諾するか拒否してください。', skillName, `conversation_id: ${conversationId}`),
   );
 }
 
@@ -98,18 +103,27 @@ export function formatConversationReplyPromptMessage(
   speakerName: string,
   message: string,
   conversationId: string,
+  skillName: string,
 ): string {
-  return joinSections(`${speakerName}: 「${message}」`, `返答してください。\nconversation_id: ${conversationId}`);
+  return joinSections(
+    `${speakerName}: 「${message}」`,
+    formatPromptInstruction('返答してください。', skillName, `conversation_id: ${conversationId}`),
+  );
 }
 
 export function formatConversationClosingPromptMessage(
   speakerName: string,
   message: string,
   conversationId: string,
+  skillName: string,
 ): string {
   return joinSections(
     `${speakerName}: 「${message}」`,
-    `これが最後のメッセージです。お別れのメッセージを送ってください。\nconversation_id: ${conversationId}`,
+    formatPromptInstruction(
+      'これが最後のメッセージです。お別れのメッセージを送ってください。',
+      skillName,
+      `conversation_id: ${conversationId}`,
+    ),
   );
 }
 
@@ -117,8 +131,15 @@ export function formatConversationDeliveredClosingMessage(speakerName: string, m
   return `${speakerName}: 「${message}」`;
 }
 
-export function formatConversationServerEventClosingPromptMessage(eventName: string, conversationId: string): string {
-  return `サーバーイベント「${eventName}」の選択により会話を終了します。\nお別れのメッセージを送ってください。\nconversation_id: ${conversationId}`;
+export function formatConversationServerEventClosingPromptMessage(
+  eventName: string,
+  conversationId: string,
+  skillName: string,
+): string {
+  return joinSections(
+    `サーバーイベント「${eventName}」の選択により会話を終了します。`,
+    formatPromptInstruction('お別れのメッセージを送ってください。', skillName, `conversation_id: ${conversationId}`),
+  );
 }
 
 export function formatConversationEndedMessage(
@@ -138,11 +159,12 @@ export function formatServerEventMessage(
   description: string,
   choices: ServerEventChoiceConfig[],
   serverEventId: string,
+  skillName: string,
 ): string {
   return joinSections(
     `【サーバーイベント】${eventName}\n${description}`,
     `選択肢:\n${formatChoiceLines(choices)}`,
-    `選択するか、無視してください。\nserver_event_id: ${serverEventId}`,
+    formatPromptInstruction('選択するか、無視してください。', skillName, `server_event_id: ${serverEventId}`),
   );
 }
 

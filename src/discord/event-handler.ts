@@ -266,7 +266,7 @@ export class DiscordEventHandler {
   ): Promise<void> {
     await this.sendToAgent(
       targetAgentId,
-      formatConversationRequestedMessage(initiatorName, initialMessage, conversationId),
+      formatConversationRequestedMessage(initiatorName, initialMessage, conversationId, this.skillName),
     );
   }
 
@@ -309,8 +309,8 @@ export class DiscordEventHandler {
     closing: boolean,
   ): Promise<void> {
     const content = closing
-      ? formatConversationClosingPromptMessage(speakerName, message, conversationId)
-      : formatConversationReplyPromptMessage(speakerName, message, conversationId);
+      ? formatConversationClosingPromptMessage(speakerName, message, conversationId, this.skillName)
+      : formatConversationReplyPromptMessage(speakerName, message, conversationId, this.skillName);
 
     await this.sendToAgent(listenerAgentId, content);
   }
@@ -348,7 +348,7 @@ export class DiscordEventHandler {
   }
 
   private async handleServerEventFired(event: Extract<WorldEvent, { type: 'server_event_fired' }>): Promise<void> {
-    const content = formatServerEventMessage(event.name, event.description, event.choices, event.server_event_id);
+    const content = formatServerEventMessage(event.name, event.description, event.choices, event.server_event_id, this.skillName);
     for (const agentId of event.delivered_agent_ids) {
       await this.sendToAgent(agentId, content);
     }
@@ -375,7 +375,7 @@ export class DiscordEventHandler {
       if (conversation) {
         await this.sendToAgent(
           event.agent_id,
-          formatConversationServerEventClosingPromptMessage(event.name, conversation.conversation_id),
+          formatConversationServerEventClosingPromptMessage(event.name, conversation.conversation_id, this.skillName),
         );
       }
     }

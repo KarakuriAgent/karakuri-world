@@ -1,6 +1,6 @@
 world:
   name: からくり町
-  description: どこにでもありそうな日本の小さな町。神社や学校、商店街に駅。穏やかな日常が流れている。
+  description: どこにでもありそうな日本の小さな町。神社や学校、商店街に映画館。穏やかな日常が流れている。
   skill_name: karakuri-world
 movement:
   duration_ms: 10000
@@ -276,28 +276,28 @@ map:
     15-6: { type: door, label: 住宅E 玄関, building_id: building-house-e }
     15-7: { type: wall, building_id: building-house-e }
 
-    # --- 駅 (7w, cols 12-18) ---
-    13-12: { type: wall, building_id: building-station }
-    13-13: { type: wall, building_id: building-station }
-    13-14: { type: wall, building_id: building-station }
-    13-15: { type: wall, building_id: building-station }
-    13-16: { type: wall, building_id: building-station }
-    13-17: { type: wall, building_id: building-station }
-    13-18: { type: wall, building_id: building-station }
-    14-12: { type: wall, building_id: building-station }
-    14-13: { type: building_interior, label: 改札, building_id: building-station }
-    14-14: { type: building_interior, label: 待合室, building_id: building-station }
-    14-15: { type: building_interior, label: ホーム, building_id: building-station }
-    14-16: { type: building_interior, label: 売店, building_id: building-station }
-    14-17: { type: building_interior, label: 事務室, building_id: building-station }
-    14-18: { type: wall, building_id: building-station }
-    15-12: { type: wall, building_id: building-station }
-    15-13: { type: wall, building_id: building-station }
-    15-14: { type: wall, building_id: building-station }
-    15-15: { type: door, label: 駅 入口, building_id: building-station }
-    15-16: { type: wall, building_id: building-station }
-    15-17: { type: wall, building_id: building-station }
-    15-18: { type: wall, building_id: building-station }
+    # --- 映画館 (7w, cols 12-18) ---
+    13-12: { type: wall, building_id: building-cinema }
+    13-13: { type: wall, building_id: building-cinema }
+    13-14: { type: wall, building_id: building-cinema }
+    13-15: { type: wall, building_id: building-cinema }
+    13-16: { type: wall, building_id: building-cinema }
+    13-17: { type: wall, building_id: building-cinema }
+    13-18: { type: wall, building_id: building-cinema }
+    14-12: { type: wall, building_id: building-cinema }
+    14-13: { type: building_interior, label: 売店, building_id: building-cinema }
+    14-14: { type: building_interior, label: スクリーン, building_id: building-cinema }
+    14-15: { type: building_interior, label: ロビー, building_id: building-cinema }
+    14-16: { type: building_interior, label: 受付, building_id: building-cinema }
+    14-17: { type: building_interior, label: トイレ, building_id: building-cinema }
+    14-18: { type: wall, building_id: building-cinema }
+    15-12: { type: wall, building_id: building-cinema }
+    15-13: { type: wall, building_id: building-cinema }
+    15-14: { type: wall, building_id: building-cinema }
+    15-15: { type: door, label: 映画館 入口, building_id: building-cinema }
+    15-16: { type: wall, building_id: building-cinema }
+    15-17: { type: wall, building_id: building-cinema }
+    15-18: { type: wall, building_id: building-cinema }
 
     # --- 住宅F (3w, cols 25-27) ---
     13-25: { type: wall, building_id: building-house-f }
@@ -311,9 +311,9 @@ map:
     15-27: { type: wall, building_id: building-house-f }
 
     # ==========================================
-    # Row 16: 駅前通り (NPCs)
+    # Row 16: 映画館前通り (NPCs)
     # ==========================================
-    16-16: { type: npc, label: 駅員, npc_id: npc-ekiin }
+    16-14: { type: npc, label: 映画館スタッフ, npc_id: npc-cinema-staff }
 
     # ==========================================
     # 南端 住宅 (rows 17-19, south-facing)
@@ -609,23 +609,23 @@ map:
           duration_ms: 600000
           result_description: 静かな部屋でひと休みした。
 
-    - building_id: building-station
-      name: 駅
-      description: 一日に数本しか電車が来ない小さな駅。木造の駅舎は味わいがある。
+    - building_id: building-cinema
+      name: 映画館「星空座」
+      description: 昔ながらの小さな映画館。レトロな看板とポスターが並び、ポップコーンの香りが漂っている。
       wall_nodes: [13-12, 13-13, 13-14, 13-15, 13-16, 13-17, 13-18, 14-12, 14-18, 15-12, 15-13, 15-14, 15-16, 15-17, 15-18]
       interior_nodes: [14-13, 14-14, 14-15, 14-16, 14-17]
       door_nodes: [15-15]
       actions:
-        - action_id: wait-train
-          name: 電車を待つ
-          description: ベンチに座って次の電車を待つ。
+        - action_id: watch-movie
+          name: 映画を観る
+          description: 薄暗いスクリーンルームの座席に座り、上映中の映画を観る。
           duration_ms: 3600000
-          result_description: のんびりと電車を待った。ホームに風が吹き抜けた。
-        - action_id: buy-ticket
-          name: 切符を買う
-          description: 券売機で切符を購入する。
+          result_description: 映画を観終わった。心に残る作品だった。
+        - action_id: buy-popcorn
+          name: ポップコーンを買う
+          description: 売店でポップコーンとドリンクを買う。
           duration_ms: 240000
-          result_description: 切符を購入した。どこへ行こうか。
+          result_description: 出来たてのポップコーンを手に入れた。バターの香りがたまらない。
 
     - building_id: building-house-f
       name: 住宅F
@@ -714,16 +714,16 @@ map:
           duration_ms: 3600000
           result_description: おじいさんが昔の町の話を聞かせてくれた。
 
-    - npc_id: npc-ekiin
-      name: 駅員
-      description: 駅の改札に立っている駅員さん。丁寧な対応が評判。
-      node_id: 16-16
+    - npc_id: npc-cinema-staff
+      name: 映画館スタッフ
+      description: 映画館の受付と売店を切り盛りしているスタッフ。映画に詳しくておすすめを教えてくれる。
+      node_id: 16-14
       actions:
-        - action_id: ask-schedule
-          name: 時刻表を聞く
-          description: 次の電車の時間を駅員さんに聞く。
+        - action_id: ask-recommendation
+          name: おすすめの映画を聞く
+          description: 今上映中のおすすめ映画をスタッフに聞く。
           duration_ms: 240000
-          result_description: 駅員さんが次の電車の時間を教えてくれた。
+          result_description: スタッフが目を輝かせながらおすすめの映画を教えてくれた。
 
 idle_reminder:
   interval_ms: 600000

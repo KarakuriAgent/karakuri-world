@@ -10,7 +10,8 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENAI_MODEL: ${ADVENTURER_OPENAI_MODEL:-gpt-4o}
-      KARAKURI_MCP_URL: ${KARAKURI_MCP_URL:-http://host.docker.internal:3000/mcp}
+      KARAKURI_API_BASE_URL: ${KARAKURI_API_BASE_URL:-http://host.docker.internal:3000/api}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       KARAKURI_API_KEY: ${ADVENTURER_KARAKURI_API_KEY}
       AGENT_DIR: /app/agent
       BOT_NAME: ${ADVENTURER_BOT_NAME:-adventurer}
@@ -35,7 +36,8 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENAI_MODEL: ${SCHOLAR_OPENAI_MODEL:-gpt-4o-mini}
-      KARAKURI_MCP_URL: ${KARAKURI_MCP_URL:-http://host.docker.internal:3000/mcp}
+      KARAKURI_API_BASE_URL: ${KARAKURI_API_BASE_URL:-http://host.docker.internal:3000/api}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       KARAKURI_API_KEY: ${SCHOLAR_KARAKURI_API_KEY}
       AGENT_DIR: /app/agent
       BOT_NAME: ${SCHOLAR_BOT_NAME:-scholar}

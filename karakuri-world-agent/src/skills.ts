@@ -1,12 +1,15 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { tool } from 'ai';
 import { z } from 'zod';
 
+import { createLogger } from './logger.js';
+
 const FRONT_MATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 const GENERIC_SKILL_HEADINGS = new Set(['skill', 'skills']);
 const DEFAULT_SKILL_DESCRIPTION = 'Load additional world-specific guidance before acting.';
+const logger = createLogger('skills');
 
 export interface AgentSkill {
   toolName: string;
@@ -23,8 +26,40 @@ interface ParsedSkillDocument {
   allowedTools?: string;
 }
 
+function isMissingOrNonDirectoryError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error
+    && 'code' in error
+    && (error.code === 'ENOENT' || error.code === 'ENOTDIR');
+}
+
+function toFileSystemError(action: string, filePath: string, error: unknown): Error {
+  const details = error instanceof Error && error.message ? error.message : 'Unknown error';
+
+  return new Error(`Failed to ${action} at ${filePath}: ${details}`, { cause: error });
+}
+
 function readOptionalFile(filePath: string): string | undefined {
-  return existsSync(filePath) ? readFileSync(filePath, 'utf8') : undefined;
+  try {
+    return readFileSync(filePath, 'utf8');
+  } catch (error) {
+    if (isMissingOrNonDirectoryError(error)) {
+      return undefined;
+    }
+
+    throw toFileSystemError('read skill file', filePath, error);
+  }
+}
+
+function readOptionalDirectoryEntries(directoryPath: string) {
+  try {
+    return readdirSync(directoryPath, { withFileTypes: true });
+  } catch (error) {
+    if (isMissingOrNonDirectoryError(error)) {
+      return [];
+    }
+
+    throw toFileSystemError('read skills directory', directoryPath, error);
+  }
 }
 
 function stripMatchingQuotes(value: string): string {
@@ -136,23 +171,41 @@ export function parseSkillDocument(document: string, fallbackName: string): Pars
 }
 
 export function loadAgentSkills(agentDir: string): AgentSkill[] {
-  const skillDocument = readOptionalFile(join(agentDir, 'SKILL.md'));
-  if (!skillDocument) {
-    return [];
-  }
+  const skillsDir = join(agentDir, 'skills');
 
-  const fallbackName = basename(agentDir);
-  const parsed = parseSkillDocument(skillDocument, fallbackName);
+  const skills: AgentSkill[] = [];
+  const seenToolNames = new Set<string>();
 
-  return [
-    {
-      toolName: `load_skill_${toToolIdentifier(parsed.name)}`,
+  for (const entry of readOptionalDirectoryEntries(skillsDir)
+    .filter((candidate) => candidate.isDirectory())
+    .sort((left, right) => left.name.localeCompare(right.name))) {
+    const skillDocument = readOptionalFile(join(skillsDir, entry.name, 'SKILL.md'));
+    if (!skillDocument) {
+      continue;
+    }
+
+    const parsed = parseSkillDocument(skillDocument, entry.name);
+    const toolName = `load_skill_${toToolIdentifier(parsed.name)}`;
+    if (seenToolNames.has(toolName)) {
+      logger.error('Duplicate skill tool name', { toolName });
+      throw new Error(`Duplicate skill tool name: ${toolName}`);
+    }
+
+    seenToolNames.add(toolName);
+    skills.push({
+      toolName,
       name: parsed.name,
       description: parsed.description,
       instructions: parsed.instructions,
       allowedTools: parsed.allowedTools,
-    },
-  ];
+    });
+  }
+
+  logger.info('Skills loaded', {
+    count: skills.length,
+    names: skills.map((skill) => skill.name),
+  });
+  return skills;
 }
 
 export function createSkillTools(skills: AgentSkill[]) {
@@ -162,12 +215,15 @@ export function createSkillTools(skills: AgentSkill[]) {
       tool({
         description: `Load the "${skill.name}" skill guide when you need more detailed guidance. ${skill.description}`,
         inputSchema: z.object({}),
-        execute: async () => ({
-          name: skill.name,
-          description: skill.description,
-          allowedTools: skill.allowedTools,
-          instructions: skill.instructions,
-        }),
+        execute: async () => {
+          logger.debug('Skill tool invoked', { toolName: skill.toolName });
+          return {
+            name: skill.name,
+            description: skill.description,
+            allowedTools: skill.allowedTools,
+            instructions: skill.instructions,
+          };
+        },
       }),
     ]),
   );

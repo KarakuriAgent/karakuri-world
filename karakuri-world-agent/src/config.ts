@@ -19,7 +19,7 @@ export interface Config {
     model: string;
   };
   karakuri: {
-    mcpUrl: string;
+    apiBaseUrl: string;
     apiKey: string;
   };
   agent: {
@@ -65,6 +65,10 @@ function parsePort(value: string | undefined): number {
   }
 
   return parsed;
+}
+
+function normalizeApiBaseUrl(value: string): string {
+  return value.replace(/\/+$/, '');
 }
 
 export function readAgentFile(agentDir: string, fileName: string): string | undefined {
@@ -119,7 +123,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       model: optionalNonEmpty(env.OPENAI_MODEL) ?? DEFAULT_OPENAI_MODEL,
     },
     karakuri: {
-      mcpUrl: requireNonEmpty(env.KARAKURI_MCP_URL, 'KARAKURI_MCP_URL'),
+      apiBaseUrl: normalizeApiBaseUrl(
+        requireNonEmpty(env.KARAKURI_API_BASE_URL, 'KARAKURI_API_BASE_URL'),
+      ),
       apiKey: requireNonEmpty(env.KARAKURI_API_KEY, 'KARAKURI_API_KEY'),
     },
     agent: {

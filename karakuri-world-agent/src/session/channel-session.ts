@@ -1,14 +1,13 @@
-import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import type { ModelMessage } from 'ai';
 import { z } from 'zod';
 
 import { KeyedTaskRunner } from '../keyed-task-runner.js';
-import { isNotFoundError, listJsonFiles, readJsonFile, writeJsonFileAtomic } from '../persistence.js';
+import { createLogger } from '../logger.js';
+import { listJsonFiles, readJsonFile, writeJsonFileAtomic } from '../persistence.js';
 
-export const SESSION_TTL_MS = 30 * 60 * 1000;
-export const SESSION_CLEANUP_INTERVAL_MS = 60_000;
+const moduleLogger = createLogger('session');
 
 const persistedMessageSchema = z
   .object({
@@ -42,35 +41,22 @@ export interface ChannelSessionStoreLogger {
 }
 
 export interface ChannelSessionStoreOptions {
-  cleanupIntervalMs?: number;
   dataDir: string;
   logger?: ChannelSessionStoreLogger;
-  now?: () => number;
-  ttlMs?: number;
 }
 
 export class ChannelSessionStore {
-  private readonly cleanupIntervalMs: number;
-  private cleanupTimer: NodeJS.Timeout | undefined;
   private readonly logger: ChannelSessionStoreLogger;
   private readonly mutationQueue = new KeyedTaskRunner();
-  private readonly now: () => number;
   private readonly sessions = new Map<string, PersistedChannelSession>();
   private readonly sessionsDir: string;
-  private readonly ttlMs: number;
 
   constructor({
-    cleanupIntervalMs = SESSION_CLEANUP_INTERVAL_MS,
     dataDir,
     logger = console,
-    now = () => Date.now(),
-    ttlMs = SESSION_TTL_MS,
   }: ChannelSessionStoreOptions) {
-    this.cleanupIntervalMs = cleanupIntervalMs;
     this.logger = logger;
-    this.now = now;
     this.sessionsDir = join(dataDir, 'sessions');
-    this.ttlMs = ttlMs;
   }
 
   async restoreFromDisk(): Promise<void> {
@@ -80,47 +66,30 @@ export class ChannelSessionStore {
     await Promise.all(
       files.map(async (fileName) => {
         const filePath = join(this.sessionsDir, fileName);
-
-        try {
-          const parsed = sessionFileSchema.parse(await readJsonFile<unknown>(filePath));
-          const session: PersistedChannelSession = {
-            channelId: parsed.channelId,
-            messages: parsed.messages as ModelMessage[],
-            lastActivity: parsed.lastActivity,
-          };
-
-          if (this.isExpired(session)) {
-            await this.deletePersistedFile(filePath);
-            return;
+        const parsed = await (async (): Promise<z.infer<typeof sessionFileSchema> | undefined> => {
+          try {
+            return sessionFileSchema.parse(await readJsonFile<unknown>(filePath));
+          } catch (error) {
+            this.logger.warn(`Ignoring corrupt session file: ${filePath}`, error);
+            return undefined;
           }
+        })();
 
-          this.sessions.set(session.channelId, session);
-        } catch (error) {
-          this.logger.warn(`Ignoring corrupt session file: ${filePath}`, error);
+        if (!parsed) {
+          return;
         }
+
+        const session: PersistedChannelSession = {
+          channelId: parsed.channelId,
+          messages: parsed.messages as ModelMessage[],
+          lastActivity: parsed.lastActivity,
+        };
+
+        this.sessions.set(session.channelId, session);
       }),
     );
-  }
 
-  startCleanupTimer(): void {
-    if (this.cleanupTimer) {
-      return;
-    }
-
-    this.cleanupTimer = setInterval(() => {
-      void this.cleanupExpiredSessions().catch((error) => {
-        this.logger.error('Failed to clean up expired sessions', error);
-      });
-    }, this.cleanupIntervalMs);
-
-    this.cleanupTimer.unref?.();
-  }
-
-  async close(): Promise<void> {
-    if (this.cleanupTimer) {
-      clearInterval(this.cleanupTimer);
-      this.cleanupTimer = undefined;
-    }
+    moduleLogger.info('Sessions restored', { count: this.sessions.size });
   }
 
   getOrCreateSession(channelId: string): ChannelSessionHandle {
@@ -151,17 +120,6 @@ export class ChannelSessionStore {
     return session ? structuredClone(session) : undefined;
   }
 
-  async cleanupExpiredSessions(): Promise<void> {
-    const expiredSessions = [...this.sessions.values()].filter((session) => this.isExpired(session));
-
-    await Promise.all(
-      expiredSessions.map(async (session) => {
-        this.sessions.delete(session.channelId);
-        await this.deletePersistedFile(this.sessionFilePath(session.channelId));
-      }),
-    );
-  }
-
   private ensureSession(channelId: string): PersistedChannelSession {
     let session = this.sessions.get(channelId);
 
@@ -169,7 +127,7 @@ export class ChannelSessionStore {
       session = {
         channelId,
         messages: [],
-        lastActivity: this.now(),
+        lastActivity: Date.now(),
       };
 
       this.sessions.set(channelId, session);
@@ -178,16 +136,20 @@ export class ChannelSessionStore {
     return session;
   }
 
-  private isExpired(session: PersistedChannelSession): boolean {
-    return this.now() - session.lastActivity >= this.ttlMs;
-  }
-
   private sessionFilePath(channelId: string): string {
     return join(this.sessionsDir, `${channelId}.json`);
   }
 
   private async persistSession(session: PersistedChannelSession): Promise<void> {
-    await writeJsonFileAtomic(this.sessionFilePath(session.channelId), session);
+    try {
+      await writeJsonFileAtomic(this.sessionFilePath(session.channelId), session);
+    } catch (error) {
+      moduleLogger.error('Failed to persist session', {
+        channelId: session.channelId,
+        error,
+      });
+      throw error;
+    }
   }
 
   private async runMutation(
@@ -197,18 +159,13 @@ export class ChannelSessionStore {
     await this.mutationQueue.run(channelId, async () => {
       const session = this.ensureSession(channelId);
       mutate(session);
-      session.lastActivity = this.now();
+      session.lastActivity = Date.now();
       await this.persistSession(session);
+      moduleLogger.debug('Session persisted', {
+        channelId,
+        messageCount: session.messages.length,
+      });
     });
   }
 
-  private async deletePersistedFile(filePath: string): Promise<void> {
-    try {
-      await rm(filePath, { force: false });
-    } catch (error) {
-      if (!isNotFoundError(error)) {
-        throw error;
-      }
-    }
-  }
 }

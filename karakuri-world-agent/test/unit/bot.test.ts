@@ -43,6 +43,7 @@ describe('runConversationTurn', () => {
       thread: {
         channelId: 'channel-1',
         post,
+        startTyping: async () => undefined,
         subscribe: async () => undefined,
       },
     });
@@ -74,6 +75,7 @@ describe('runConversationTurn', () => {
       thread: {
         channelId: 'channel-1',
         post,
+        startTyping: async () => undefined,
         subscribe: async () => undefined,
       },
     });
@@ -98,18 +100,136 @@ describe('runConversationTurn', () => {
       thread: {
         channelId: 'channel-1',
         post: async () => undefined,
+        startTyping: async () => undefined,
         subscribe: async () => {
           throw new Error('subscription failed');
         },
       },
     });
 
-    expect(generateResponse).toHaveBeenCalledWith([
-      { role: 'assistant', content: 'existing context' },
-      { role: 'user', content: 'Hello' },
-    ]);
+    expect(generateResponse).toHaveBeenCalledWith(
+      [
+        { role: 'assistant', content: 'existing context' },
+        { role: 'user', content: 'Hello' },
+      ],
+      undefined,
+    );
     expect(logger.warn).toHaveBeenCalledTimes(1);
     expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it('sends typing indicator before generating and stops after posting', async () => {
+    const session = createSession();
+    const events: string[] = [];
+    const startTyping = vi.fn(async () => {
+      events.push('typing');
+    });
+    const post = vi.fn(async () => {
+      events.push('post');
+    });
+    const logger = { error: vi.fn(), warn: vi.fn() };
+
+    await runConversationTurn({
+      generateResponse: async () => {
+        events.push('generate');
+        return { text: 'response' };
+      },
+      logger,
+      messageText: 'Hello',
+      session,
+      subscribe: false,
+      thread: {
+        channelId: 'channel-1',
+        post,
+        startTyping,
+        subscribe: async () => undefined,
+      },
+    });
+
+    expect(startTyping).toHaveBeenCalled();
+    expect(events[0]).toBe('typing');
+    expect(events.indexOf('typing')).toBeLessThan(events.indexOf('generate'));
+    expect(events.indexOf('generate')).toBeLessThan(events.indexOf('post'));
+  });
+
+  it('stops typing indicator when generation fails', async () => {
+    const session = createSession();
+    const startTyping = vi.fn(async () => undefined);
+    const post = vi.fn(async () => undefined);
+    const logger = { error: vi.fn(), warn: vi.fn() };
+
+    await runConversationTurn({
+      generateResponse: async () => {
+        throw new Error('boom');
+      },
+      logger,
+      messageText: 'Hello',
+      session,
+      subscribe: false,
+      thread: {
+        channelId: 'channel-1',
+        post,
+        startTyping,
+        subscribe: async () => undefined,
+      },
+    });
+
+    expect(startTyping).toHaveBeenCalled();
+    expect(post).toHaveBeenCalledWith('Sorry, I ran into an internal error. Please try again.');
+  });
+
+  it('works without startTyping method on thread', async () => {
+    const session = createSession();
+    const post = vi.fn(async () => undefined);
+    const logger = { error: vi.fn(), warn: vi.fn() };
+
+    await runConversationTurn({
+      generateResponse: async () => ({ text: 'response' }),
+      logger,
+      messageText: 'Hello',
+      session,
+      subscribe: false,
+      thread: {
+        channelId: 'channel-1',
+        post,
+        subscribe: async () => undefined,
+      },
+    });
+
+    expect(post).toHaveBeenCalledWith('response');
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it('passes prepared system prompt text before generation without persisting it to the session', async () => {
+    const session = createSession();
+    const generateResponse = vi.fn(async () => ({ text: 'Memory-aware response' }));
+    const prepareInstructions = vi.fn(async () => 'Remember Mina and the recent diary.');
+    const logger = { error: vi.fn(), warn: vi.fn() };
+
+    await runConversationTurn({
+      generateResponse,
+      logger,
+      messageText: 'Any updates?',
+      prepareInstructions,
+      session,
+      subscribe: false,
+      thread: {
+        channelId: 'channel-1',
+        post: async () => undefined,
+        startTyping: async () => undefined,
+        subscribe: async () => undefined,
+      },
+    });
+
+    expect(prepareInstructions).toHaveBeenCalledTimes(1);
+    expect(generateResponse).toHaveBeenCalledWith(
+      [{ role: 'user', content: 'Any updates?' }],
+      'Remember Mina and the recent diary.',
+    );
+    expect(session.messages).toEqual([
+      { role: 'user', content: 'Any updates?' },
+      { role: 'assistant', content: 'Memory-aware response' },
+    ]);
   });
 });
 
@@ -153,6 +273,7 @@ describe('registerConversationHandlers', () => {
       {
         channelId: 'channel-1',
         post,
+        startTyping: async () => undefined,
         subscribe,
       },
       {
@@ -163,6 +284,9 @@ describe('registerConversationHandlers', () => {
     expect(subscribe).toHaveBeenCalledTimes(1);
     expect(generate).toHaveBeenCalledWith({
       messages: [{ role: 'user', content: 'hello there' }],
+      options: {
+        memoryPromptContext: undefined,
+      },
     });
     expect(post).toHaveBeenCalledWith('Hello from the agent');
     expect(session.messages).toEqual([
@@ -187,7 +311,8 @@ describe('registerConversationHandlers', () => {
       },
       conversationQueue: new KeyedTaskRunner(),
       initializeConversationAgent: async () => ({
-        generate: async ({ messages }) => {
+        generate: async (input) => {
+          const messages = 'messages' in input ? input.messages : [];
           const userMessage = messages[messages.length - 1];
           const text = typeof userMessage.content === 'string' ? userMessage.content : '';
           events.push(`start:${text}`);
@@ -209,6 +334,7 @@ describe('registerConversationHandlers', () => {
         {
           channelId: 'channel-1',
           post,
+          startTyping: async () => undefined,
           subscribe: async () => undefined,
         },
         {
@@ -219,6 +345,7 @@ describe('registerConversationHandlers', () => {
         {
           channelId: 'channel-1',
           post,
+          startTyping: async () => undefined,
           subscribe: async () => undefined,
         },
         {

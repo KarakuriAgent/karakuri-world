@@ -2,9 +2,11 @@ import { createServer, type IncomingMessage, type Server as HttpServer, type Ser
 
 import { handleDiscordWebhook } from './bot.js';
 import { config } from './config.js';
+import { createLogger } from './logger.js';
 
 export const DISCORD_WEBHOOK_PATH = '/webhooks/discord';
 export const HEALTHCHECK_PATH = '/healthz';
+const logger = createLogger('server');
 
 export interface AgentServer {
   close(): Promise<void>;
@@ -68,12 +70,13 @@ async function writeWebResponse(response: ServerResponse, webResponse: Response)
 }
 
 function handleUnhandledTaskError(error: unknown): void {
-  console.error('Discord webhook background task failed.', error);
+  logger.error('Discord webhook background task failed.', error);
 }
 
 async function routeRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
   const method = request.method ?? 'GET';
   const url = new URL(request.url ?? '/', `http://${request.headers.host ?? '127.0.0.1'}`);
+  logger.debug('HTTP request', { method, path: url.pathname });
 
   if (method === 'GET' && url.pathname === HEALTHCHECK_PATH) {
     response.statusCode = 200;
@@ -115,7 +118,7 @@ function closeServer(server: HttpServer): Promise<void> {
 export async function startServer(): Promise<AgentServer> {
   const server = createServer((request, response) => {
     void routeRequest(request, response).catch((error) => {
-      console.error('Failed to handle incoming HTTP request.', error);
+      logger.error('Failed to handle incoming HTTP request.', error);
 
       if (!response.headersSent) {
         response.statusCode = 500;

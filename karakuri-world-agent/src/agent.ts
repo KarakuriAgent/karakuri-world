@@ -1,24 +1,33 @@
 import { ToolLoopAgent, stepCountIs } from 'ai';
-import { createMCPClient, type MCPClient } from '@ai-sdk/mcp';
 import { createOpenAI } from '@ai-sdk/openai';
 
 import { buildInstructions, getConfig } from './config.js';
-import { createLazyMcpRuntime } from './lazy-mcp.js';
+import { createKarakuriWorldTools } from './karakuri-world-tools.js';
+import { createLogger } from './logger.js';
 import { createDiaryTools } from './memory/diary.js';
-import { createMcpProxyTools } from './mcp-tools.js';
 import { createImportantMemoryTools } from './memory/important.js';
+import { appendMemoryPromptContext } from './memory/prompt-context.js';
 import { createSkillTools } from './skills.js';
 
+interface AgentCallOptions {
+  memoryPromptContext?: string;
+}
+
 interface AgentRuntime {
-  agent: ToolLoopAgent<never, any, any>;
+  agent: ToolLoopAgent<AgentCallOptions, any, any>;
   close: () => Promise<void>;
 }
 
 let runtime: AgentRuntime | undefined;
 let runtimePromise: Promise<AgentRuntime> | undefined;
+const logger = createLogger('agent');
 
 async function createAgentRuntime(): Promise<AgentRuntime> {
   const config = getConfig();
+  logger.info('Creating agent runtime', {
+    model: config.openai.model,
+    skillCount: config.agent.skillTools.length,
+  });
   const openai = createOpenAI({
     apiKey: config.openai.apiKey,
     baseURL: config.openai.baseURL,
@@ -26,60 +35,59 @@ async function createAgentRuntime(): Promise<AgentRuntime> {
   const instructions = buildInstructions(config.agent.personality, config.agent.skillTools.length > 0);
   const diaryTools = createDiaryTools({ dataDir: config.dataDir });
   const importantMemoryTools = createImportantMemoryTools({ dataDir: config.dataDir });
-  const lazyMcp = createLazyMcpRuntime({
-    createClient: async (): Promise<MCPClient> =>
-      createMCPClient({
-        transport: {
-          type: 'http',
-          url: config.karakuri.mcpUrl,
-          headers: {
-            Authorization: `Bearer ${config.karakuri.apiKey}`,
-          },
-        },
-      }),
-  });
-  const mcpTools = createMcpProxyTools({
-    getRuntimeTools: () => lazyMcp.getTools(),
-    resetRuntime: () => lazyMcp.reset(),
+  const karakuriWorldTools = createKarakuriWorldTools({
+    apiBaseUrl: config.karakuri.apiBaseUrl,
+    apiKey: config.karakuri.apiKey,
   });
   const skillTools = createSkillTools(config.agent.skillTools);
   const tools = {
-    ...mcpTools,
+    ...karakuriWorldTools,
     ...diaryTools,
     ...importantMemoryTools,
     ...skillTools,
   };
+  logger.debug('Agent runtime created', {
+    toolNames: Object.keys(tools),
+  });
 
   return {
     agent: new ToolLoopAgent({
       model: openai.chat(config.openai.model),
       instructions,
+      prepareCall: async (call) => {
+        const { options, ...callWithoutOptions } = call;
+        return {
+          ...callWithoutOptions,
+          instructions: appendMemoryPromptContext(instructions, options?.memoryPromptContext),
+        };
+      },
       tools,
       stopWhen: [stepCountIs(10)],
     }),
-    close: async () => {
-      await lazyMcp.close();
-    },
+    close: async () => undefined,
   };
 }
 
-export async function initializeAgent(): Promise<ToolLoopAgent<never, any, any>> {
-  if (!runtimePromise) {
-    runtimePromise = createAgentRuntime()
-      .then((createdRuntime) => {
-        runtime = createdRuntime;
-        return createdRuntime;
-      })
-      .catch((error) => {
-        runtimePromise = undefined;
-        throw error;
-      });
+export async function initializeAgent(): Promise<ToolLoopAgent<AgentCallOptions, any, any>> {
+  if (runtimePromise) {
+    logger.debug('Returning cached agent');
+    return (await runtimePromise).agent;
   }
+
+  runtimePromise = createAgentRuntime()
+    .then((createdRuntime) => {
+      runtime = createdRuntime;
+      return createdRuntime;
+    })
+    .catch((error) => {
+      runtimePromise = undefined;
+      throw error;
+    });
 
   return (await runtimePromise).agent;
 }
 
-export function getAgent(): ToolLoopAgent<never, any, any> | undefined {
+export function getAgent(): ToolLoopAgent<AgentCallOptions, any, any> | undefined {
   return runtime?.agent;
 }
 
@@ -90,6 +98,7 @@ export async function closeAgentResources(): Promise<void> {
   runtimePromise = undefined;
 
   if (activeRuntime) {
+    logger.info('Closing agent resources');
     await activeRuntime.close();
   }
 }
