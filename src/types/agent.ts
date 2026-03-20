@@ -5,6 +5,7 @@ export type AgentState = 'idle' | 'moving' | 'in_action' | 'in_conversation';
 export interface AgentRegistration {
   agent_id: string;
   agent_name: string;
+  agent_label: string;
   api_key: string;
   discord_bot_id: string;
   created_at: number;
@@ -15,6 +16,7 @@ export interface AgentRegistration {
 export interface LoggedInAgent {
   agent_id: string;
   agent_name: string;
+  agent_label: string;
   node_id: NodeId;
   state: AgentState;
   discord_channel_id: string;

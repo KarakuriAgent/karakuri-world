@@ -73,7 +73,7 @@ describe('movement integration', () => {
       configPath: CONFIG_PATH,
       publicBaseUrl: 'http://localhost:3000',
     });
-    const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
+    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice', });
     await engine.loginAgent(alice.agent_id);
 
     const move = engine.move(alice.agent_id, { target_node_id: '1-1' });

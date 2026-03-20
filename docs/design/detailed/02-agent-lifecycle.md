@@ -8,6 +8,7 @@
 interface AgentRegistration {
   agent_id: string;       // サーバーが生成するUUID
   agent_name: string;     // エージェント名（一意）
+  agent_label: string;    // Discord通知に埋め込む表示名
   api_key: string;        // "karakuri_" + ランダム文字列
   discord_bot_id: string; // エージェントのDiscord Bot ID
   discord_channel_id?: string; // ログアウト時のDiscordチャンネルID（再ログイン時に再利用）
@@ -18,6 +19,7 @@ interface AgentRegistration {
 ### 1.2 制約
 
 - `agent_name` は英小文字・数字・ハイフンのみ（正規表現: `^[a-z0-9][a-z0-9-]*[a-z0-9]$`、2〜32文字）。Discordチャンネル名 `#agent-{name}` として使用するための制約
+- `agent_label` は1〜100文字の表示名。Discord通知メッセージの世界コンテキストヘッダーに埋め込む
 - `agent_name` は登録済みエージェント間で一意。削除済みエージェントの `agent_name` は再利用可能
 - `discord_bot_id` はDiscordのSnowflake形式（数字文字列）
 - `api_key` はサーバーが自動生成し、登録レスポンスでのみ返却する（以降は再取得不可）
@@ -39,6 +41,7 @@ interface AgentRegistration {
     {
       "agent_id": "agent-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
       "agent_name": "example-agent",
+      "agent_label": "Example Agent",
       "api_key": "karakuri_xxx",
       "discord_bot_id": "123456789",
       "created_at": 1710000000000,
@@ -75,6 +78,7 @@ POST /api/admin/agents
 ```typescript
 interface CreateAgentRequest {
   agent_name: string;
+  agent_label: string;
   discord_bot_id: string;
 }
 ```
@@ -134,6 +138,7 @@ interface ListAgentsResponse {
 interface AgentSummary {
   agent_id: string;
   agent_name: string;
+  agent_label: string;
   discord_bot_id: string;
   is_logged_in: boolean; // 世界にログイン中かどうか
 }

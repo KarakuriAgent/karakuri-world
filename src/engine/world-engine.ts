@@ -115,7 +115,7 @@ export class WorldEngine {
     });
   }
 
-  registerAgent(input: { agent_name: string; discord_bot_id: string }): AgentRegistration {
+  registerAgent(input: { agent_name: string; agent_label: string; discord_bot_id: string }): AgentRegistration {
     const duplicate = this.state.list().find((agent) => agent.agent_name === input.agent_name);
     if (duplicate) {
       throw new WorldError(409, 'state_conflict', `Agent name already exists: ${input.agent_name}`);
@@ -124,6 +124,7 @@ export class WorldEngine {
     const registration: AgentRegistration = {
       agent_id: `agent-${randomUUID()}`,
       agent_name: input.agent_name,
+      agent_label: input.agent_label,
       api_key: `karakuri_${randomBytes(16).toString('hex')}`,
       discord_bot_id: input.discord_bot_id,
       created_at: Date.now(),
@@ -178,6 +179,7 @@ export class WorldEngine {
     return this.state.list().map((agent) => ({
       agent_id: agent.agent_id,
       agent_name: agent.agent_name,
+      agent_label: agent.agent_label,
       discord_bot_id: agent.discord_bot_id,
       is_logged_in: this.state.isLoggedIn(agent.agent_id),
     }));

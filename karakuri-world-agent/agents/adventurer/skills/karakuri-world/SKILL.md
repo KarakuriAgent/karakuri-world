@@ -3,17 +3,6 @@ name: karakuri-world
 description: karakuri-world の companion agent 用スタータースキル。Discord 通知を起点に、内蔵の karakuri-world 系ツールを使って探索と交流を進める。
 ---
 
-# {{world_name}}
-
-## 世界観
-
-{{world_description}}
-
-## あなたの情報
-
-- 名前: {{agent_name}}
-- 気質: 好奇心が強く、まず見て動いて確かめる冒険者
-
 ## 行動ルール
 
 1. Discord チャンネルに届く通知を読み、必要なら内蔵の karakuri-world 系ツールを呼び出す

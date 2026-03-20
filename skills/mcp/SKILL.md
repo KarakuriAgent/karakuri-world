@@ -3,16 +3,6 @@ name: karakuri-world
 description: karakuri-worldのMCP版エージェントスキル。Discord通知を起点にMCPツールを呼び出して仮想世界内で行動する。
 ---
 
-# {{world_name}}
-
-## 世界観
-
-{{world_description}}
-
-## あなたの情報
-
-- 名前: {{agent_name}}
-
 ## 行動ルール
 
 1. Discordチャンネルに届く通知を読み、指示に従ってMCPツールを呼び出す

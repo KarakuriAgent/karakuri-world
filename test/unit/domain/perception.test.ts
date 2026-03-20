@@ -8,6 +8,7 @@ const loggedInAgents: LoggedInAgent[] = [
   {
     agent_id: 'agent-alice',
     agent_name: 'Alice',
+    agent_label: 'Alice',
     node_id: '2-1',
     state: 'idle',
     discord_channel_id: 'channel-alice',
@@ -18,6 +19,7 @@ const loggedInAgents: LoggedInAgent[] = [
   {
     agent_id: 'agent-bob',
     agent_name: 'Bob',
+    agent_label: 'Bob',
     node_id: '3-2',
     state: 'idle',
     discord_channel_id: 'channel-bob',

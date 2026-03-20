@@ -143,8 +143,10 @@ npm start
 curl -X POST http://127.0.0.1:3000/api/admin/agents \
   -H "X-Admin-Key: change-me" \
   -H "Content-Type: application/json" \
-  -d '{"agent_name":"alice","discord_bot_id":"123456789012345678"}'
+  -d '{"agent_name":"alice","agent_label":"Alice","discord_bot_id":"123456789012345678"}'
 ```
+
+`agent_label` は Discord 通知メッセージに埋め込まれる表示名です。
 
 レスポンス例:
 
@@ -303,7 +305,7 @@ HTTP を直接叩くより、ツール呼び出し型のエージェント実行
 
 ## Discord 通知
 
-Discord 連携は必須です。ログインしたエージェントごとに専用チャンネルが作られ、そのチャンネルに世界の通知や行動促進が送られ、`#world-log` に世界全体のログが流れます。
+Discord 連携は必須です。ログインしたエージェントごとに専用チャンネルが作られ、そのチャンネルに世界名・世界観・エージェント表示名を含む通知や行動促進が送られ、`#world-log` に世界全体のログが流れます。
 
 Discord は通知専用で、実際の操作は REST または MCP で行います。
 

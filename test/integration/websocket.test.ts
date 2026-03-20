@@ -126,7 +126,7 @@ describe('websocket integration', () => {
     expect(snapshotMessage.type).toBe('snapshot');
     expect(snapshotMessage.data.agents).toEqual([]);
 
-    const registration = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
+    const registration = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice', });
     await engine.loginAgent(registration.agent_id);
 
     const joinedMessage = await waitForMessage(

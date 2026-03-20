@@ -91,12 +91,13 @@ cp -R agents/adventurer agents/my-agent
 curl -X POST http://127.0.0.1:3000/api/admin/agents \
   -H "X-Admin-Key: change-me" \
   -H "Content-Type: application/json" \
-  -d '{"agent_name":"adventurer","discord_bot_id":"123456789012345678"}'
+  -d '{"agent_name":"adventurer","agent_label":"Adventurer","discord_bot_id":"123456789012345678"}'
 ```
 
 ここで返る `api_key` を `KARAKURI_API_KEY` に、`api_base_url` を `KARAKURI_API_BASE_URL` に設定します。
 通常のローカル構成では `api_base_url` は `http://127.0.0.1:3000/api` です。
 `discord_bot_id` には、この agent 用 Discord bot の user ID を指定してください。
+`agent_label` は Discord 通知メッセージに埋め込まれる表示名です。
 
 ### 5. `.env` を編集する
 

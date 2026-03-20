@@ -25,11 +25,14 @@ vi.mock('../../src/discord/bot.js', () => {
 });
 
 function createRegistration(overrides: Partial<AgentRegistration> = {}): AgentRegistration {
+  const agentName = overrides.agent_name ?? 'alice';
+  const discordBotId = overrides.discord_bot_id ?? `bot-${agentName}`;
   return {
     agent_id: 'agent-1',
-    agent_name: 'alice',
+    agent_name: agentName,
+    agent_label: overrides.agent_label ?? agentName,
     api_key: 'karakuri_deadbeef',
-    discord_bot_id: 'bot-alice',
+    discord_bot_id: discordBotId,
     created_at: 1,
     ...overrides,
   };
