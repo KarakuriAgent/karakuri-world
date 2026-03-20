@@ -63,6 +63,7 @@ describe('runtime startup', () => {
         publicBaseUrl: 'http://127.0.0.1',
         discordToken: 'fake-token',
         discordGuildId: 'fake-guild',
+        timezone: 'Asia/Tokyo',
       });
 
       expect(runtime.engine.listAgents()).toEqual([

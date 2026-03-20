@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { tool } from 'ai';
+import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
 
 import { createLogger } from './logger.js';
@@ -12,7 +12,7 @@ const DEFAULT_SKILL_DESCRIPTION = 'Load additional world-specific guidance befor
 const logger = createLogger('skills');
 
 export interface AgentSkill {
-  toolName: string;
+  id: string;
   name: string;
   description: string;
   instructions: string;
@@ -174,7 +174,7 @@ export function loadAgentSkills(agentDir: string): AgentSkill[] {
   const skillsDir = join(agentDir, 'skills');
 
   const skills: AgentSkill[] = [];
-  const seenToolNames = new Set<string>();
+  const seenIds = new Set<string>();
 
   for (const entry of readOptionalDirectoryEntries(skillsDir)
     .filter((candidate) => candidate.isDirectory())
@@ -185,15 +185,15 @@ export function loadAgentSkills(agentDir: string): AgentSkill[] {
     }
 
     const parsed = parseSkillDocument(skillDocument, entry.name);
-    const toolName = `load_skill_${toToolIdentifier(parsed.name)}`;
-    if (seenToolNames.has(toolName)) {
-      logger.error('Duplicate skill tool name', { toolName });
-      throw new Error(`Duplicate skill tool name: ${toolName}`);
+    const id = toToolIdentifier(entry.name);
+    if (seenIds.has(id)) {
+      logger.error('Duplicate skill id', { id });
+      throw new Error(`Duplicate skill id: ${id}`);
     }
 
-    seenToolNames.add(toolName);
+    seenIds.add(id);
     skills.push({
-      toolName,
+      id,
       name: parsed.name,
       description: parsed.description,
       instructions: parsed.instructions,
@@ -208,23 +208,65 @@ export function loadAgentSkills(agentDir: string): AgentSkill[] {
   return skills;
 }
 
-export function createSkillTools(skills: AgentSkill[]) {
-  return Object.fromEntries(
-    skills.map((skill) => [
-      skill.toolName,
-      tool({
-        description: `Load the "${skill.name}" skill guide when you need more detailed guidance. ${skill.description}`,
-        inputSchema: z.object({}),
-        execute: async () => {
-          logger.debug('Skill tool invoked', { toolName: skill.toolName });
-          return {
-            name: skill.name,
-            description: skill.description,
-            allowedTools: skill.allowedTools,
-            instructions: skill.instructions,
-          };
-        },
+export function escapeXml(text: string): string {
+  return text
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('\'', '&apos;');
+}
+
+export function buildAvailableSkillsXml(skills: AgentSkill[]): string {
+  if (skills.length === 0) {
+    return '';
+  }
+
+  const skillEntries = skills
+    .map((skill) => [
+      '  <skill>',
+      `    <id>${escapeXml(skill.id)}</id>`,
+      `    <description>${escapeXml(skill.description)}</description>`,
+      '  </skill>',
+    ].join('\n'))
+    .join('\n');
+
+  return `<available_skills>\n${skillEntries}\n</available_skills>`;
+}
+
+export function createReadSkillTool(skills: AgentSkill[]): ToolSet {
+  if (skills.length === 0) {
+    return {};
+  }
+
+  const skillsById = new Map(skills.map((skill) => [skill.id, skill]));
+
+  return {
+    read_skill: tool({
+      description: 'Load an available skill guide by skill id before acting on matching tasks.',
+      inputSchema: z.object({
+        skill_id: z.enum(
+          [...skillsById.keys()] as [string, ...string[]],
+        ).describe('The skill identifier to load.'),
       }),
-    ]),
-  );
+      execute: async ({ skill_id }) => {
+        const skill = skillsById.get(skill_id);
+
+        if (!skill) {
+          logger.debug('Unknown skill requested', { skillId: skill_id });
+          return {
+            error: `Unknown skill: ${skill_id}`,
+          };
+        }
+
+        logger.debug('Skill tool invoked', { skillId: skill.id });
+        return {
+          name: skill.name,
+          description: skill.description,
+          allowedTools: skill.allowedTools,
+          instructions: skill.instructions,
+        };
+      },
+    }),
+  };
 }

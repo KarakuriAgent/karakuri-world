@@ -7,7 +7,7 @@ import { createLogger } from './logger.js';
 import { createDiaryTools } from './memory/diary.js';
 import { createImportantMemoryTools } from './memory/important.js';
 import { appendMemoryPromptContext } from './memory/prompt-context.js';
-import { createSkillTools } from './skills.js';
+import { createReadSkillTool } from './skills.js';
 
 interface AgentCallOptions {
   memoryPromptContext?: string;
@@ -26,20 +26,20 @@ async function createAgentRuntime(): Promise<AgentRuntime> {
   const config = getConfig();
   logger.info('Creating agent runtime', {
     model: config.openai.model,
-    skillCount: config.agent.skillTools.length,
+    skillCount: config.agent.skills.length,
   });
   const openai = createOpenAI({
     apiKey: config.openai.apiKey,
     baseURL: config.openai.baseURL,
   });
-  const instructions = buildInstructions(config.agent.personality, config.agent.skillTools.length > 0);
+  const instructions = buildInstructions(config.agent.personality, config.agent.skills);
   const diaryTools = createDiaryTools({ dataDir: config.dataDir });
   const importantMemoryTools = createImportantMemoryTools({ dataDir: config.dataDir });
   const karakuriWorldTools = createKarakuriWorldTools({
     apiBaseUrl: config.karakuri.apiBaseUrl,
     apiKey: config.karakuri.apiKey,
   });
-  const skillTools = createSkillTools(config.agent.skillTools);
+  const skillTools = createReadSkillTool(config.agent.skills);
   const tools = {
     ...karakuriWorldTools,
     ...diaryTools,

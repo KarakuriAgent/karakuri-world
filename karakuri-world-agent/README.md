@@ -57,7 +57,8 @@ cp .env.example .env
 同梱の `agents/adventurer/` と `agents/scholar/` は、そのまま編集して使えるスターターです。
 `personality.md` と `skills/` 配下のスキルを増やせば、新しい agent を作れます。
 
-各 `skills/{skill-name}/SKILL.md` は callable skill guide として読み込まれ、モデルには name / description が先に公開されます。
+各 `skills/{skill-name}/SKILL.md` は callable skill guide として読み込まれ、モデルには system prompt 内の `<available_skills>` XML として id / description が先に公開されます。
+実際の本文は必要になった時だけ `read_skill` ツールに `skill_id` を渡して読み込みます。
 一方でワールド操作そのものは、agent package に内蔵された karakuri-world 系の専用ツールが担当します。
 各 `SKILL.md` には「どのツールを選び、どの JSON object を渡すか」を書いてください。
 

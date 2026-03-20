@@ -60,9 +60,9 @@ describe('config helpers', () => {
 
     expect(loaded.agent.dir).toBe(resolve(agentDir));
     expect(loaded.agent.personality).toBe('# Explorer\nYou are curious.');
-    expect(loaded.agent.skillTools).toEqual([
+    expect(loaded.agent.skills).toEqual([
       {
-        toolName: 'load_skill_karakuri_world',
+        id: 'karakuri_world',
         name: 'karakuri-world',
         description: 'Operate inside Karakuri World through the karakuri-world tool.',
         instructions: '# World Guide\n\nUse tools carefully.',
@@ -93,14 +93,28 @@ describe('config helpers', () => {
     expect(loaded.discord.token).toBe('discord-bot-token');
     expect(loaded.discord.mentionRoleIds).toEqual(['123', '456', '789']);
     expect(loaded.agent.personality).toBe('You are a helpful agent living in a virtual world.');
-    expect(loaded.agent.skillTools).toEqual([]);
+    expect(loaded.agent.skills).toEqual([]);
   });
 
-  it('builds instructions by appending callable skill hints when present', () => {
-    expect(buildInstructions('personality')).toBe('personality');
-    expect(buildInstructions('personality', true)).toBe(
-      'personality\n\n---\n\nAdditional agent skill guides are available as callable tools. '
-      + 'Call them when you need more detailed, world-specific guidance before acting.',
+  it('builds instructions by appending available skills XML and read_skill guidance when present', () => {
+    expect(buildInstructions('personality', [])).toBe('personality');
+    expect(buildInstructions('personality', [
+      {
+        id: 'karakuri_world',
+        name: 'karakuri-world',
+        description: 'Operate inside Karakuri World through the karakuri-world tool.',
+        instructions: '# World Guide\n\nUse tools carefully.',
+      },
+    ])).toBe(
+      'personality\n\n---\n\n'
+      + '<available_skills>\n'
+      + '  <skill>\n'
+      + '    <id>karakuri_world</id>\n'
+      + '    <description>Operate inside Karakuri World through the karakuri-world tool.</description>\n'
+      + '  </skill>\n'
+      + '</available_skills>\n\n'
+      + 'Skill guides are available. When a task matches an available skill, use the read_skill '
+      + 'tool with the skill\'s id to load its instructions before acting.',
     );
   });
 

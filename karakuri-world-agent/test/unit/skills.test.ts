@@ -5,7 +5,12 @@ import { dirname, join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { createSkillTools, loadAgentSkills, parseSkillDocument } from '../../src/skills.js';
+import {
+  buildAvailableSkillsXml,
+  createReadSkillTool,
+  loadAgentSkills,
+  parseSkillDocument,
+} from '../../src/skills.js';
 
 const tempDirs: string[] = [];
 const permissionSensitiveIt = process.platform === 'win32'
@@ -68,7 +73,7 @@ describe('skill loading', () => {
     const loaded = loadAgentSkills(agentDir);
 
     expect(loaded).toHaveLength(1);
-    expect(loaded[0].toolName).toBe('load_skill_karakuri_world');
+    expect(loaded[0].id).toBe('karakuri_world');
     expect(loaded[0]).toMatchObject({
       name: 'karakuri-world',
       description: 'Explore unfamiliar places and describe them clearly.',
@@ -138,36 +143,36 @@ describe('skill loading', () => {
 
     expect(loaded).toHaveLength(3);
     expect(loaded.map((skill) => skill.name)).toEqual(['Yak', 'Zebra', 'gamma']);
-    expect(loaded.map((skill) => skill.toolName)).toEqual([
-      'load_skill_yak',
-      'load_skill_zebra',
-      'load_skill_gamma',
+    expect(loaded.map((skill) => skill.id)).toEqual([
+      'alpha',
+      'beta',
+      'gamma',
     ]);
   });
 
-  it('throws when multiple skill directories resolve to the same tool name', async () => {
+  it('throws when multiple skill directories resolve to the same skill id', async () => {
     const agentDir = await createAgentDir({
-      'skills/alpha/SKILL.md': [
+      'skills/my-skill/SKILL.md': [
         '---',
-        'name: duplicate skill',
+        'name: My Skill',
         '---',
         '',
         '# Guide',
         '',
-        'Alpha instructions.',
+        'First instructions.',
       ].join('\n'),
-      'skills/beta/SKILL.md': [
+      'skills/my_skill/SKILL.md': [
         '---',
-        'name: duplicate-skill',
+        'name: My Other Skill',
         '---',
         '',
         '# Guide',
         '',
-        'Beta instructions.',
+        'Second instructions.',
       ].join('\n'),
     });
 
-    expect(() => loadAgentSkills(agentDir)).toThrowError('Duplicate skill tool name: load_skill_duplicate_skill');
+    expect(() => loadAgentSkills(agentDir)).toThrowError('Duplicate skill id: my_skill');
   });
 
   it('surfaces invalid SKILL.md filesystem entries with path context', async () => {
@@ -180,28 +185,33 @@ describe('skill loading', () => {
     );
   });
 
-  it('returns the skill body when the callable skill tool is executed', async () => {
-    const tools = createSkillTools([
+  it('returns the skill body when read_skill is executed with a valid skill_id', async () => {
+    const tools = createReadSkillTool([
       {
-        toolName: 'load_skill_karakuri_world',
+        id: 'karakuri_world',
         name: 'karakuri-world',
         description: 'Operate inside Karakuri World through the karakuri-world tool.',
         instructions: '# World Guide\n\nUse tools carefully.',
       },
     ]);
-    const execute = tools.load_skill_karakuri_world.execute;
+    const readSkillTool = tools.read_skill;
     const options: ToolExecutionOptions = {
       toolCallId: 'tool-1',
       messages: [],
     };
 
-    expect(execute).toBeDefined();
+    expect(readSkillTool).toBeDefined();
 
+    if (!readSkillTool) {
+      throw new Error('Missing skill tool execute handler.');
+    }
+
+    const execute = readSkillTool.execute;
     if (!execute) {
       throw new Error('Missing skill tool execute handler.');
     }
 
-    const result = await execute({}, options);
+    const result = await execute({ skill_id: 'karakuri_world' }, options);
 
     expect(result).toEqual({
       name: 'karakuri-world',
@@ -209,5 +219,80 @@ describe('skill loading', () => {
       allowedTools: undefined,
       instructions: '# World Guide\n\nUse tools carefully.',
     });
+  });
+
+  it('returns an error when read_skill is executed with an unknown skill_id', async () => {
+    const tools = createReadSkillTool([
+      {
+        id: 'karakuri_world',
+        name: 'karakuri-world',
+        description: 'Operate inside Karakuri World through the karakuri-world tool.',
+        instructions: '# World Guide\n\nUse tools carefully.',
+      },
+    ]);
+    const readSkillTool = tools.read_skill;
+    const options: ToolExecutionOptions = {
+      toolCallId: 'tool-1',
+      messages: [],
+    };
+
+    expect(readSkillTool).toBeDefined();
+
+    if (!readSkillTool) {
+      throw new Error('Missing skill tool execute handler.');
+    }
+
+    const execute = readSkillTool.execute;
+    if (!execute) {
+      throw new Error('Missing skill tool execute handler.');
+    }
+
+    await expect(execute({ skill_id: 'unknown_skill' }, options)).resolves.toEqual({
+      error: 'Unknown skill: unknown_skill',
+    });
+  });
+
+  it('does not register read_skill when no skills are available', () => {
+    expect(createReadSkillTool([])).toEqual({});
+  });
+
+  it('builds available skills XML', () => {
+    expect(buildAvailableSkillsXml([
+      {
+        id: 'karakuri_world',
+        name: 'karakuri-world',
+        description: 'Operate inside Karakuri World through the karakuri-world tool.',
+        instructions: '# World Guide\n\nUse tools carefully.',
+      },
+    ])).toBe(
+      '<available_skills>\n'
+      + '  <skill>\n'
+      + '    <id>karakuri_world</id>\n'
+      + '    <description>Operate inside Karakuri World through the karakuri-world tool.</description>\n'
+      + '  </skill>\n'
+      + '</available_skills>',
+    );
+  });
+
+  it('escapes XML special characters in available skills XML', () => {
+    expect(buildAvailableSkillsXml([
+      {
+        id: 'karakuri_<world>',
+        name: 'karakuri-world',
+        description: 'Use <care> & caution',
+        instructions: '# World Guide\n\nUse tools carefully.',
+      },
+    ])).toBe(
+      '<available_skills>\n'
+      + '  <skill>\n'
+      + '    <id>karakuri_&lt;world&gt;</id>\n'
+      + '    <description>Use &lt;care&gt; &amp; caution</description>\n'
+      + '  </skill>\n'
+      + '</available_skills>',
+    );
+  });
+
+  it('returns an empty string when no skills are available for XML', () => {
+    expect(buildAvailableSkillsXml([])).toBe('');
   });
 });
