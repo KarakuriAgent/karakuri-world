@@ -3,7 +3,7 @@ import type { LoggedInAgent } from '../types/agent.js';
 import type { PerceptionResponse } from '../types/api.js';
 import { WorldError } from '../types/api.js';
 import type { MapConfig, NodeId } from '../types/data-model.js';
-import { findBuildingsInNodes, getNodeConfig, getNodesInRange, manhattanDistance } from './map-utils.js';
+import { findBuildingsInNodes, getNodeConfig, getNodesInRange, isPassable, manhattanDistance } from './map-utils.js';
 import { getAgentCurrentNode } from './movement.js';
 
 export type PerceptionData = PerceptionResponse;
@@ -79,13 +79,14 @@ function summarizeList(title: string, values: string[]): string {
 }
 
 export function buildPerceptionText(data: PerceptionData): string {
-  const nodeSummary = data.nodes
-    .map((node) => `${node.node_id}(${node.type}${node.label ? `:${node.label}` : ''})`)
+  const passableNodes = data.nodes
+    .filter((node) => node.distance !== 0 && isPassable(node.type))
+    .map((node) => `${node.node_id}${node.label ? `(${node.label})` : ''}`)
     .join(', ');
 
   return [
     `現在地: ${data.current_node.node_id}${data.current_node.label ? ` (${data.current_node.label})` : ''}`,
-    summarizeList('周囲ノード', nodeSummary ? [nodeSummary] : []),
+    summarizeList('移動可能ノード', passableNodes ? [passableNodes] : []),
     summarizeList(
       '見えているエージェント',
       data.agents.map((agent) => `${agent.agent_name}@${agent.node_id}`),

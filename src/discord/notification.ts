@@ -36,6 +36,14 @@ function formatReasonMessage(targetName: string, reason: ConversationRejectionRe
   }
 }
 
+function formatTime(timestamp: number, timezone: string): string {
+  return new Date(timestamp).toLocaleTimeString('ja-JP', {
+    timeZone: timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function formatClosureReason(reason: Exclude<ConversationClosureReason, 'partner_logged_out'>): string {
   switch (reason) {
     case 'max_turns':
@@ -273,9 +281,9 @@ export function formatWorldLogLoggedOut(agentName: string, cancelledState: Agent
   }
 }
 
-export function formatWorldLogMovementStarted(agentName: string, nodeId: string, label?: string): string {
+export function formatWorldLogMovementStarted(agentName: string, nodeId: string, arrivesAt: number, timezone: string, label?: string): string {
   const destination = label ? `${nodeId} (${label})` : nodeId;
-  return `${agentName} が ${destination} に向かっています`;
+  return `${agentName} が ${destination} に向かっています（${formatTime(arrivesAt, timezone)} 到着予定）`;
 }
 
 export function formatWorldLogMovement(agentName: string, nodeId: string, label?: string): string {
@@ -283,18 +291,18 @@ export function formatWorldLogMovement(agentName: string, nodeId: string, label?
   return `${agentName} が ${destination} に到着しました`;
 }
 
-export function formatWorldLogActionStarted(agentName: string, actionName: string): string {
-  return `${agentName} が「${actionName}」を開始しました`;
+export function formatWorldLogActionStarted(agentName: string, actionName: string, completesAt: number, timezone: string): string {
+  return `${agentName} が「${actionName}」を開始しました（${formatTime(completesAt, timezone)} 終了予定）`;
 }
 
 export function formatWorldLogAction(agentName: string, actionName: string): string {
-  return `${agentName} が「${actionName}」を実行しました`;
+  return `${agentName} が「${actionName}」を終了しました`;
 }
 
-export function formatWorldLogWaitStarted(agentName: string, durationMs: number): string {
+export function formatWorldLogWaitStarted(agentName: string, durationMs: number, completesAt: number, timezone: string): string {
   const minutes = Math.floor(durationMs / 60000);
   const durationText = minutes >= 1 ? `${minutes}分間` : `${Math.floor(durationMs / 1000)}秒間`;
-  return `${agentName} が${durationText}の待機を開始しました`;
+  return `${agentName} が${durationText}の待機を開始しました（${formatTime(completesAt, timezone)} 終了予定）`;
 }
 
 export function formatWorldLogWait(agentName: string, durationMs: number): string {

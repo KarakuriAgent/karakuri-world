@@ -19,6 +19,7 @@ export interface RuntimeOptions {
   publicBaseUrl: string;
   discordToken: string;
   discordGuildId: string;
+  timezone: string;
 }
 
 export interface Runtime {
@@ -57,6 +58,7 @@ export function resolveRuntimeOptions(env: NodeJS.ProcessEnv = process.env): Run
     publicBaseUrl: getOptionalEnv(env.PUBLIC_BASE_URL) ?? `http://127.0.0.1:${port}`,
     discordToken: getRequiredEnv('DISCORD_TOKEN', env.DISCORD_TOKEN),
     discordGuildId: getRequiredEnv('DISCORD_GUILD_ID', env.DISCORD_GUILD_ID),
+    timezone: getOptionalEnv(env.TZ) ?? 'Asia/Tokyo',
   };
 }
 
@@ -72,7 +74,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
     initialRegistrations,
     onRegistrationChanged: (agents) => saveAgents(agentsFilePath, agents),
   });
-  const discordEventHandler = new DiscordEventHandler(engine, discordBot);
+  const discordEventHandler = new DiscordEventHandler(engine, discordBot, options.timezone);
   const { app, injectWebSocket, websocketManager } = createApp(engine, {
     adminKey: options.adminKey,
     configPath: options.configPath,
