@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import { loadAgentSkills, type AgentSkill } from './skills.js';
+import { buildAvailableSkillsXml, loadAgentSkills, type AgentSkill } from './skills.js';
 
 export interface Config {
   discord: {
@@ -25,7 +25,7 @@ export interface Config {
   agent: {
     dir: string;
     personality: string;
-    skillTools: AgentSkill[];
+    skills: AgentSkill[];
     botName: string;
   };
   dataDir: string;
@@ -85,14 +85,16 @@ export function parseMentionRoleIds(value: string | undefined): string[] | undef
   return parts && parts.length > 0 ? parts : undefined;
 }
 
-const CALLABLE_SKILL_HINT =
-  'Additional agent skill guides are available as callable tools. Call them when you need more detailed, world-specific guidance before acting.';
-
-export function buildInstructions(personality: string, hasSkillTools = false): string {
+export function buildInstructions(personality: string, skills: AgentSkill[] = []): string {
   const sections = [personality];
+  const availableSkillsXml = buildAvailableSkillsXml(skills);
 
-  if (hasSkillTools) {
-    sections.push(CALLABLE_SKILL_HINT);
+  if (availableSkillsXml) {
+    sections.push(
+      availableSkillsXml + '\n\n'
+      + 'Skill guides are available. When a task matches an available skill, use the read_skill '
+      + 'tool with the skill\'s id to load its instructions before acting.',
+    );
   }
 
   return sections.join('\n\n---\n\n');
@@ -131,7 +133,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     agent: {
       dir: agentDir,
       personality: readAgentFile(agentDir, 'personality.md') ?? DEFAULT_PERSONALITY,
-      skillTools: loadedSkills,
+      skills: loadedSkills,
       botName: optionalNonEmpty(env.BOT_NAME) ?? DEFAULT_BOT_NAME,
     },
     dataDir: resolve(optionalNonEmpty(env.DATA_DIR) ?? DEFAULT_DATA_DIR),
