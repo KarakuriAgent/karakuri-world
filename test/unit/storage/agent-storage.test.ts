@@ -8,11 +8,14 @@ import { CURRENT_VERSION, loadAgents, saveAgents } from '../../../src/storage/ag
 import type { AgentRegistration } from '../../../src/types/agent.js';
 
 function createRegistration(overrides: Partial<AgentRegistration> = {}): AgentRegistration {
+  const agentName = overrides.agent_name ?? 'alice';
+  const discordBotId = overrides.discord_bot_id ?? `bot-${agentName}`;
   return {
     agent_id: 'agent-1',
-    agent_name: 'alice',
+    agent_name: agentName,
+    agent_label: overrides.agent_label ?? agentName,
     api_key: 'karakuri_deadbeef',
-    discord_bot_id: 'bot-alice',
+    discord_bot_id: discordBotId,
     created_at: 1,
     ...overrides,
   };
@@ -122,18 +125,28 @@ describe('agent storage', () => {
       filePath,
       JSON.stringify({
         version: 1,
-        agents: [createRegistration()],
+        agents: [
+          {
+            agent_id: 'agent-1',
+            agent_name: 'alice',
+            api_key: 'karakuri_deadbeef',
+            discord_bot_id: 'bot-alice',
+            created_at: 1,
+          },
+        ],
       }),
       'utf8',
     );
 
     const loaded = loadAgents(filePath);
     expect(loaded).toHaveLength(1);
+    expect(loaded[0].agent_label).toBe('alice');
     expect(loaded[0].discord_channel_id).toBeUndefined();
     expect(loaded[0].last_node_id).toBeUndefined();
 
     const persisted = JSON.parse(readFileSync(filePath, 'utf8'));
     expect(persisted.version).toBe(CURRENT_VERSION);
+    expect(persisted.agents[0].agent_label).toBe('alice');
   });
 
   it('writes sorted JSON without leaving a tmp file behind', () => {

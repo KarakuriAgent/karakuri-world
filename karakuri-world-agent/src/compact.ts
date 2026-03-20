@@ -2,6 +2,7 @@ import { generateText, type ModelMessage } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 
 import { getConfig } from './config.js';
+import { createLogger } from './logger.js';
 
 export const MAX_MESSAGES = 20;
 export const KEEP_RECENT_MESSAGES = 10;
@@ -10,6 +11,7 @@ export const SUMMARY_PREFIX = '[Previous conversation summary]';
 const summaryPrompt =
   'Summarize the following conversation concisely in the same language. '
   + 'Preserve key facts, decisions, and context about the virtual world.';
+const logger = createLogger('compact');
 
 export interface CompactConversationOptions {
   messages: ModelMessage[];
@@ -46,12 +48,31 @@ export async function compactConversation({
   summarize = summarizeConversation,
 }: CompactConversationOptions): Promise<ModelMessage[] | null> {
   if (messages.length <= maxMessages) {
+    logger.debug('Compaction skipped', {
+      messageCount: messages.length,
+      threshold: maxMessages,
+    });
     return null;
   }
 
   const oldMessages = messages.slice(0, -keepRecentMessages);
   const recentMessages = messages.slice(-keepRecentMessages);
-  const summary = await summarize(oldMessages);
+  let summary: string;
+
+  try {
+    summary = await summarize(oldMessages);
+  } catch (error) {
+    logger.error('Compaction failed', {
+      messageCount: messages.length,
+      error,
+    });
+    throw error;
+  }
+
+  logger.debug('Conversation compacted', {
+    originalCount: messages.length,
+    keptRecent: recentMessages.length,
+  });
 
   return [
     {

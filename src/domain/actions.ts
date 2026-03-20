@@ -80,7 +80,9 @@ export function getAvailableActionSources(engine: WorldEngine, agentId: string):
     ),
   );
 
-  return sources.sort((left, right) => left.action.action_id.localeCompare(right.action.action_id));
+  return sources
+    .filter((source) => source.action.action_id !== agent.last_action_id)
+    .sort((left, right) => left.action.action_id.localeCompare(right.action.action_id));
 }
 
 function lookupActionById(engine: WorldEngine, actionId: string): ActionSource | null {
@@ -156,6 +158,7 @@ export function executeAction(engine: WorldEngine, agentId: string, request: Act
     action_name: source.action.name,
     fires_at: completesAt,
   });
+  engine.state.setLastAction(agentId, source.action.action_id);
 
   engine.emitEvent({
     type: 'action_started',

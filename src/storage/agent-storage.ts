@@ -27,6 +27,7 @@ const agentRegistrationSchemaV1 = z.object({
 const nodeIdPattern = /^\d+-\d+$/;
 
 const agentRegistrationSchema = agentRegistrationSchemaV1.extend({
+  agent_label: z.string().min(1).max(100),
   discord_channel_id: z.string().min(1).optional(),
   last_node_id: z.string().regex(nodeIdPattern).optional().transform((v) => v as NodeId | undefined),
 });
@@ -67,7 +68,14 @@ function validateAgentsFileData(value: unknown): AgentsFileData {
 
   if (raw.version === 1) {
     const v1 = z.object({ version: z.literal(1), agents: z.array(agentRegistrationSchemaV1) }).parse(value);
-    return validateAgentsFileData({ ...v1, version: CURRENT_VERSION });
+    return validateAgentsFileData({
+      ...v1,
+      version: CURRENT_VERSION,
+      agents: v1.agents.map((agent) => ({
+        ...agent,
+        agent_label: agent.agent_name,
+      })),
+    });
   }
 
   const parsed = agentsFileSchema.parse(value);

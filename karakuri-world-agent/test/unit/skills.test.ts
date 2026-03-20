@@ -1,13 +1,17 @@
 import type { ToolExecutionOptions } from '@ai-sdk/provider-utils';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createSkillTools, loadAgentSkills, parseSkillDocument } from '../../src/skills.js';
 
 const tempDirs: string[] = [];
+const permissionSensitiveIt = process.platform === 'win32'
+  || (typeof process.getuid === 'function' && process.getuid() === 0)
+  ? it.skip
+  : it;
 
 async function createAgentDir(files: Record<string, string> = {}): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'karakuri-world-agent-skills-'));
@@ -15,7 +19,11 @@ async function createAgentDir(files: Record<string, string> = {}): Promise<strin
   await mkdir(dir, { recursive: true });
 
   await Promise.all(
-    Object.entries(files).map(([name, contents]) => writeFile(join(dir, name), contents, 'utf8')),
+    Object.entries(files).map(async ([name, contents]) => {
+      const filePath = join(dir, name);
+      await mkdir(dirname(filePath), { recursive: true });
+      await writeFile(filePath, contents, 'utf8');
+    }),
   );
 
   return dir;
@@ -33,8 +41,8 @@ describe('skill loading', () => {
       [
         '---',
         'name: karakuri-world',
-        'description: Operate inside Karakuri World through MCP tools.',
-        'allowed-tools: move, action',
+        'description: Operate inside Karakuri World through the karakuri-world tool.',
+        'allowed-tools: karakuri-world',
         '---',
         '',
         '# World Guide',
@@ -46,32 +54,31 @@ describe('skill loading', () => {
 
     expect(parsed).toEqual({
       name: 'karakuri-world',
-      description: 'Operate inside Karakuri World through MCP tools.',
-      allowedTools: 'move, action',
+      description: 'Operate inside Karakuri World through the karakuri-world tool.',
+      allowedTools: 'karakuri-world',
       instructions: '# World Guide\n\nUse tools carefully.',
     });
   });
 
-  it('falls back to the agent directory name when SKILL.md only has a generic heading', async () => {
+  it('falls back to the skill directory name when SKILL.md only has a generic heading', async () => {
     const agentDir = await createAgentDir({
-      'SKILL.md': '# Skills\n\n- Explore unfamiliar places and describe them clearly.\n',
+      'skills/karakuri-world/SKILL.md': '# Skills\n\n- Explore unfamiliar places and describe them clearly.\n',
     });
 
     const loaded = loadAgentSkills(agentDir);
-    const agentName = basename(agentDir);
 
     expect(loaded).toHaveLength(1);
-    expect(loaded[0].toolName).toBe(`load_skill_${agentName.replace(/[^a-zA-Z0-9]+/g, '_').toLowerCase()}`);
+    expect(loaded[0].toolName).toBe('load_skill_karakuri_world');
     expect(loaded[0]).toMatchObject({
-      name: agentName,
+      name: 'karakuri-world',
       description: 'Explore unfamiliar places and describe them clearly.',
       instructions: '# Skills\n\n- Explore unfamiliar places and describe them clearly.',
     });
   });
 
-  it('ignores legacy skills.md when SKILL.md is missing', async () => {
+  it('ignores a legacy SKILL.md in the agent root when skills/ is missing', async () => {
     const agentDir = await createAgentDir({
-      'skills.md': '# Skills\n- Legacy inline prompt',
+      'SKILL.md': '# Skills\n- Legacy inline prompt',
     });
 
     const loaded = loadAgentSkills(agentDir);
@@ -79,12 +86,106 @@ describe('skill loading', () => {
     expect(loaded).toEqual([]);
   });
 
+  it('ignores a non-directory skills path', async () => {
+    const agentDir = await createAgentDir({
+      skills: 'not a directory',
+    });
+
+    const loaded = loadAgentSkills(agentDir);
+
+    expect(loaded).toEqual([]);
+  });
+
+  permissionSensitiveIt('surfaces unreadable skills directories instead of treating them as missing', async () => {
+    const agentDir = await createAgentDir();
+    const skillsDir = join(agentDir, 'skills');
+
+    await mkdir(skillsDir, { recursive: true });
+    await chmod(skillsDir, 0o000);
+
+    try {
+      expect(() => loadAgentSkills(agentDir)).toThrowError(/Failed to read skills directory at .*\/skills:/);
+    } finally {
+      await chmod(skillsDir, 0o755);
+    }
+  });
+
+  it('loads multiple nested skills in alphabetical order and skips directories without SKILL.md', async () => {
+    const agentDir = await createAgentDir({
+      'skills/beta/SKILL.md': [
+        '---',
+        'name: Zebra',
+        '---',
+        '',
+        '# World Guide',
+        '',
+        'Beta instructions.',
+      ].join('\n'),
+      'skills/alpha/SKILL.md': [
+        '---',
+        'name: Yak',
+        '---',
+        '',
+        '# World Guide',
+        '',
+        'Alpha instructions.',
+      ].join('\n'),
+      'skills/gamma/SKILL.md': '# Skills\n\n- Gamma instructions.\n',
+      'skills/without-skill/notes.md': 'This directory should be ignored.',
+    });
+
+    const loaded = loadAgentSkills(agentDir);
+
+    expect(loaded).toHaveLength(3);
+    expect(loaded.map((skill) => skill.name)).toEqual(['Yak', 'Zebra', 'gamma']);
+    expect(loaded.map((skill) => skill.toolName)).toEqual([
+      'load_skill_yak',
+      'load_skill_zebra',
+      'load_skill_gamma',
+    ]);
+  });
+
+  it('throws when multiple skill directories resolve to the same tool name', async () => {
+    const agentDir = await createAgentDir({
+      'skills/alpha/SKILL.md': [
+        '---',
+        'name: duplicate skill',
+        '---',
+        '',
+        '# Guide',
+        '',
+        'Alpha instructions.',
+      ].join('\n'),
+      'skills/beta/SKILL.md': [
+        '---',
+        'name: duplicate-skill',
+        '---',
+        '',
+        '# Guide',
+        '',
+        'Beta instructions.',
+      ].join('\n'),
+    });
+
+    expect(() => loadAgentSkills(agentDir)).toThrowError('Duplicate skill tool name: load_skill_duplicate_skill');
+  });
+
+  it('surfaces invalid SKILL.md filesystem entries with path context', async () => {
+    const agentDir = await createAgentDir({
+      'skills/karakuri-world/SKILL.md/note.txt': 'not a markdown file',
+    });
+
+    expect(() => loadAgentSkills(agentDir)).toThrowError(
+      /Failed to read skill file at .*\/skills\/karakuri-world\/SKILL\.md:/,
+    );
+  });
+
   it('returns the skill body when the callable skill tool is executed', async () => {
     const tools = createSkillTools([
       {
         toolName: 'load_skill_karakuri_world',
         name: 'karakuri-world',
-        description: 'Operate inside Karakuri World through MCP tools.',
+        description: 'Operate inside Karakuri World through the karakuri-world tool.',
         instructions: '# World Guide\n\nUse tools carefully.',
       },
     ]);
@@ -104,7 +205,7 @@ describe('skill loading', () => {
 
     expect(result).toEqual({
       name: 'karakuri-world',
-      description: 'Operate inside Karakuri World through MCP tools.',
+      description: 'Operate inside Karakuri World through the karakuri-world tool.',
       allowedTools: undefined,
       instructions: '# World Guide\n\nUse tools carefully.',
     });

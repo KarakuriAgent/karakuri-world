@@ -1,10 +1,12 @@
 import { closeAgentResources } from './agent.js';
 import { shutdownBot, startBot } from './bot.js';
 import { config } from './config.js';
+import { createLogger } from './logger.js';
 import { DISCORD_WEBHOOK_PATH, startServer, type AgentServer } from './server.js';
 
 let shuttingDown = false;
 let server: AgentServer | undefined;
+const logger = createLogger('main');
 
 async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) {
@@ -12,7 +14,7 @@ async function shutdown(signal: string): Promise<void> {
   }
 
   shuttingDown = true;
-  console.log(`Shutting down agent "${config.agent.botName}" (${signal})...`);
+  logger.info(`Shutting down agent "${config.agent.botName}" (${signal})...`);
 
   let exitCode = 0;
 
@@ -20,21 +22,21 @@ async function shutdown(signal: string): Promise<void> {
     await shutdownBot();
   } catch (error) {
     exitCode = 1;
-    console.error('Failed to shut down bot cleanly.', error);
+    logger.error('Failed to shut down bot cleanly.', error);
   }
 
   try {
     await server?.close();
   } catch (error) {
     exitCode = 1;
-    console.error('Failed to shut down HTTP server cleanly.', error);
+    logger.error('Failed to shut down HTTP server cleanly.', error);
   }
 
   try {
     await closeAgentResources();
   } catch (error) {
     exitCode = 1;
-    console.error('Failed to close MCP client cleanly.', error);
+    logger.error('Failed to close karakuri-world tool resources cleanly.', error);
   }
 
   process.exit(exitCode);
@@ -49,11 +51,11 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 try {
   server = await startServer();
   await startBot(server.localWebhookUrl);
-  console.log(
+  logger.info(
     `Agent "${config.agent.botName}" started on port ${server.port} (${DISCORD_WEBHOOK_PATH}).`,
   );
 } catch (error) {
-  console.error('Failed to start karakuri-world-agent.', error);
+  logger.error('Failed to start karakuri-world-agent.', error);
 
   try {
     await shutdownBot();

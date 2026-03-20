@@ -86,6 +86,7 @@ function endConversation(
 
     engine.state.setState(participantId, 'idle');
     engine.state.setPendingConversation(participantId, null);
+    engine.state.setLastAction(participantId, null);
     startIdleReminder(engine, participantId);
   }
 

@@ -11,11 +11,14 @@ import { createTestConfig } from '../helpers/test-map.js';
 import { createTestWorld } from '../helpers/test-world.js';
 
 function createRegistration(overrides: Partial<AgentRegistration> = {}): AgentRegistration {
+  const agentName = overrides.agent_name ?? 'alice';
+  const discordBotId = overrides.discord_bot_id ?? `bot-${agentName}`;
   return {
     agent_id: 'agent-1',
-    agent_name: 'alice',
+    agent_name: agentName,
+    agent_label: overrides.agent_label ?? agentName,
     api_key: 'karakuri_deadbeef',
-    discord_bot_id: 'bot-alice',
+    discord_bot_id: discordBotId,
     created_at: 1,
     ...overrides,
   };
@@ -58,6 +61,7 @@ describe('WorldEngine lifecycle', () => {
     const { config, engine, discordBot } = createTestWorld();
     const registration = engine.registerAgent({
       agent_name: 'alice',
+      agent_label: 'alice',
       discord_bot_id: 'discord-alice',
     });
 
@@ -69,6 +73,7 @@ describe('WorldEngine lifecycle', () => {
     expect(loggedInAgent).toMatchObject({
       agent_id: registration.agent_id,
       agent_name: 'alice',
+      agent_label: 'alice',
       node_id: joinResponse.node_id,
       state: 'idle',
       discord_channel_id: 'channel-alice',
@@ -94,8 +99,8 @@ describe('WorldEngine lifecycle', () => {
 
   it('lists agents and prevents deleting logged-in registrations', async () => {
     const { engine } = createTestWorld();
-    const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
-    const bob = engine.registerAgent({ agent_name: 'bob', discord_bot_id: 'bot-bob' });
+    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice', });
+    const bob = engine.registerAgent({ agent_name: 'bob', agent_label: 'bob', discord_bot_id: 'bot-bob', });
 
     expect(engine.listAgents().map((agent) => agent.agent_name)).toEqual(['alice', 'bob']);
 
@@ -121,8 +126,8 @@ describe('WorldEngine lifecycle', () => {
     });
 
     try {
-      const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
-      const bob = engine.registerAgent({ agent_name: 'bob', discord_bot_id: 'bot-bob' });
+      const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice', });
+      const bob = engine.registerAgent({ agent_name: 'bob', agent_label: 'bob', discord_bot_id: 'bot-bob', });
 
       expect(loadAgents(filePath)).toEqual([
         alice,
@@ -154,7 +159,7 @@ describe('WorldEngine lifecycle', () => {
       },
     });
 
-    expect(() => registerWorld.engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' })).toThrowError(failure);
+    expect(() => registerWorld.engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice', })).toThrowError(failure);
     expect(registerWorld.engine.listAgents()).toEqual([]);
 
     const persistedAlice = createRegistration();
@@ -201,7 +206,7 @@ describe('WorldEngine lifecycle', () => {
   it('prevents deleting an agent while login is in progress', async () => {
     const discordBot = new DeferredDiscordBot();
     const engine = new WorldEngine(createTestConfig(), discordBot);
-    const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
+    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice', });
     const joinPromise = engine.loginAgent(alice.agent_id);
 
     await expect(engine.deleteAgent(alice.agent_id)).rejects.toMatchObject({

@@ -7,6 +7,5 @@ COPY .docker-build/package-lock.json ./package-lock.json
 COPY .docker-build/node_modules ./node_modules
 COPY .docker-build/dist ./dist
 COPY .docker-build/agents ./agents
-COPY .docker-build/DESIGN.md ./DESIGN.md
 
 CMD ["node", "dist/src/index.js"]

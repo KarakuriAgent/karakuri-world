@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { DiscordEventHandler } from '../../../src/discord/event-handler.js';
+import type { WorldEngine } from '../../../src/engine/world-engine.js';
 import { createTestWorld } from '../../helpers/test-world.js';
 
 class RecordingDiscordBot {
@@ -16,6 +17,19 @@ class RecordingDiscordBot {
   }
 }
 
+function registerAgent(engine: WorldEngine, agentName: string, agentLabel: string) {
+  return engine.registerAgent({
+    agent_name: agentName,
+    agent_label: agentLabel,
+    discord_bot_id: `bot-${agentName.toLowerCase()}`,
+  });
+}
+
+function expectWorldContextHeader(message: string, agentLabel: string): void {
+  expect(message).toContain(`あなた (${agentLabel}) は仮想世界「Karakuri Test World」にログインしています。`);
+  expect(message).toContain('A compact map used by automated tests.');
+}
+
 describe('DiscordEventHandler', () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -27,7 +41,7 @@ describe('DiscordEventHandler', () => {
     const handler = new DiscordEventHandler(engine, bot as never);
     handler.register();
 
-    const alice = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
+    const alice = registerAgent(engine, 'Alice', 'Clockwork Alice');
     await engine.loginAgent(alice.agent_id);
 
     await vi.waitFor(() => {
@@ -38,6 +52,7 @@ describe('DiscordEventHandler', () => {
     expect(bot.agentMessages[0]).toMatchObject({
       channelId: 'channel-Alice',
     });
+    expectWorldContextHeader(bot.agentMessages[0].content, 'Clockwork Alice');
     expect(bot.agentMessages[0].content).toContain('世界にログインしました。');
     handler.dispose();
   });
@@ -48,8 +63,8 @@ describe('DiscordEventHandler', () => {
     const handler = new DiscordEventHandler(engine, bot as never);
     handler.register();
 
-    const alice = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
-    const bob = engine.registerAgent({ agent_name: 'Bob', discord_bot_id: 'bot-bob' });
+    const alice = registerAgent(engine, 'Alice', 'Clockwork Alice');
+    const bob = registerAgent(engine, 'Bob', 'Clockwork Bob');
     await engine.loginAgent(alice.agent_id);
     await engine.loginAgent(bob.agent_id);
     await vi.waitFor(() => {
@@ -81,6 +96,10 @@ describe('DiscordEventHandler', () => {
       expect(bot.worldLogMessages).toContain('Alice が会話を終了し、ログアウトしました');
     });
 
+    const bobMessage = bot.agentMessages.find((message) => message.channelId === 'channel-Bob');
+    expect(bobMessage).toBeDefined();
+    expectWorldContextHeader(bobMessage!.content, 'Clockwork Bob');
+
     handler.dispose();
   });
 
@@ -90,8 +109,8 @@ describe('DiscordEventHandler', () => {
     const handler = new DiscordEventHandler(engine, bot as never);
     handler.register();
 
-    const alice = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
-    const bob = engine.registerAgent({ agent_name: 'Bob', discord_bot_id: 'bot-bob' });
+    const alice = registerAgent(engine, 'Alice', 'Clockwork Alice');
+    const bob = registerAgent(engine, 'Bob', 'Clockwork Bob');
     await engine.loginAgent(alice.agent_id);
     await engine.loginAgent(bob.agent_id);
     await vi.waitFor(() => {
@@ -149,8 +168,8 @@ describe('DiscordEventHandler', () => {
     const handler = new DiscordEventHandler(engine, bot as never);
     handler.register();
 
-    const alice = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
-    const bob = engine.registerAgent({ agent_name: 'Bob', discord_bot_id: 'bot-bob' });
+    const alice = registerAgent(engine, 'Alice', 'Clockwork Alice');
+    const bob = registerAgent(engine, 'Bob', 'Clockwork Bob');
     await engine.loginAgent(alice.agent_id);
     await engine.loginAgent(bob.agent_id);
     await vi.waitFor(() => {
@@ -225,7 +244,7 @@ describe('DiscordEventHandler', () => {
     const handler = new DiscordEventHandler(engine, bot as never);
     handler.register();
 
-    const alice = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
+    const alice = registerAgent(engine, 'Alice', 'Clockwork Alice');
     await engine.loginAgent(alice.agent_id);
     await vi.waitFor(() => {
       expect(bot.worldLogMessages).toHaveLength(1);
@@ -259,7 +278,7 @@ describe('DiscordEventHandler', () => {
     const handler = new DiscordEventHandler(engine, bot as never);
     handler.register();
 
-    const alice = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
+    const alice = registerAgent(engine, 'Alice', 'Clockwork Alice');
     await engine.loginAgent(alice.agent_id);
     await vi.waitFor(() => {
       expect(bot.worldLogMessages).toHaveLength(1);
@@ -286,6 +305,45 @@ describe('DiscordEventHandler', () => {
       ).toBe(true);
       expect(bot.worldLogMessages).toContain('Alice が 3-4 (Workshop Door) に到着しました');
     });
+
+    const arrivalMessage = bot.agentMessages.find((message) => message.channelId === 'channel-Alice');
+    expect(arrivalMessage).toBeDefined();
+    expectWorldContextHeader(arrivalMessage!.content, 'Clockwork Alice');
+
+    handler.dispose();
+  });
+
+  it('personalizes server event notifications with each agent label', async () => {
+    const { engine } = createTestWorld();
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = registerAgent(engine, 'Alice', 'Clockwork Alice');
+    const bob = registerAgent(engine, 'Bob', 'Clockwork Bob');
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.worldLogMessages).toHaveLength(2);
+    });
+    bot.agentMessages.length = 0;
+    bot.worldLogMessages.length = 0;
+
+    engine.fireServerEvent('sudden-rain');
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(2);
+    });
+
+    const aliceMessage = bot.agentMessages.find((message) => message.channelId === 'channel-Alice');
+    const bobMessage = bot.agentMessages.find((message) => message.channelId === 'channel-Bob');
+    expect(aliceMessage).toBeDefined();
+    expect(bobMessage).toBeDefined();
+    expectWorldContextHeader(aliceMessage!.content, 'Clockwork Alice');
+    expectWorldContextHeader(bobMessage!.content, 'Clockwork Bob');
+    expect(aliceMessage!.content).toContain('【サーバーイベント】Sudden Rain');
+    expect(bobMessage!.content).toContain('【サーバーイベント】Sudden Rain');
+    expect(aliceMessage!.content).not.toBe(bobMessage!.content);
 
     handler.dispose();
   });

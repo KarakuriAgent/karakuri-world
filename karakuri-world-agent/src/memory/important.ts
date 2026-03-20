@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { rm } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 
 import { tool } from 'ai';
 import { z } from 'zod';
 
+import { createLogger } from '../logger.js';
 import { isNotFoundError, listJsonFiles, readJsonFile, writeJsonFileAtomic } from '../persistence.js';
 
 export interface ImportantMemory {
@@ -32,6 +33,8 @@ function sortMemories(memories: ImportantMemory[]): ImportantMemory[] {
   return [...memories].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
+const logger = createLogger('memory');
+
 export async function saveImportantMemory(
   dataDir: string,
   params: {
@@ -41,43 +44,67 @@ export async function saveImportantMemory(
   now: () => Date = () => new Date(),
   createId: () => string = randomUUID,
 ): Promise<ImportantMemory> {
-  const memory: ImportantMemory = {
-    id: createId(),
-    content: params.content,
-    tags: params.tags ?? [],
-    createdAt: now().toISOString(),
-  };
+  try {
+    const memory: ImportantMemory = {
+      id: createId(),
+      content: params.content,
+      tags: params.tags ?? [],
+      createdAt: now().toISOString(),
+    };
 
-  await writeJsonFileAtomic(memoryFilePath(dataDir, memory.id), memory);
-  return memory;
+    await writeJsonFileAtomic(memoryFilePath(dataDir, memory.id), memory);
+    logger.debug('Memory saved', {
+      id: memory.id,
+      tagCount: memory.tags.length,
+    });
+    return memory;
+  } catch (error) {
+    logger.error('Failed to save memory', { error });
+    throw error;
+  }
 }
 
 export async function listImportantMemories(dataDir: string): Promise<ImportantMemory[]> {
-  const files = await listJsonFiles(join(dataDir, 'memories'));
-  const memories = await Promise.all(files.map((fileName) => readMemory(join(dataDir, 'memories', fileName))));
-  return sortMemories(memories);
+  try {
+    const files = await listJsonFiles(join(dataDir, 'memories'));
+    const memories = await Promise.all(files.map((fileName) => readMemory(join(dataDir, 'memories', fileName))));
+    const sortedMemories = sortMemories(memories);
+    logger.debug('Listed memories', { count: sortedMemories.length });
+    return sortedMemories;
+  } catch (error) {
+    logger.error('Failed to list memories', { error });
+    throw error;
+  }
 }
 
 export async function searchImportantMemories(dataDir: string, query: string): Promise<ImportantMemory[]> {
   const normalizedQuery = query.toLowerCase();
   const memories = await listImportantMemories(dataDir);
 
-  return memories.filter(
+  const results = memories.filter(
     (memory) =>
       memory.content.toLowerCase().includes(normalizedQuery)
       || memory.tags.some((tag) => tag.toLowerCase().includes(normalizedQuery)),
   );
+  logger.debug('Searched memories', {
+    query,
+    resultCount: results.length,
+  });
+  return results;
 }
 
 export async function deleteImportantMemory(dataDir: string, id: string): Promise<boolean> {
   try {
     await rm(memoryFilePath(dataDir, id), { force: false });
+    logger.debug('Memory deleted', { id, found: true });
     return true;
   } catch (error) {
     if (isNotFoundError(error)) {
+      logger.debug('Memory deleted', { id, found: false });
       return false;
     }
 
+    logger.error('Failed to delete memory', { id, error });
     throw error;
   }
 }

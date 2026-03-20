@@ -9,6 +9,8 @@ import { initializeAgent } from './agent.js';
 import { compactConversation } from './compact.js';
 import { config } from './config.js';
 import { KeyedTaskRunner } from './keyed-task-runner.js';
+import { createLogger } from './logger.js';
+import { buildMemoryPromptContext } from './memory/prompt-context.js';
 import { ChannelSessionStore, type ChannelSessionHandle } from './session/channel-session.js';
 
 const GATEWAY_LISTENER_DURATION_MS = 12 * 60 * 60 * 1000;
@@ -30,7 +32,12 @@ interface BotRuntime {
 }
 
 interface ConversationAgent {
-  generate(options: { messages: ModelMessage[] }): Promise<{ text: string }>;
+  generate(options: {
+    messages: ModelMessage[];
+    options: {
+      memoryPromptContext?: string;
+    };
+  }): Promise<{ text: string }>;
 }
 
 interface ConversationHandlerBot {
@@ -47,15 +54,17 @@ interface ConversationLogger {
 interface ConversationThread {
   channelId: string;
   post(message: string): Promise<unknown>;
+  startTyping?(status?: string): Promise<void>;
   subscribe(): Promise<unknown>;
 }
 
 interface ConversationTurnOptions {
   compactMessages?: (messages: ModelMessage[]) => Promise<ModelMessage[] | null>;
   failureMessage?: string;
-  generateResponse: (messages: ModelMessage[]) => Promise<{ text: string }>;
+  generateResponse: (messages: ModelMessage[], memoryPromptContext?: string) => Promise<{ text: string }>;
   logger?: ConversationLogger;
   messageText: string;
+  prepareInstructions?: () => Promise<string | undefined>;
   session: ChannelSessionHandle;
   subscribe: boolean;
   thread: ConversationThread;
@@ -66,18 +75,65 @@ interface RegisterConversationHandlersOptions {
   conversationQueue: KeyedTaskRunner;
   initializeConversationAgent?: () => Promise<ConversationAgent>;
   logger?: ConversationLogger;
+  prepareInstructions?: () => Promise<string | undefined>;
   sessionStore: Pick<ChannelSessionStore, 'getOrCreateSession'>;
 }
 
+const TYPING_KEEPALIVE_INTERVAL_MS = 6_000;
+const TYPING_FAILSAFE_TTL_MS = 2 * 60 * 1000;
+
 const UNSUBSCRIBED_MESSAGE_PATTERN = /[\s\S]+/;
+const moduleLogger = createLogger('bot');
+
+function startTypingKeepalive(
+  thread: ConversationThread,
+  logger: ConversationLogger,
+): () => void {
+  if (!thread.startTyping) {
+    return () => {};
+  }
+
+  let stopped = false;
+
+  const fire = () => {
+    if (stopped) return;
+    thread.startTyping!().catch((error) => {
+      logger.warn('Failed to send typing indicator.', error);
+    });
+  };
+
+  fire();
+
+  const intervalId = setInterval(fire, TYPING_KEEPALIVE_INTERVAL_MS);
+  const failsafeId = setTimeout(() => {
+    stopped = true;
+    clearInterval(intervalId);
+  }, TYPING_FAILSAFE_TTL_MS);
+
+  return () => {
+    if (stopped) return;
+    stopped = true;
+    clearInterval(intervalId);
+    clearTimeout(failsafeId);
+  };
+}
 
 let runtime: BotRuntime | undefined;
 
+async function initializeConversationAgentAdapter(): Promise<ConversationAgent> {
+  const agent = await initializeAgent();
+
+  return {
+    generate: async ({ messages, options }) => agent.generate({ messages, options }),
+  };
+}
+
 async function enqueueConversationTurn({
   conversationQueue,
-  initializeConversationAgent = initializeAgent,
+  initializeConversationAgent = initializeConversationAgentAdapter,
   logger = console,
   message,
+  prepareInstructions,
   sessionStore,
   subscribe,
   thread,
@@ -86,6 +142,7 @@ async function enqueueConversationTurn({
   initializeConversationAgent?: () => Promise<ConversationAgent>;
   logger?: ConversationLogger;
   message: Message;
+  prepareInstructions?: () => Promise<string | undefined>;
   sessionStore: Pick<ChannelSessionStore, 'getOrCreateSession'>;
   subscribe: boolean;
   thread: ConversationThread;
@@ -94,9 +151,16 @@ async function enqueueConversationTurn({
     const agent = await initializeConversationAgent();
     await runConversationTurn({
       compactMessages: async (messages) => compactConversation({ messages }),
-      generateResponse: async (messages) => agent.generate({ messages }),
+      generateResponse: async (messages, memoryPromptContext) =>
+        agent.generate({
+          messages,
+          options: {
+            memoryPromptContext,
+          },
+        }),
       logger,
       messageText: message.text,
+      prepareInstructions,
       session: sessionStore.getOrCreateSession(thread.channelId),
       subscribe,
       thread,
@@ -107,8 +171,9 @@ async function enqueueConversationTurn({
 export function registerConversationHandlers({
   bot,
   conversationQueue,
-  initializeConversationAgent = initializeAgent,
+  initializeConversationAgent = initializeConversationAgentAdapter,
   logger = console,
+  prepareInstructions = async () => undefined,
   sessionStore,
 }: RegisterConversationHandlersOptions): void {
   bot.onNewMention(async (thread, message) => {
@@ -117,6 +182,7 @@ export function registerConversationHandlers({
       initializeConversationAgent,
       logger,
       message,
+      prepareInstructions,
       sessionStore,
       subscribe: true,
       thread,
@@ -129,6 +195,7 @@ export function registerConversationHandlers({
       initializeConversationAgent,
       logger,
       message,
+      prepareInstructions,
       sessionStore,
       subscribe: true,
       thread,
@@ -141,6 +208,7 @@ export function registerConversationHandlers({
       initializeConversationAgent,
       logger,
       message,
+      prepareInstructions,
       sessionStore,
       subscribe: false,
       thread,
@@ -173,6 +241,10 @@ function createBotRuntime(): BotRuntime {
   registerConversationHandlers({
     bot,
     conversationQueue,
+    prepareInstructions: async () =>
+      buildMemoryPromptContext({
+        dataDir: config.dataDir,
+      }),
     sessionStore,
   });
 
@@ -203,10 +275,13 @@ export async function runConversationTurn({
   generateResponse,
   logger = console,
   messageText,
+  prepareInstructions = async () => undefined,
   session,
   subscribe,
   thread,
 }: ConversationTurnOptions): Promise<void> {
+  moduleLogger.debug('Conversation turn started', { channelId: thread.channelId });
+
   if (subscribe) {
     try {
       await thread.subscribe();
@@ -221,15 +296,24 @@ export async function runConversationTurn({
     const compactedMessages = await compactMessages(session.getMessages());
     if (compactedMessages) {
       await session.replaceMessages(compactedMessages);
+      moduleLogger.debug('Conversation compacted', { channelId: thread.channelId });
     }
   } catch (error) {
     logger.warn('Failed to compact conversation; continuing with the existing session history.', error);
   }
 
+  const stopTyping = startTypingKeepalive(thread, logger);
+
   let result: { text: string };
   try {
-    result = await generateResponse(session.getMessages());
+    const memoryPromptContext = await prepareInstructions();
+    result = await generateResponse(session.getMessages(), memoryPromptContext);
+    moduleLogger.debug('Response generated', {
+      channelId: thread.channelId,
+      responseLength: result.text.length,
+    });
   } catch (error) {
+    stopTyping();
     logger.error('Failed to generate an agent response.', error);
 
     try {
@@ -240,6 +324,8 @@ export async function runConversationTurn({
 
     return;
   }
+
+  stopTyping();
 
   try {
     await thread.post(result.text);
@@ -260,7 +346,7 @@ export async function handleDiscordWebhook(
   options: WebhookOptions = {
     waitUntil(task) {
       void task.catch((error) => {
-        console.error('Discord webhook background task failed.', error);
+        moduleLogger.error('Discord webhook background task failed.', error);
       });
     },
   },
@@ -273,6 +359,7 @@ async function startGatewayCycle(
   signal: AbortSignal,
   webhookUrl: string,
 ): Promise<void> {
+  moduleLogger.debug('Starting Gateway cycle');
   let listenerTask: Promise<unknown> | undefined;
 
   const response = await currentRuntime.discordAdapter.startGatewayListener(
@@ -309,7 +396,7 @@ async function runGatewayLoop(currentRuntime: BotRuntime, webhookUrl: string): P
         break;
       }
 
-      console.error('Discord Gateway listener failed; retrying.', error);
+      moduleLogger.error('Discord Gateway listener failed; retrying.', error);
       await delay(GATEWAY_RETRY_DELAY_MS);
     } finally {
       if (gatewayAbortController === abortController) {
@@ -324,13 +411,13 @@ export async function startBot(webhookUrl: string): Promise<void> {
     return;
   }
 
+  moduleLogger.info('Starting bot');
   const currentRuntime = getOrCreateRuntime();
 
   await initializeAgent();
 
   if (!sessionsRestored) {
     await currentRuntime.sessionStore.restoreFromDisk();
-    currentRuntime.sessionStore.startCleanupTimer();
     sessionsRestored = true;
   }
 
@@ -343,12 +430,13 @@ export async function startBot(webhookUrl: string): Promise<void> {
   gatewayLoopPromise = runGatewayLoop(currentRuntime, webhookUrl);
   void gatewayLoopPromise.catch((error) => {
     if (running) {
-      console.error('Discord Gateway loop stopped unexpectedly.', error);
+      moduleLogger.error('Discord Gateway loop stopped unexpectedly.', error);
     }
   });
 }
 
 export async function shutdownBot(): Promise<void> {
+  moduleLogger.info('Shutting down bot');
   running = false;
   gatewayAbortController?.abort();
 
@@ -358,10 +446,6 @@ export async function shutdownBot(): Promise<void> {
   }
 
   const currentRuntime = runtime;
-
-  if (currentRuntime) {
-    await currentRuntime.sessionStore.close();
-  }
 
   if (botInitialized && currentRuntime) {
     await currentRuntime.bot.shutdown();

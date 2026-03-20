@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path';
 import { tool } from 'ai';
 import { z } from 'zod';
 
+import { createLogger } from '../logger.js';
 import { isNotFoundError, readJsonFile, writeJsonFileAtomic } from '../persistence.js';
 
 export interface DiaryEntry {
@@ -18,6 +19,7 @@ export interface DiaryToolsOptions {
 }
 
 const DEFAULT_RECENT_DAYS = 7;
+const logger = createLogger('diary');
 
 function formatDate(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -27,7 +29,11 @@ function diaryFilePath(dataDir: string, date: string): string {
   return join(dataDir, 'diary', `${date}.json`);
 }
 
-export async function readDiaryEntry(dataDir: string, date: string): Promise<DiaryEntry | null> {
+async function readDiaryEntryInternal(
+  dataDir: string,
+  date: string,
+  logReadFailure: boolean,
+): Promise<DiaryEntry | null> {
   try {
     return await readJsonFile<DiaryEntry>(diaryFilePath(dataDir, date));
   } catch (error) {
@@ -35,8 +41,15 @@ export async function readDiaryEntry(dataDir: string, date: string): Promise<Dia
       return null;
     }
 
+    if (logReadFailure) {
+      logger.error('Failed to read diary entry', { date, error });
+    }
     throw error;
   }
+}
+
+export async function readDiaryEntry(dataDir: string, date: string): Promise<DiaryEntry | null> {
+  return readDiaryEntryInternal(dataDir, date, true);
 }
 
 export async function writeDiaryEntry(
@@ -46,22 +59,32 @@ export async function writeDiaryEntry(
 ): Promise<DiaryEntry> {
   const currentTime = now();
   const today = formatDate(currentTime);
-  const existingEntry = await readDiaryEntry(dataDir, today);
 
-  const nextEntry: DiaryEntry = existingEntry
-    ? {
-        ...existingEntry,
-        entries: [...existingEntry.entries, content],
-        updatedAt: currentTime.toISOString(),
-      }
-    : {
-        date: today,
-        entries: [content],
-        updatedAt: currentTime.toISOString(),
-      };
+  try {
+    const existingEntry = await readDiaryEntryInternal(dataDir, today, false);
 
-  await writeJsonFileAtomic(diaryFilePath(dataDir, today), nextEntry);
-  return nextEntry;
+    const nextEntry: DiaryEntry = existingEntry
+      ? {
+          ...existingEntry,
+          entries: [...existingEntry.entries, content],
+          updatedAt: currentTime.toISOString(),
+        }
+      : {
+          date: today,
+          entries: [content],
+          updatedAt: currentTime.toISOString(),
+        };
+
+    await writeJsonFileAtomic(diaryFilePath(dataDir, today), nextEntry);
+    logger.debug('Diary entry written', {
+      date: nextEntry.date,
+      totalEntries: nextEntry.entries.length,
+    });
+    return nextEntry;
+  } catch (error) {
+    logger.error('Failed to write diary entry', { date: today, error });
+    throw error;
+  }
 }
 
 export async function readRecentDiaryEntries(
@@ -82,6 +105,10 @@ export async function readRecentDiaryEntries(
     }
   }
 
+  logger.debug('Read diary entries', {
+    days: recentDays,
+    found: entries.length,
+  });
   return entries;
 }
 

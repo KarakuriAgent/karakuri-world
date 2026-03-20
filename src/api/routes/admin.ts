@@ -11,6 +11,7 @@ const agentNamePattern = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])$/;
 
 const registerAgentSchema = z.object({
   agent_name: z.string().min(2).max(32).regex(agentNamePattern),
+  agent_label: z.string().min(1).max(100),
   discord_bot_id: z.string().min(1),
 });
 

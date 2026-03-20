@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, '..');
 const stageDir = join(repoRoot, '.docker-build');
-const stageInputs = ['package.json', 'package-lock.json', 'tsconfig.json', 'src', 'agents', 'DESIGN.md'];
+const stageInputs = ['package.json', 'package-lock.json', 'tsconfig.json', 'src', 'agents'];
 
 function stageInput(inputPath) {
   const sourcePath = join(repoRoot, inputPath);

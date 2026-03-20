@@ -30,7 +30,7 @@ describe('wait integration', () => {
 
   it('executes wait end-to-end: idle → in_action → timer fires → idle', async () => {
     const { engine } = createTestWorld();
-    const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
+    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice', });
     await engine.loginAgent(alice.agent_id);
 
     const response = engine.executeWait(alice.agent_id, { duration_ms: 5000 });
@@ -43,7 +43,7 @@ describe('wait integration', () => {
 
   it('rejects wait when agent is not idle', async () => {
     const { engine } = createTestWorld();
-    const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
+    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice', });
     await engine.loginAgent(alice.agent_id);
 
     engine.executeWait(alice.agent_id, { duration_ms: 5000 });
@@ -56,7 +56,7 @@ describe('wait integration', () => {
     const handler = new DiscordEventHandler(engine, bot as never);
     handler.register();
 
-    const alice = engine.registerAgent({ agent_name: 'Alice', discord_bot_id: 'bot-alice' });
+    const alice = engine.registerAgent({ agent_name: 'Alice', agent_label: 'Alice', discord_bot_id: 'bot-alice', });
     await engine.loginAgent(alice.agent_id);
     await vi.waitFor(() => {
       expect(bot.worldLogMessages).toHaveLength(1);
@@ -81,8 +81,8 @@ describe('wait integration', () => {
         spawn: { nodes: ['3-1'] },
       },
     });
-    const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
-    const bob = engine.registerAgent({ agent_name: 'bob', discord_bot_id: 'bot-bob' });
+    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice', });
+    const bob = engine.registerAgent({ agent_name: 'bob', agent_label: 'bob', discord_bot_id: 'bot-bob', });
     await engine.loginAgent(alice.agent_id);
     await engine.loginAgent(bob.agent_id);
 
@@ -115,7 +115,7 @@ describe('wait integration', () => {
       events.push(event.type);
     });
 
-    const alice = engine.registerAgent({ agent_name: 'alice', discord_bot_id: 'bot-alice' });
+    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice', });
     await engine.loginAgent(alice.agent_id);
     events.length = 0;
 

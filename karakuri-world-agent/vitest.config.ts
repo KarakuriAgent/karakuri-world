@@ -6,6 +6,9 @@ export default defineConfig({
     include: ['test/**/*.test.ts'],
     clearMocks: true,
     restoreMocks: true,
+    env: {
+      LOG_LEVEL: 'error',
+    },
     coverage: {
       reporter: ['text', 'html'],
     },

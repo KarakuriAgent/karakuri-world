@@ -15,7 +15,7 @@
   "keywords": [
     "discord",
     "agent",
-    "mcp",
+    "rest",
     "karakuri-world"
   ],
   "author": "株式会社0235",
@@ -26,7 +26,6 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@ai-sdk/mcp": "^1.0.25",
     "@ai-sdk/openai": "^3.0.41",
     "@chat-adapter/discord": "^4.20.1",
     "@chat-adapter/state-memory": "^4.20.1",
