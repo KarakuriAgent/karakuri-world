@@ -5,6 +5,7 @@ import type { WorldEngine } from '../engine/world-engine.js';
 import { WorldError, toErrorResponse } from '../types/api.js';
 import type { ApiEnv } from './context.js';
 import { adminAuth } from './middleware/auth.js';
+import { registerAdminAvatarRoutes } from './routes/admin-avatar.js';
 import { registerAdminConfigRoutes } from './routes/admin-config.js';
 import { registerAdminEditorRoutes } from './routes/admin-editor.js';
 import { registerAdminRoutes } from './routes/admin.js';
@@ -19,6 +20,7 @@ import { WebSocketManager } from './websocket.js';
 export interface AppOptions {
   adminKey: string;
   configPath: string;
+  dataDir?: string;
   publicBaseUrl: string;
 }
 
@@ -36,6 +38,7 @@ export function createApp(engine: WorldEngine, options: AppOptions) {
     return c.json(toErrorResponse(new WorldError(500, 'state_conflict', 'Internal server error.')), { status: 500 });
   });
 
+  registerAdminAvatarRoutes(app, engine, websocketManager, options);
   registerAdminRoutes(app, engine, options);
   registerAdminConfigRoutes(app, { adminKey: options.adminKey, configPath: options.configPath });
   registerAdminEditorRoutes(app);

@@ -1,0 +1,28 @@
+; Engine configuration file.
+; Best edited using the Godot editor when available.
+
+config_version=5
+
+[application]
+
+config/name="Karakuri World UI"
+run/main_scene="res://scenes/main.tscn"
+
+[autoload]
+
+Globals="*res://scripts/autoload/globals.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[gui]
+
+theme/custom="res://resources/default_theme.tres"
+
+[rendering]
+
+renderer/rendering_method="forward_plus"

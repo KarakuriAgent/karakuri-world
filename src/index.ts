@@ -73,11 +73,13 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
   const engine = new WorldEngine(config, discordBot, {
     initialRegistrations,
     onRegistrationChanged: (agents) => saveAgents(agentsFilePath, agents),
+    dataDir: options.dataDir,
   });
   const discordEventHandler = new DiscordEventHandler(engine, discordBot, options.timezone);
   const { app, injectWebSocket, websocketManager } = createApp(engine, {
     adminKey: options.adminKey,
     configPath: options.configPath,
+    dataDir: options.dataDir,
     publicBaseUrl: options.publicBaseUrl,
   });
   const mcpServerManager = new McpServerManager(engine);

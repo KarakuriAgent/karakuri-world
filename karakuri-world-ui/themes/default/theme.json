@@ -1,0 +1,21 @@
+{
+  "name": "Default",
+  "tile_size": 64,
+  "tileset": "tiles/tileset.png",
+  "tile_mapping": {
+    "normal": { "atlas_x": 0, "atlas_y": 0 },
+    "wall": { "atlas_x": 1, "atlas_y": 0 },
+    "door": { "atlas_x": 2, "atlas_y": 0 },
+    "building_interior": { "atlas_x": 3, "atlas_y": 0 },
+    "npc": { "atlas_x": 4, "atlas_y": 0 }
+  },
+  "agent_sprite": "sprites/agent.png",
+  "speech_bubble": {
+    "max_chars": 50,
+    "bg_color": "#F5F3E8",
+    "text_color": "#1C1C1C"
+  },
+  "effects": {
+    "sudden-rain": "effects/rain_overlay.tscn"
+  }
+}

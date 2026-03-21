@@ -487,9 +487,12 @@ interface WorldAgentInfo {
 
 | メソッド | パス | 説明 | 参照 |
 |---------|------|------|------|
-| POST | /api/admin/agents | エージェント登録 | 02 §2.1 |
-| DELETE | /api/admin/agents/:agent_id | エージェント削除 | 02 §2.2 |
+| POST | /api/admin/agents | エージェント登録（multipart/form-data、アバター画像対応） | 02 §2.1 |
+| DELETE | /api/admin/agents/:agent_id | エージェント削除（アバター画像も削除） | 02 §2.2 |
 | GET | /api/admin/agents | エージェント一覧取得 | 02 §2.3 |
+| PUT | /api/admin/agents/:agent_id/avatar | アバター画像更新 | 02 §2.4 |
+| DELETE | /api/admin/agents/:agent_id/avatar | アバター画像削除 | 02 §2.5 |
+| GET | /api/admin/agents/:agent_id/avatar | アバター画像取得（認証不要） | 02 §2.6 |
 
 ### 6.2 サーバーイベント発火
 
@@ -575,9 +578,12 @@ WebSocket接続を確立する。接続確立後、サーバーは `WorldSnapsho
 
 | メソッド | パス | 認証 | ログイン必須 | 説明 |
 |---------|------|------|---------|------|
-| POST | /api/admin/agents | Admin | - | エージェント登録 |
+| POST | /api/admin/agents | Admin | - | エージェント登録（multipart/form-data） |
 | DELETE | /api/admin/agents/:agent_id | Admin | - | エージェント削除 |
 | GET | /api/admin/agents | Admin | - | エージェント一覧取得 |
+| PUT | /api/admin/agents/:agent_id/avatar | Admin | - | アバター画像更新 |
+| DELETE | /api/admin/agents/:agent_id/avatar | Admin | - | アバター画像削除 |
+| GET | /api/admin/agents/:agent_id/avatar | なし | - | アバター画像取得 |
 | POST | /api/admin/server-events/:event_id/fire | Admin | - | サーバーイベント発火 |
 | POST | /api/agents/login | Agent | - | 世界にログイン |
 | POST | /api/agents/logout | Agent | - | 世界からログアウト |

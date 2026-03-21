@@ -11,6 +11,7 @@ interface AgentRegistration {
   agent_label: string;    // Discord通知に埋め込む表示名
   api_key: string;        // "karakuri_" + ランダム文字列
   discord_bot_id: string; // エージェントのDiscord Bot ID
+  avatar_filename?: string;    // アバター画像ファイル名（例: "agent-xxx.png"）
   discord_channel_id?: string; // ログアウト時のDiscordチャンネルID（再ログイン時に再利用）
   last_node_id?: NodeId;       // ログアウト時のノードID（再ログイン時にスポーン地点として使用）
 }
@@ -23,6 +24,13 @@ interface AgentRegistration {
 - `agent_name` は登録済みエージェント間で一意。削除済みエージェントの `agent_name` は再利用可能
 - `discord_bot_id` はDiscordのSnowflake形式（数字文字列）
 - `api_key` はサーバーが自動生成し、登録レスポンスでのみ返却する（以降は再取得不可）
+- `avatar_filename` はアバター画像がアップロードされた場合に設定される。画像ファイルは `{DATA_DIR}/avatars/{avatar_filename}` に保存される
+  - 受け付ける形式: PNG, JPEG（`image/png`, `image/jpeg`）
+  - 最大ファイルサイズ: 1MB
+  - 最大画像寸法: 512×512ピクセル
+  - ファイル名はサーバーが `{agent_id}.{ext}` 形式で生成する（`ext` はMIMEタイプから決定）
+  - 検証はMIMEタイプだけでなく、ファイル先頭のマジックナンバー（PNG: `\x89PNG`、JPEG: `\xFF\xD8\xFF`）を確認し、実際に画像としてデコード可能であることを検証する
+  - 画像保存の整合性: 新しい画像ファイルを先に保存してから `agents.json` を更新し、最後に旧ファイルを削除する（先に書き込み、後で削除の原則）。途中失敗時は孤児ファイルが残る可能性があるが、データ消失は起きない
 
 ### 1.3 永続化
 
@@ -36,7 +44,7 @@ interface AgentRegistration {
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "agents": [
     {
       "agent_id": "agent-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
@@ -44,6 +52,7 @@ interface AgentRegistration {
       "agent_label": "Example Agent",
       "api_key": "karakuri_xxx",
       "discord_bot_id": "123456789",
+      "avatar_filename": "agent-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.png",
       "created_at": 1710000000000,
       "discord_channel_id": "987654321",
       "last_node_id": "3-1"
@@ -58,10 +67,19 @@ interface AgentRegistration {
 |-----------|------|
 | サーバー起動時 | ファイルから読み込み（Zodでスキーマ検証、`agent_id`・`agent_name`・`api_key` の一意性を検証） |
 | エージェント登録時 | ファイルに書き込み |
+| アバター更新時 | ファイルに書き込み（`avatar_filename` を更新） |
 | エージェントログアウト時 | ファイルに書き込み（`discord_channel_id`・`last_node_id` を更新） |
-| エージェント削除時 | ファイルに書き込み |
+| エージェント削除時 | ファイルに書き込み。アバター画像ファイルが存在する場合は削除 |
 
 書き込みはtmpファイルに書き出してから `renameSync` で置き換える（atomic write）。
+
+**バージョン移行:**
+
+サーバー起動時に `version` フィールドを確認し、古いバージョンの場合は自動移行する。
+
+| 移行元 | 移行先 | 処理 |
+|--------|--------|------|
+| 2 | 3 | 各エージェントに `avatar_filename` フィールドが存在しない状態をそのまま許容（`avatar_filename` は optional）。`version` を `3` に更新して保存 |
 
 ## 2. 管理系APIエンドポイント
 
@@ -75,12 +93,36 @@ POST /api/admin/agents
 
 **リクエスト:**
 
-```typescript
-interface CreateAgentRequest {
-  agent_name: string;
-  agent_label: string;
-  discord_bot_id: string;
-}
+`Content-Type` に応じて、以下の2形式を受け付ける。
+
+- `application/json`: 後方互換用。アバターなし登録
+- `multipart/form-data`: アバター画像の同時アップロード用（`avatar` 省略も可）
+
+| フィールド | `application/json` | `multipart/form-data` | 必須 | 説明 |
+|-----------|--------------------|------------------------|------|------|
+| `agent_name` | string | string | ✅ | エージェント名 |
+| `agent_label` | string | string | ✅ | 表示名 |
+| `discord_bot_id` | string | string | ✅ | Discord Bot ID |
+| `avatar` | - | file | - | アバター画像（PNG/JPEG、最大1MB） |
+
+**例 (`application/json`):**
+
+```bash
+curl -X POST http://{host}/api/admin/agents \
+  -H "X-Admin-Key: {admin_key}" \
+  -H "Content-Type: application/json" \
+  -d '{"agent_name":"example-agent","agent_label":"Example Agent","discord_bot_id":"123456789"}'
+```
+
+**例 (`multipart/form-data`):**
+
+```bash
+curl -X POST http://{host}/api/admin/agents \
+  -H "X-Admin-Key: {admin_key}" \
+  -F "agent_name=example-agent" \
+  -F "agent_label=Example Agent" \
+  -F "discord_bot_id=123456789" \
+  -F "avatar=@avatar.png;type=image/png"
 ```
 
 **レスポンス (201 Created):**
@@ -94,11 +136,20 @@ interface CreateAgentResponse {
 }
 ```
 
+**処理フロー（アバター）:**
+
+1. `avatar` フィールドが存在する場合、MIMEタイプ・マジックナンバー・デコード可否・ファイルサイズ・画像寸法を検証（セクション1.2参照）
+2. `{DATA_DIR}/avatars/` ディレクトリが存在しない場合は作成
+3. `{DATA_DIR}/avatars/{agent_id}.{ext}` に画像を保存
+4. `AgentRegistration.avatar_filename` にファイル名を設定
+
 **エラー:**
 
 | ステータス | 条件 |
 |-----------|------|
 | 400 | `agent_name` が命名規則に違反 |
+| 400 | `avatar` のMIMEタイプが `image/png` / `image/jpeg` 以外、またはマジックナンバー・デコード検証に失敗 |
+| 400 | `avatar` のファイルサイズが1MBを超過、または画像寸法が512×512を超過 |
 | 409 | `agent_name` が既に使用されている |
 
 ### 2.2 エージェント削除
@@ -106,6 +157,12 @@ interface CreateAgentResponse {
 ```
 DELETE /api/admin/agents/:agent_id
 ```
+
+**処理フロー:**
+
+1. エージェントの存在確認、ログイン状態の確認
+2. `avatar_filename` がある場合、`{DATA_DIR}/avatars/{avatar_filename}` を削除
+3. エージェント登録情報をファイルから削除
 
 **レスポンス (200 OK):**
 
@@ -140,9 +197,93 @@ interface AgentSummary {
   agent_name: string;
   agent_label: string;
   discord_bot_id: string;
+  has_avatar: boolean;   // アバター画像が設定されているか
   is_logged_in: boolean; // 世界にログイン中かどうか
 }
 ```
+
+### 2.4 アバター更新
+
+```
+PUT /api/admin/agents/:agent_id/avatar
+```
+
+**リクエスト:**
+
+`multipart/form-data` 形式。`avatar` フィールドに画像ファイルを含める。
+
+**処理フロー:**
+
+1. エージェントの存在確認
+2. MIMEタイプとファイルサイズを検証（マジックナンバー確認・実デコード検証を含む。セクション1.2参照）
+3. `{DATA_DIR}/avatars/{agent_id}.{new_ext}` に新しい画像を保存
+4. 既存のアバター画像がある場合（かつ拡張子が異なる場合）は旧ファイルを削除
+5. `AgentRegistration.avatar_filename` を更新
+6. 対象エージェントがログイン中の場合、接続中の全WebSocketクライアントにスナップショットを再配信（UIが新しい `avatar_url` を取得してアバターを更新できるようにする）
+
+**レスポンス (200 OK):**
+
+```typescript
+interface UpdateAvatarResponse {
+  status: "ok";
+}
+```
+
+**エラー:**
+
+| ステータス | 条件 |
+|-----------|------|
+| 400 | `avatar` フィールドが存在しない |
+| 400 | MIMEタイプが `image/png` / `image/jpeg` 以外、またはマジックナンバー・デコード検証に失敗 |
+| 400 | ファイルサイズが1MBを超過 |
+| 404 | 指定の `agent_id` が存在しない |
+
+### 2.5 アバター削除
+
+```
+DELETE /api/admin/agents/:agent_id/avatar
+```
+
+**処理フロー:**
+
+1. エージェントの存在確認
+2. `avatar_filename` がある場合、画像ファイルを削除し `avatar_filename` をクリア
+3. `avatar_filename` がない場合は何もしない（冪等）
+4. 対象エージェントがログイン中の場合、接続中の全WebSocketクライアントにスナップショットを再配信
+
+**レスポンス (200 OK):**
+
+```typescript
+interface DeleteAvatarResponse {
+  status: "ok";
+}
+```
+
+**エラー:**
+
+| ステータス | 条件 |
+|-----------|------|
+| 404 | 指定の `agent_id` が存在しない |
+
+### 2.6 アバター画像取得
+
+```
+GET /api/admin/agents/:agent_id/avatar
+```
+
+アバター画像ファイルをそのまま返す。UIクライアントがエージェントのアバターを表示するために使用する。
+
+**認証: 不要。** アバター画像は機密情報ではないため、管理エディタの静的ファイル配信（12-map-editor.md）と同様に認証なしでアクセス可能とする。これにより、UIクライアント（Godot）がHTTPで画像を取得する際に認証ヘッダーの付与が不要になる。
+
+**レスポンス (200 OK):**
+
+画像バイナリ。`Content-Type` は保存時のMIMEタイプ（`image/png` または `image/jpeg`）。
+
+**エラー:**
+
+| ステータス | 条件 |
+|-----------|------|
+| 404 | 指定の `agent_id` が存在しない、またはアバターが未設定 |
 
 ## 3. ログイン/ログアウトAPIエンドポイント
 

@@ -86,6 +86,21 @@ describe('agent storage', () => {
     expect(() => loadAgents(filePath)).toThrowError();
   });
 
+  it('rejects unsafe avatar filenames in persisted registrations', () => {
+    const filePath = createTempPath('agents.json');
+
+    writeFileSync(
+      filePath,
+      JSON.stringify({
+        version: CURRENT_VERSION,
+        agents: [createRegistration({ avatar_filename: '../escape.png' })],
+      }),
+      'utf8',
+    );
+
+    expect(() => loadAgents(filePath)).toThrowError();
+  });
+
   it('rejects duplicate unique fields', () => {
     const filePath = createTempPath('agents.json');
 
@@ -107,18 +122,23 @@ describe('agent storage', () => {
     expect(() => loadAgents(filePath)).toThrowError('Duplicate agent_name: alice');
   });
 
-  it('persists and loads optional discord_channel_id and last_node_id', () => {
+  it('persists and loads optional discord_channel_id, last_node_id, and avatar_filename', () => {
     const filePath = createTempPath('agents.json');
-    const alice = createRegistration({ discord_channel_id: 'ch-123', last_node_id: '3-1' });
+    const alice = createRegistration({
+      discord_channel_id: 'ch-123',
+      last_node_id: '3-1',
+      avatar_filename: 'agent-1.png',
+    });
 
     saveAgents(filePath, [alice]);
 
     const loaded = loadAgents(filePath);
     expect(loaded[0].discord_channel_id).toBe('ch-123');
     expect(loaded[0].last_node_id).toBe('3-1');
+    expect(loaded[0].avatar_filename).toBe('agent-1.png');
   });
 
-  it('migrates v1 data to v2 automatically', () => {
+  it('migrates v1 data to v3 automatically', () => {
     const filePath = createTempPath('agents.json');
 
     writeFileSync(
@@ -143,10 +163,48 @@ describe('agent storage', () => {
     expect(loaded[0].agent_label).toBe('alice');
     expect(loaded[0].discord_channel_id).toBeUndefined();
     expect(loaded[0].last_node_id).toBeUndefined();
+    expect(loaded[0].avatar_filename).toBeUndefined();
 
     const persisted = JSON.parse(readFileSync(filePath, 'utf8'));
     expect(persisted.version).toBe(CURRENT_VERSION);
     expect(persisted.agents[0].agent_label).toBe('alice');
+  });
+
+  it('migrates v2 data to v3 automatically', () => {
+    const filePath = createTempPath('agents.json');
+
+    writeFileSync(
+      filePath,
+      JSON.stringify({
+        version: 2,
+        agents: [
+          {
+            agent_id: 'agent-1',
+            agent_name: 'alice',
+            agent_label: 'Alice',
+            api_key: 'karakuri_deadbeef',
+            discord_bot_id: 'bot-alice',
+            created_at: 1,
+            discord_channel_id: 'channel-alice',
+            last_node_id: '3-1',
+          },
+        ],
+      }),
+      'utf8',
+    );
+
+    const loaded = loadAgents(filePath);
+    expect(loaded).toEqual([
+      createRegistration({
+        agent_label: 'Alice',
+        discord_channel_id: 'channel-alice',
+        last_node_id: '3-1',
+      }),
+    ]);
+
+    const persisted = JSON.parse(readFileSync(filePath, 'utf8'));
+    expect(persisted.version).toBe(CURRENT_VERSION);
+    expect(persisted.agents[0].avatar_filename).toBeUndefined();
   });
 
   it('writes sorted JSON without leaving a tmp file behind', () => {

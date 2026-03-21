@@ -9,6 +9,7 @@ export interface AgentSnapshot {
   node_id: NodeId;
   state: AgentState;
   discord_channel_id: string;
+  avatar_url?: string;
   movement?: {
     from_node_id: NodeId;
     to_node_id: NodeId;

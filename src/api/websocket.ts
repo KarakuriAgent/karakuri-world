@@ -37,6 +37,10 @@ export class WebSocketManager {
     this.clients.delete(ws);
   }
 
+  broadcastSnapshot(): void {
+    this.broadcast({ type: 'snapshot', data: this.engine.getSnapshot() });
+  }
+
   dispose(): void {
     this.unsubscribe();
     this.clients.clear();

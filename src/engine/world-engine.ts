@@ -1,5 +1,8 @@
 import { randomBytes, randomInt, randomUUID } from 'node:crypto';
+import { unlinkSync } from 'node:fs';
+import { join } from 'node:path';
 
+import { buildAvatarUrlPath, resolveStoredAvatarPath } from '../domain/avatar.js';
 import {
   executeAction as executeActionRequest,
   getAvailableActions as getAvailableActionsForAgent,
@@ -73,6 +76,7 @@ export interface DiscordRuntimeAdapter {
 export interface WorldEngineOptions {
   initialRegistrations?: AgentRegistration[];
   onRegistrationChanged?: (agents: AgentRegistration[]) => void;
+  dataDir?: string;
 }
 
 export class WorldEngine {
@@ -80,6 +84,7 @@ export class WorldEngine {
   readonly eventBus = new EventBus();
   readonly state: WorldState;
   private readonly onRegistrationChanged?: (agents: AgentRegistration[]) => void;
+  private readonly dataDir?: string;
   private readonly loggingInAgentIds = new Set<string>();
 
   constructor(
@@ -89,6 +94,7 @@ export class WorldEngine {
   ) {
     this.state = new WorldState(options.initialRegistrations);
     this.onRegistrationChanged = options.onRegistrationChanged;
+    this.dataDir = options.dataDir;
     this.timerManager.onFire('movement', (timer) => {
       handleMovementCompleted(this, timer);
     });
@@ -115,7 +121,7 @@ export class WorldEngine {
     });
   }
 
-  registerAgent(input: { agent_name: string; agent_label: string; discord_bot_id: string }): AgentRegistration {
+  registerAgent(input: { agent_name: string; agent_label: string; discord_bot_id: string; avatar_filename?: string }): AgentRegistration {
     const duplicate = this.state.list().find((agent) => agent.agent_name === input.agent_name);
     if (duplicate) {
       throw new WorldError(409, 'state_conflict', `Agent name already exists: ${input.agent_name}`);
@@ -127,6 +133,7 @@ export class WorldEngine {
       agent_label: input.agent_label,
       api_key: `karakuri_${randomBytes(16).toString('hex')}`,
       discord_bot_id: input.discord_bot_id,
+      ...(input.avatar_filename ? { avatar_filename: input.avatar_filename } : {}),
       created_at: Date.now(),
     };
 
@@ -151,6 +158,14 @@ export class WorldEngine {
     // Persist-then-mutate: remove registration first, then clean up Discord channel.
     this.persistRegistrations(this.state.list().filter((agent) => agent.agent_id !== agentId));
     this.state.delete(agentId);
+
+    if (registration.avatar_filename) {
+      try {
+        this.deleteAvatarFile(registration.avatar_filename);
+      } catch (error) {
+        console.error('Failed to delete persisted agent avatar.', error);
+      }
+    }
 
     if (registration.discord_channel_id) {
       try {
@@ -181,6 +196,7 @@ export class WorldEngine {
       agent_name: agent.agent_name,
       agent_label: agent.agent_label,
       discord_bot_id: agent.discord_bot_id,
+      has_avatar: !!agent.avatar_filename,
       is_logged_in: this.state.isLoggedIn(agent.agent_id),
     }));
   }
@@ -231,6 +247,7 @@ export class WorldEngine {
         agent_name: loggedInAgent.agent_name,
         node_id: loggedInAgent.node_id,
         discord_channel_id: loggedInAgent.discord_channel_id,
+        avatar_url: this.getAvatarUrl(agent.agent_id, agent.avatar_filename),
       });
 
       return {
@@ -360,6 +377,7 @@ export class WorldEngine {
       map: this.config.map,
       agents: this.state.listLoggedIn().map((agent) => {
         const movementTimer = agent.state === 'moving' ? getMovementTimer(this, agent.agent_id) : null;
+        const registration = this.state.getById(agent.agent_id);
 
         return {
           agent_id: agent.agent_id,
@@ -367,6 +385,7 @@ export class WorldEngine {
           node_id: getAgentCurrentNode(this, agent, now),
           state: agent.state,
           discord_channel_id: agent.discord_channel_id,
+          avatar_url: this.getAvatarUrl(agent.agent_id, registration?.avatar_filename),
           ...(movementTimer
             ? {
                 movement: {
@@ -415,6 +434,36 @@ export class WorldEngine {
     return { cancelledState: state };
   }
 
+  updateAgentAvatar(agentId: string, avatarFilename: string | undefined): AgentRegistration {
+    const registration = this.state.getById(agentId);
+    if (!registration) {
+      throw new WorldError(404, 'not_found', `Agent not found: ${agentId}`);
+    }
+
+    this.persistRegistrations(
+      this.state.list().map((agent) => {
+        if (agent.agent_id !== agentId) {
+          return agent;
+        }
+
+        if (avatarFilename === undefined) {
+          const { avatar_filename: _avatarFilename, ...rest } = agent;
+          return rest;
+        }
+
+        return { ...agent, avatar_filename: avatarFilename };
+      }),
+    );
+
+    if (avatarFilename === undefined) {
+      delete registration.avatar_filename;
+    } else {
+      registration.avatar_filename = avatarFilename;
+    }
+
+    return registration;
+  }
+
   private resolveSpawnNode(lastNodeId?: NodeId): NodeId {
     if (lastNodeId) {
       try {
@@ -426,6 +475,23 @@ export class WorldEngine {
       }
     }
     return this.config.spawn.nodes[randomInt(this.config.spawn.nodes.length)];
+  }
+
+  private getAvatarUrl(agentId: string, avatarFilename?: string): string | undefined {
+    return avatarFilename ? buildAvatarUrlPath(agentId) : undefined;
+  }
+
+  private deleteAvatarFile(filename: string): void {
+    const avatarDir = join(this.dataDir ?? './data', 'avatars');
+
+    try {
+      unlinkSync(resolveStoredAvatarPath(avatarDir, filename));
+    } catch (error) {
+      const err = error as NodeJS.ErrnoException;
+      if (err.code !== 'ENOENT') {
+        throw error;
+      }
+    }
   }
 
   private persistRegistrations(agents: AgentRegistration[]): void {

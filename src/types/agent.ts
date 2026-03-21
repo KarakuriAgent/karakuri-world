@@ -8,6 +8,7 @@ export interface AgentRegistration {
   agent_label: string;
   api_key: string;
   discord_bot_id: string;
+  avatar_filename?: string;
   created_at: number;
   discord_channel_id?: string;
   last_node_id?: NodeId;

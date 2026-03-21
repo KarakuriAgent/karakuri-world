@@ -33,6 +33,7 @@ export interface AgentLoggedInEvent extends EventBase {
   agent_name: string;
   node_id: NodeId;
   discord_channel_id: string;
+  avatar_url?: string;
 }
 
 export interface AgentLoggedOutEvent extends EventBase {

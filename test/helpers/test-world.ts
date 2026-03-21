@@ -5,6 +5,7 @@ import { MockDiscordBot } from './mock-discord.js';
 
 export function createTestWorld(options?: {
   config?: Partial<ServerConfig>;
+  dataDir?: string;
   engineOptions?: WorldEngineOptions;
 }): {
   config: ServerConfig;
@@ -13,7 +14,13 @@ export function createTestWorld(options?: {
 } {
   const config = createTestConfig(options?.config);
   const discordBot = new MockDiscordBot();
-  const engine = new WorldEngine(config, discordBot, options?.engineOptions);
+  const engineOptions: WorldEngineOptions | undefined = options?.engineOptions || options?.dataDir
+    ? {
+        ...options?.engineOptions,
+        ...(options?.dataDir ? { dataDir: options.dataDir } : {}),
+      }
+    : undefined;
+  const engine = new WorldEngine(config, discordBot, engineOptions);
 
   return {
     config,
