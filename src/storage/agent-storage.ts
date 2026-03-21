@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 
 import { z } from 'zod';
 
+import { isSafeAvatarFilename } from '../domain/avatar.js';
 import type { AgentRegistration } from '../types/agent.js';
 import type { NodeId } from '../types/data-model.js';
 
@@ -14,7 +15,7 @@ export interface AgentsFileData {
   agents: AgentRegistration[];
 }
 
-export const CURRENT_VERSION = 2;
+export const CURRENT_VERSION = 3;
 
 const agentRegistrationSchemaV1 = z.object({
   agent_id: z.string().min(1),
@@ -26,14 +27,23 @@ const agentRegistrationSchemaV1 = z.object({
 
 const nodeIdPattern = /^\d+-\d+$/;
 
-const agentRegistrationSchema = agentRegistrationSchemaV1.extend({
+const agentRegistrationSchemaV2 = agentRegistrationSchemaV1.extend({
   agent_label: z.string().min(1).max(100),
   discord_channel_id: z.string().min(1).optional(),
-  last_node_id: z.string().regex(nodeIdPattern).optional().transform((v) => v as NodeId | undefined),
+  last_node_id: z.string().regex(nodeIdPattern).optional().transform((value) => value as NodeId | undefined),
+});
+
+const agentRegistrationSchema = agentRegistrationSchemaV2.extend({
+  avatar_filename: z.string().min(1).refine(isSafeAvatarFilename, 'Invalid avatar filename.').optional(),
+});
+
+const agentsFileSchemaV2 = z.object({
+  version: z.literal(2),
+  agents: z.array(agentRegistrationSchemaV2),
 });
 
 const agentsFileSchema = z.object({
-  version: z.number().int(),
+  version: z.literal(CURRENT_VERSION),
   agents: z.array(agentRegistrationSchema),
 });
 
@@ -70,7 +80,7 @@ function validateAgentsFileData(value: unknown): AgentsFileData {
     const v1 = z.object({ version: z.literal(1), agents: z.array(agentRegistrationSchemaV1) }).parse(value);
     return validateAgentsFileData({
       ...v1,
-      version: CURRENT_VERSION,
+      version: 2,
       agents: v1.agents.map((agent) => ({
         ...agent,
         agent_label: agent.agent_name,
@@ -78,11 +88,19 @@ function validateAgentsFileData(value: unknown): AgentsFileData {
     });
   }
 
-  const parsed = agentsFileSchema.parse(value);
-
-  if (parsed.version !== CURRENT_VERSION) {
-    throw new Error(`Unsupported agents file version: ${parsed.version}`);
+  if (raw.version === 2) {
+    const v2 = agentsFileSchemaV2.parse(value);
+    return validateAgentsFileData({
+      version: CURRENT_VERSION,
+      agents: v2.agents,
+    });
   }
+
+  if (raw.version !== CURRENT_VERSION) {
+    throw new Error(`Unsupported agents file version: ${raw.version}`);
+  }
+
+  const parsed = agentsFileSchema.parse(value);
 
   validateUnique(parsed.agents, 'agent_id', (agent) => agent.agent_id);
   validateUnique(parsed.agents, 'agent_name', (agent) => agent.agent_name);

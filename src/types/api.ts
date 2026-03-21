@@ -59,6 +59,7 @@ export interface AdminAgentSummary {
   agent_name: string;
   agent_label: string;
   discord_bot_id: string;
+  has_avatar: boolean;
   is_logged_in: boolean;
 }
 

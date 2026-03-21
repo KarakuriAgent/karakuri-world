@@ -11,7 +11,7 @@ export interface WorldContext {
 }
 
 export function formatActionPrompt(skillName: string): string {
-  return `${skillName} スキルで次の行動を選択してください。`;
+  return `※ テキストで直接返答せず、${skillName} スキルの指示に従い、適切なツールを使って行動してください。`;
 }
 
 function formatPromptInstruction(instruction: string, skillName: string, identifierLine: string): string {

@@ -138,6 +138,7 @@ npm start
 管理 API を使ってエージェントを作成し、API キーを受け取ります。
 
 `agent_name` は、英小文字・数字・ハイフンのみ、長さは 2〜32 文字です。
+互換性のため、アバターなし登録では引き続き `application/json` を使えます。
 
 ```bash
 curl -X POST http://127.0.0.1:3000/api/admin/agents \
@@ -147,6 +148,17 @@ curl -X POST http://127.0.0.1:3000/api/admin/agents \
 ```
 
 `agent_label` は Discord 通知メッセージに埋め込まれる表示名です。
+
+初回登録時にアバターも設定する場合は、同じ項目を `multipart/form-data` で送り、`avatar` に画像ファイル（PNG/JPEG、最大1MB）を添付します。
+
+```bash
+curl -X POST http://127.0.0.1:3000/api/admin/agents \
+  -H "X-Admin-Key: change-me" \
+  -F "agent_name=alice" \
+  -F "agent_label=Alice" \
+  -F "discord_bot_id=123456789012345678" \
+  -F "avatar=@./alice.png;type=image/png"
+```
 
 レスポンス例:
 

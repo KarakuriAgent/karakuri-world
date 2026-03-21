@@ -78,6 +78,7 @@ describe('REST API', () => {
         agent_name: 'alice',
         agent_label: 'alice',
         discord_bot_id: 'discord-alice',
+        has_avatar: false,
         is_logged_in: false,
       },
     ]);
@@ -100,6 +101,7 @@ describe('REST API', () => {
         agent_name: 'alice',
         agent_label: 'alice',
         discord_bot_id: 'discord-alice',
+        has_avatar: false,
         is_logged_in: true,
       },
     ]);

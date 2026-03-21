@@ -5,39 +5,41 @@
 ### 1.1 ディレクトリ構成
 
 ```
-ui/
+karakuri-world-ui/
 ├── project.godot
 ├── scenes/
 │   ├── main.tscn                # メインシーン
 │   ├── connection_dialog.tscn   # 接続設定ダイアログ
 │   └── components/
-│       ├── map_view.tscn        # マップ描画コンポーネント
 │       ├── agent_sprite.tscn    # エージェントスプライト
 │       ├── speech_bubble.tscn   # 会話吹き出し
-│       ├── agent_list.tscn      # エージェント一覧パネル
-│       └── event_log.tscn       # イベントログパネル
+│       └── event_banner.tscn    # サーバーイベントバナー
 ├── scripts/
 │   ├── main.gd
+│   ├── autoload/
+│   │   └── globals.gd           # 接続設定・テーマ読み込み
 │   ├── connection/
-│   │   ├── ws_client.gd         # WebSocketクライアント
+│   │   ├── ws_client.gd         # WebSocketクライアント + HTTPフォールバック
 │   │   └── reconnect.gd         # 再接続制御
 │   ├── state/
 │   │   ├── world_state.gd       # ワールド状態管理
-│   │   ├── agent_state.gd       # エージェント状態
 │   │   └── event_processor.gd   # イベント→状態変換
 │   ├── view/
 │   │   ├── map_renderer.gd      # マップ描画
 │   │   ├── agent_controller.gd  # エージェント表示・アニメーション
 │   │   ├── conversation_view.gd # 会話表示
 │   │   └── server_event_fx.gd   # サーバーイベント演出
-│   └── theme/
-│       └── theme_manager.gd     # テーマ管理
+│   └── ui/
+│       ├── agent_list.gd        # エージェント一覧パネル
+│       ├── event_log.gd         # イベントログパネル
+│       └── status_bar.gd        # ステータスバー
 ├── themes/
 │   └── default/
 │       ├── theme.json
 │       ├── tiles/
 │       └── sprites/
 └── resources/
+    └── default_theme.tres
 ```
 
 ### 1.2 シーンツリー
@@ -146,6 +148,8 @@ WorldState
 │   ├── agent_name
 │   ├── node_id
 │   ├── state: idle | moving | in_action | in_conversation
+│   ├── avatar_url?: string          # 個別アバター画像URL（nullの場合テーマのデフォルトスプライト）
+│   ├── avatar_texture?: Texture2D   # ダウンロード済みアバターテクスチャ（UIローカル管理）
 │   └── movement?: { from_node_id, to_node_id, path, arrives_at }
 ├── conversations: { ConversationId → ConversationData }
 │   ├── status: pending | active | closing
@@ -172,11 +176,12 @@ WorldState
 処理:
 
 1. マップ（`MapConfig` 全体）・ワールドメタデータを設定
-2. エージェント状態を `AgentSnapshot[]` から構築
-3. 会話状態を `ConversationSnapshot[]` から構築
-4. サーバーイベント状態を `ServerEventSnapshot[]` から構築（エフェクトマッピング用に `event_id` をキャッシュ）
-5. プレゼンテーション層に全再描画を通知
-6. `moving` 状態のエージェントについて、`movement.path` と `movement.arrives_at` から移動アニメーションを再構築（セクション5.4参照）
+2. エージェント状態を `AgentSnapshot[]` から構築（`avatar_url` を含む）
+3. 各エージェントの `avatar_url` が存在する場合、アバター画像を非同期でダウンロード（セクション5.1参照）
+4. 会話状態を `ConversationSnapshot[]` から構築
+5. サーバーイベント状態を `ServerEventSnapshot[]` から構築（エフェクトマッピング用に `event_id` をキャッシュ）
+6. プレゼンテーション層に全再描画を通知（アバターダウンロード完了前はテーマデフォルトで表示し、完了次第差し替え）
+7. `moving` 状態のエージェントについて、`movement.path` と `movement.arrives_at` から移動アニメーションを再構築（セクション5.4参照）
 
 #### 再接続時の表示制約
 
@@ -194,7 +199,7 @@ WorldState
 
 | イベント | 状態更新 |
 |---------|---------|
-| `agent_logged_in` | エージェントを追加（node_id, state: idle） |
+| `agent_logged_in` | エージェントを追加（node_id, state: idle, avatar_url） |
 | `agent_logged_out` | エージェントを削除 |
 | `movement_started` | エージェントのstate → moving、path・arrives_atを設定 |
 | `movement_completed` | エージェントのnode_id更新、state → idle、movement情報クリア |
@@ -282,7 +287,7 @@ GodotのTileMapLayerノードを使用してグリッドを描画する。
 
 ```
 AgentSprite (Node2D)
-├── Sprite2D          # エージェントの画像
+├── Sprite2D          # エージェントの画像（個別アバターまたはテーマデフォルト）
 ├── NameLabel (Label) # エージェント名
 └── StateIcon (Sprite2D) # 状態アイコン（オプション）
 ```
@@ -290,6 +295,21 @@ AgentSprite (Node2D)
 エージェントの位置はノードIDからピクセル座標に変換して配置する（セクション4.1の座標系）。タイルの中央に配置する。
 
 同一ノードに複数のエージェントがいる場合は、オフセットをつけて重なりを回避する。
+
+#### アバター画像の適用
+
+エージェントスプライトの画像は以下の優先順位で決定する:
+
+1. **個別アバター**: `AgentSnapshot.avatar_url` が存在する場合、そのURLから画像をHTTPで取得して `Sprite2D` のテクスチャに設定する
+2. **テーマデフォルト**: `avatar_url` が未設定の場合、テーマの `agent_sprite` 画像を使用する（従来の共通スプライト動作）
+
+アバター画像のロード処理:
+
+1. スナップショット適用時または `agent_logged_in` イベント受信時に `avatar_url` を確認
+2. `avatar_url` がある場合、WebSocket接続先のスキーム・ホスト・ポートと組み合わせて完全なURLを構築（例: `{scheme}://{host}:{port}{avatar_url}`。`scheme` はWebSocket接続が `ws` なら `http`、`wss` なら `https`）
+3. HTTPリクエストで画像をダウンロードし、`ImageTexture` に変換（アバター画像取得APIは認証不要）
+4. ダウンロード済みテクスチャを `AgentData.avatar_texture` にキャッシュし、`Sprite2D` に適用
+5. ダウンロード失敗時はテーマデフォルトにフォールバック
 
 ### 5.2 状態表示
 
@@ -340,8 +360,8 @@ arrives_at: number  # 到着予定時刻（Unix timestamp ms）
 
 | イベント | アニメーション |
 |---------|-------------|
-| `agent_logged_in` | フェードインでスポーン地点に出現 |
-| `agent_logged_out` | フェードアウトで消去 |
+| `agent_logged_in` | フェードインでスポーン地点に出現。`avatar_url` がある場合はアバター画像をダウンロードして適用 |
+| `agent_logged_out` | フェードアウトで消去。キャッシュ済みアバターテクスチャを解放 |
 
 ## 6. 会話表示
 
@@ -404,6 +424,7 @@ arrives_at: number  # 到着予定時刻（Unix timestamp ms）
 
 | 列 | 内容 |
 |----|------|
+| アバター | エージェントのアバター画像サムネイル（未設定の場合はテーマデフォルト） |
 | 名前 | エージェント名 |
 | 状態 | idle / moving / in_action / in_conversation |
 | 位置 | 現在のノードID |
@@ -468,7 +489,7 @@ themes/
     "building_interior": { "atlas_x": 3, "atlas_y": 0 },
     "npc": { "atlas_x": 4, "atlas_y": 0 }
   },
-  "agent_sprite": "sprites/agent.png",
+  "agent_sprite": "sprites/agent.png",  // 個別アバター未設定時のデフォルトスプライト
   "speech_bubble": {
     "max_chars": 50,
     "bg_color": "#FFFFFF",
@@ -488,7 +509,7 @@ UIのテーマ選択ドロップダウンで切り替える。
 
 1. 新しいテーマの `theme.json` を読み込み
 2. TileMapLayerのTileSetを新テーマのタイルシートで再構築
-3. エージェントスプライトを差し替え
+3. 個別アバター未設定のエージェントについて、デフォルトスプライトを新テーマのものに差し替え（個別アバター設定済みのエージェントはそのまま）
 4. エフェクト定義を更新
 5. マップを再描画
 

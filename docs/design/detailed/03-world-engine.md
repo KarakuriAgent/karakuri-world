@@ -195,6 +195,7 @@ interface AgentLoggedInEvent extends EventBase {
   agent_name: string;
   node_id: NodeId;
   discord_channel_id: string;
+  avatar_url?: string; // アバター画像URL（AgentSnapshotと同一形式）
 }
 
 interface AgentLoggedOutEvent extends EventBase {
@@ -534,6 +535,7 @@ interface AgentSnapshot {
   node_id: NodeId;
   state: AgentState;
   discord_channel_id: string;
+  avatar_url?: string; // アバター画像URL（例: "/api/admin/agents/{agent_id}/avatar"）。未設定の場合はテーマのデフォルトスプライトを使用
   movement?: {
     from_node_id: NodeId;
     to_node_id: NodeId;
