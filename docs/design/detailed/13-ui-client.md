@@ -457,7 +457,7 @@ arrives_at: number  # 到着予定時刻（Unix timestamp ms）
 ### 9.1 テーマディレクトリ構成
 
 ```
-themes/
+karakuri-world-ui/themes/
 ├── default/
 │   ├── theme.json
 │   ├── tiles/
@@ -465,14 +465,14 @@ themes/
 │   ├── sprites/
 │   │   └── agent.png       # エージェントスプライト
 │   └── effects/            # エフェクト素材（オプション）
-└── steampunk/
+└── <custom-theme>/         # 追加テーマは任意
     ├── theme.json
     ├── tiles/
     │   └── tileset.png
     ├── sprites/
     │   └── agent.png
     └── effects/
-        └── rain.tscn       # パーティクル等
+        └── rain_overlay.tscn  # パーティクル等
 ```
 
 ### 9.2 テーマ定義ファイル
@@ -496,7 +496,7 @@ themes/
     "text_color": "#000000"
   },
   "effects": {
-    "sudden-rain": "effects/rain.tscn"
+    "sudden-rain": "effects/rain_overlay.tscn"
   }
 }
 ```

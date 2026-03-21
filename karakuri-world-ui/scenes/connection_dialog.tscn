@@ -1,0 +1,67 @@
+[gd_scene format=3]
+
+[node name="ConnectionDialog" type="Window"]
+visible = false
+title = "Connect to Karakuri World"
+unresizable = true
+size = Vector2i(460, 0)
+
+[node name="MarginContainer" type="MarginContainer" parent="."]
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer"]
+theme_override_constants/separation = 12
+
+[node name="TitleLabel" type="Label" parent="MarginContainer/VBoxContainer"]
+text = "Server connection"
+
+[node name="FormGrid" type="GridContainer" parent="MarginContainer/VBoxContainer"]
+columns = 2
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 8
+
+[node name="HostLabel" type="Label" parent="MarginContainer/VBoxContainer/FormGrid"]
+text = "Host"
+
+[node name="HostField" type="LineEdit" parent="MarginContainer/VBoxContainer/FormGrid"]
+placeholder_text = "127.0.0.1"
+
+[node name="PortLabel" type="Label" parent="MarginContainer/VBoxContainer/FormGrid"]
+text = "Port"
+
+[node name="PortField" type="LineEdit" parent="MarginContainer/VBoxContainer/FormGrid"]
+placeholder_text = "3000"
+text = "3000"
+
+[node name="SecureLabel" type="Label" parent="MarginContainer/VBoxContainer/FormGrid"]
+text = "TLS"
+
+[node name="SecureCheckBox" type="CheckBox" parent="MarginContainer/VBoxContainer/FormGrid"]
+text = "Use wss / https"
+
+[node name="AdminKeyLabel" type="Label" parent="MarginContainer/VBoxContainer/FormGrid"]
+text = "Admin key"
+
+[node name="AdminKeyField" type="LineEdit" parent="MarginContainer/VBoxContainer/FormGrid"]
+secret = true
+placeholder_text = "Required for /ws and /api/snapshot"
+
+[node name="ThemeLabel" type="Label" parent="MarginContainer/VBoxContainer/FormGrid"]
+text = "Theme"
+
+[node name="ThemeField" type="LineEdit" parent="MarginContainer/VBoxContainer/FormGrid"]
+placeholder_text = "default"
+text = "default"
+
+[node name="ButtonRow" type="HBoxContainer" parent="MarginContainer/VBoxContainer"]
+alignment = 2
+theme_override_constants/separation = 8
+
+[node name="CancelButton" type="Button" parent="MarginContainer/VBoxContainer/ButtonRow"]
+text = "Cancel"
+
+[node name="ConnectButton" type="Button" parent="MarginContainer/VBoxContainer/ButtonRow"]
+text = "Save & Connect"

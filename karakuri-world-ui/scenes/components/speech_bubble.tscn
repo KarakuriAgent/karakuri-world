@@ -1,0 +1,16 @@
+[gd_scene format=3]
+
+[node name="SpeechBubble" type="Node2D"]
+
+[node name="Panel" type="PanelContainer" parent="."]
+position = Vector2(-96, -110)
+custom_minimum_size = Vector2(192, 56)
+
+[node name="MessageMargin" type="MarginContainer" parent="Panel"]
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 6
+
+[node name="MessageLabel" type="Label" parent="Panel/MessageMargin"]
+text = "..."
