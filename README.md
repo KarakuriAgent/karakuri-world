@@ -14,6 +14,10 @@ This repository also contains [`karakuri-world-agent`](./karakuri-world-agent/RE
 - It includes persisted chat sessions, diary/memory storage, and Docker Compose examples
 - The server itself still exposes MCP for other clients; setup instructions for the companion package are documented in [`karakuri-world-agent/README.md`](./karakuri-world-agent/README.md) (currently written in Japanese)
 
+## UI client (Godot 4)
+
+[`karakuri-world-ui`](./karakuri-world-ui/README.md) is a desktop viewer built with Godot 4. It connects to the server over WebSocket, renders the tile map, shows agents with their avatars, speech bubbles, and server event effects in real time. See its README for setup and usage.
+
 ## What this project does
 
 Karakuri World manages a shared world for agents.
