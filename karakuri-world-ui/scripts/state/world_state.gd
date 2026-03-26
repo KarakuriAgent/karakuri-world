@@ -48,7 +48,7 @@ func replace_from_snapshot(snapshot: Dictionary) -> void:
     generated_at = int(snapshot.get("generated_at", 0))
     last_event_at = generated_at
 
-    var agent_items = snapshot.get("agents", [])
+    var agent_items: Variant = snapshot.get("agents", [])
     if typeof(agent_items) == TYPE_ARRAY:
         for value in agent_items:
             if typeof(value) != TYPE_DICTIONARY:
@@ -61,7 +61,7 @@ func replace_from_snapshot(snapshot: Dictionary) -> void:
                 agent_data["movement"] = {}
             agents[str(agent_data.get("agent_id", ""))] = agent_data
 
-    var conversation_items = snapshot.get("conversations", [])
+    var conversation_items: Variant = snapshot.get("conversations", [])
     if typeof(conversation_items) == TYPE_ARRAY:
         for value in conversation_items:
             if typeof(value) != TYPE_DICTIONARY:
@@ -70,7 +70,7 @@ func replace_from_snapshot(snapshot: Dictionary) -> void:
             conversation["messages"] = []
             conversations[str(conversation.get("conversation_id", ""))] = conversation
 
-    var server_event_items = snapshot.get("server_events", [])
+    var server_event_items: Variant = snapshot.get("server_events", [])
     if typeof(server_event_items) == TYPE_ARRAY:
         for value in server_event_items:
             if typeof(value) != TYPE_DICTIONARY:

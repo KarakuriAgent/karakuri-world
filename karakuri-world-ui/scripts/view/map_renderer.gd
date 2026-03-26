@@ -51,10 +51,10 @@ func render_map(map_data: Dictionary) -> void:
         for col in range(cols):
             tile_map.set_cell(Vector2i(col, row), 0, _atlas_for_type("normal"))
 
-    var nodes = map_data.get("nodes", {})
+    var nodes: Variant = map_data.get("nodes", {})
     if typeof(nodes) == TYPE_DICTIONARY:
         for node_id in nodes.keys():
-            var node_config = nodes[node_id]
+            var node_config: Variant = nodes[node_id]
             if typeof(node_config) != TYPE_DICTIONARY:
                 continue
             var node_type := str(node_config.get("type", "normal"))
@@ -62,16 +62,16 @@ func render_map(map_data: Dictionary) -> void:
             if node_config.has("label"):
                 _add_label(str(node_config.get("label", "")), str(node_id), Color(0.96, 0.96, 0.96, 0.92))
 
-    var buildings = map_data.get("buildings", [])
+    var buildings: Variant = map_data.get("buildings", [])
     if typeof(buildings) == TYPE_ARRAY:
         for value in buildings:
             if typeof(value) != TYPE_DICTIONARY:
                 continue
-            var door_nodes = value.get("door_nodes", [])
+            var door_nodes: Variant = value.get("door_nodes", [])
             if typeof(door_nodes) == TYPE_ARRAY and not door_nodes.is_empty():
                 _add_label(str(value.get("name", "Building")), str(door_nodes[0]), Color(0.82, 0.88, 0.98, 0.95))
 
-    var npcs = map_data.get("npcs", [])
+    var npcs: Variant = map_data.get("npcs", [])
     if typeof(npcs) == TYPE_ARRAY:
         for value in npcs:
             if typeof(value) != TYPE_DICTIONARY:
@@ -91,10 +91,10 @@ func _rebuild_tileset() -> void:
     var atlas_source := TileSetAtlasSource.new()
     atlas_source.texture = texture
     atlas_source.texture_region_size = Vector2i(tile_size, tile_size)
-    var mapping = theme_definition.get("tile_mapping", {})
+    var mapping: Variant = theme_definition.get("tile_mapping", {})
     if typeof(mapping) == TYPE_DICTIONARY:
         for node_type in mapping.keys():
-            var tile_info = mapping[node_type]
+            var tile_info: Variant = mapping[node_type]
             if typeof(tile_info) != TYPE_DICTIONARY:
                 continue
             atlas_source.create_tile(Vector2i(int(tile_info.get("atlas_x", 0)), int(tile_info.get("atlas_y", 0))))
@@ -102,9 +102,9 @@ func _rebuild_tileset() -> void:
     tile_map.tile_set = tile_set
 
 func _atlas_for_type(node_type: String) -> Vector2i:
-    var mapping = theme_definition.get("tile_mapping", {})
+    var mapping: Variant = theme_definition.get("tile_mapping", {})
     if typeof(mapping) == TYPE_DICTIONARY and mapping.has(node_type):
-        var tile_info = mapping[node_type]
+        var tile_info: Variant = mapping[node_type]
         if typeof(tile_info) == TYPE_DICTIONARY:
             return Vector2i(int(tile_info.get("atlas_x", 0)), int(tile_info.get("atlas_y", 0)))
     return Vector2i.ZERO

@@ -52,7 +52,7 @@ func _on_agent_avatar_updated(agent_id: String, texture: Texture2D) -> void:
 
 func _on_overlays_cleared() -> void:
     for agent_id in _movement_tweens.keys():
-        var tween = _movement_tweens[agent_id]
+        var tween: Variant = _movement_tweens[agent_id]
         if tween != null:
             tween.kill()
     _movement_tweens.clear()
@@ -102,13 +102,13 @@ func _apply_agent(agent_id: String, agent_node: Node2D, agent_data: Dictionary, 
         agent_node.position = map_renderer.node_id_to_world_position(str(agent_data.get("node_id", ""))) + offset
 
 func _apply_texture(agent_id: String, sprite: Sprite2D, agent_data: Dictionary) -> void:
-    var avatar_texture = agent_data.get("avatar_texture", null)
+    var avatar_texture: Variant = agent_data.get("avatar_texture", null)
     if avatar_texture != null:
         sprite.texture = avatar_texture
         return
 
     sprite.texture = _default_texture
-    var avatar_url = agent_data.get("avatar_url", null)
+    var avatar_url: Variant = agent_data.get("avatar_url", null)
     if avatar_url != null and str(avatar_url) != "":
         _request_avatar(agent_id, str(avatar_url))
 
@@ -155,13 +155,13 @@ func _on_avatar_request_completed(result: int, response_code: int, headers: Pack
 
 func _restore_movement(agent_id: String, agent_node: Node2D, agent_data: Dictionary, offset: Vector2) -> void:
     _stop_movement(agent_id)
-    var movement = agent_data.get("movement", {})
+    var movement: Variant = agent_data.get("movement", {})
     if typeof(movement) != TYPE_DICTIONARY:
         agent_node.position = map_renderer.node_id_to_world_position(str(agent_data.get("node_id", ""))) + offset
         return
 
     var current_node_id := str(agent_data.get("node_id", movement.get("from_node_id", "")))
-    var path = movement.get("path", [])
+    var path: Variant = movement.get("path", [])
     var remaining_nodes := []
     var current_found := current_node_id == str(movement.get("from_node_id", ""))
     if typeof(path) == TYPE_ARRAY:
@@ -180,13 +180,13 @@ func _restore_movement(agent_id: String, agent_node: Node2D, agent_data: Diction
         return
 
     var now_ms := int(Time.get_unix_time_from_system() * 1000.0)
-    var remaining_ms := max(int(movement.get("arrives_at", now_ms)) - now_ms, 0)
+    var remaining_ms: int = max(int(movement.get("arrives_at", now_ms)) - now_ms, 0)
     if remaining_ms <= 0:
         agent_node.position = map_renderer.node_id_to_world_position(str(remaining_nodes[-1])) + offset
         return
 
-    var tween = create_tween()
-    var step_duration := float(remaining_ms) / 1000.0 / max(remaining_nodes.size(), 1)
+    var tween: Variant = create_tween()
+    var step_duration: float = float(remaining_ms) / 1000.0 / float(max(remaining_nodes.size(), 1))
     for node_id in remaining_nodes:
         tween.tween_property(agent_node, "position", map_renderer.node_id_to_world_position(str(node_id)) + offset, step_duration)
     _movement_tweens[agent_id] = tween
@@ -194,7 +194,7 @@ func _restore_movement(agent_id: String, agent_node: Node2D, agent_data: Diction
 func _stop_movement(agent_id: String) -> void:
     if not _movement_tweens.has(agent_id):
         return
-    var tween = _movement_tweens[agent_id]
+    var tween: Variant = _movement_tweens[agent_id]
     if tween != null:
         tween.kill()
     _movement_tweens.erase(agent_id)
@@ -202,16 +202,16 @@ func _stop_movement(agent_id: String) -> void:
 func _remove_agent(agent_id: String) -> void:
     _stop_movement(agent_id)
     if _avatar_requests.has(agent_id):
-        var request = _avatar_requests[agent_id]
+        var request: Variant = _avatar_requests[agent_id]
         if is_instance_valid(request):
             request.queue_free()
         _avatar_requests.erase(agent_id)
-    var agent_node = _agent_nodes[agent_id]
+    var agent_node: Variant = _agent_nodes[agent_id]
     _agent_nodes.erase(agent_id)
     if is_instance_valid(agent_node):
-        var tween = create_tween()
-        tween.tween_property(agent_node, "modulate:a", 0.0, 0.18)
-        tween.tween_callback(agent_node.queue_free)
+        var fade_tween: Variant = create_tween()
+        fade_tween.tween_property(agent_node, "modulate:a", 0.0, 0.18)
+        fade_tween.tween_callback(agent_node.queue_free)
 
 func _build_offsets(sorted_agents: Array) -> Dictionary:
     var grouped: Dictionary = {}
@@ -225,7 +225,7 @@ func _build_offsets(sorted_agents: Array) -> Dictionary:
 
     var offsets: Dictionary = {}
     for node_id in grouped.keys():
-        var agent_ids = grouped[node_id]
+        var agent_ids: Variant = grouped[node_id]
         for index in range(agent_ids.size()):
             offsets[agent_ids[index]] = _offset_for_index(index, agent_ids.size())
     return offsets
@@ -233,16 +233,16 @@ func _build_offsets(sorted_agents: Array) -> Dictionary:
 func _offset_for_index(index: int, total: int) -> Vector2:
     if total <= 1:
         return Vector2.ZERO
-    var radius := max(map_renderer.get_tile_size() * 0.14, 10.0)
+    var radius: float = max(map_renderer.get_tile_size() * 0.14, 10.0)
     var angle := (TAU / total) * index
     return Vector2(cos(angle), sin(angle)) * radius
 
 func _build_state_text(agent_data: Dictionary) -> String:
     var state := str(agent_data.get("state", "idle"))
-    var current_action = agent_data.get("current_action", {})
+    var current_action: Variant = agent_data.get("current_action", {})
     if typeof(current_action) == TYPE_DICTIONARY and current_action.has("action_name") and str(current_action.get("action_name", "")) != "":
         return "%s · %s" % [state, current_action.get("action_name", "")]
-    var selection = agent_data.get("last_selection", {})
+    var selection: Variant = agent_data.get("last_selection", {})
     if typeof(selection) == TYPE_DICTIONARY and selection.has("choice_label"):
         return "%s · %s" % [state, selection.get("choice_label", "")]
     return state
@@ -267,5 +267,5 @@ func _read_header(headers: PackedStringArray, header_name: String) -> String:
 
 func _play_spawn(agent_node: Node2D) -> void:
     agent_node.modulate = Color(1.0, 1.0, 1.0, 0.0)
-    var tween = create_tween()
+    var tween: Variant = create_tween()
     tween.tween_property(agent_node, "modulate:a", 1.0, 0.18)

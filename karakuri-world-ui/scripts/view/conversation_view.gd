@@ -62,7 +62,7 @@ func _refresh(_payload = null) -> void:
     var active_icons: Dictionary = {}
 
     for conversation_id in world_state.conversations.keys():
-        var conversation = world_state.conversations[conversation_id]
+        var conversation: Variant = world_state.conversations[conversation_id]
         if typeof(conversation) != TYPE_DICTIONARY:
             continue
 
@@ -122,7 +122,7 @@ func _reposition_overlays() -> void:
     var bubble_stack_counts: Dictionary = {}
     var icon_stack_counts: Dictionary = {}
     for conversation_id in world_state.conversations.keys():
-        var conversation = world_state.conversations[conversation_id]
+        var conversation: Variant = world_state.conversations[conversation_id]
         if typeof(conversation) != TYPE_DICTIONARY:
             continue
 
@@ -153,9 +153,9 @@ func _position_receive_icon(conversation_id: String, agent_id: String, stack_ind
     receive_icon.global_position = agent_controller.get_agent_position(agent_id) + RECEIVE_ICON_BASE_OFFSET + Vector2(0.0, -RECEIVE_ICON_STACK_SPACING * stack_index)
 
 func _speaker_agent_id(conversation: Dictionary) -> String:
-    var messages = conversation.get("messages", [])
+    var messages: Variant = conversation.get("messages", [])
     if typeof(messages) == TYPE_ARRAY and not messages.is_empty():
-        var last_message = messages[messages.size() - 1]
+        var last_message: Variant = messages[messages.size() - 1]
         if typeof(last_message) == TYPE_DICTIONARY:
             return str(last_message.get("speaker_agent_id", conversation.get("initiator_agent_id", "")))
     return str(conversation.get("initiator_agent_id", ""))
@@ -166,11 +166,11 @@ func _receive_icon_agent_id(conversation: Dictionary) -> String:
     return str(conversation.get("target_agent_id", conversation.get("current_speaker_agent_id", "")))
 
 func _message_for_conversation(conversation: Dictionary) -> String:
-    var messages = conversation.get("messages", [])
+    var messages: Variant = conversation.get("messages", [])
     if typeof(messages) != TYPE_ARRAY or messages.is_empty():
         return ""
 
-    var last_message = messages[messages.size() - 1]
+    var last_message: Variant = messages[messages.size() - 1]
     if typeof(last_message) != TYPE_DICTIONARY:
         return ""
     return str(last_message.get("text", ""))
@@ -184,7 +184,7 @@ func _truncate_text(text: String, max_chars: int) -> String:
 
 func _load_bubble_style() -> Dictionary:
     var theme_definition := Globals.load_theme_definition(world_state.active_theme)
-    var speech_bubble = theme_definition.get("speech_bubble", {})
+    var speech_bubble: Variant = theme_definition.get("speech_bubble", {})
     return {
         "max_chars": max(int(speech_bubble.get("max_chars", 80)), 8),
         "bg_color": _color_from_value(speech_bubble.get("bg_color", "#F5F3E8"), Color(0.96, 0.95, 0.91)),

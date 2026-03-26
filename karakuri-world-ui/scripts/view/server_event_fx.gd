@@ -70,7 +70,7 @@ func _show_banner(event: Dictionary) -> void:
     banner_stack.add_child(banner)
     banner.modulate = Color(1.0, 1.0, 1.0, 0.0)
 
-    var tween = create_tween()
+    var tween: Variant = create_tween()
     tween.tween_property(banner, "modulate:a", 1.0, 0.12)
     tween.tween_interval(BANNER_DISPLAY_SECONDS)
     tween.tween_property(banner, "modulate:a", 0.0, 0.4)
@@ -83,7 +83,7 @@ func _show_selection(event: Dictionary) -> void:
     chip.position = _selection_position(str(event.get("agent_id", "")), chip, 0)
 
     chip.modulate = Color(1.0, 1.0, 1.0, 0.0)
-    var tween = create_tween()
+    var tween: Variant = create_tween()
     tween.tween_property(chip, "modulate:a", 1.0, 0.12)
     tween.tween_interval(SELECTION_DISPLAY_SECONDS)
     tween.tween_property(chip, "modulate:a", 0.0, 0.35)
@@ -121,7 +121,7 @@ func _play_theme_effect(event_id_ref: String) -> void:
         return
 
     var theme_definition := Globals.load_theme_definition(world_state.active_theme)
-    var effects = theme_definition.get("effects", {})
+    var effects: Variant = theme_definition.get("effects", {})
     if typeof(effects) != TYPE_DICTIONARY or not effects.has(event_id_ref):
         return
 
@@ -138,7 +138,7 @@ func _play_theme_effect(event_id_ref: String) -> void:
         effect_control.anchor_right = 1.0
         effect_control.anchor_bottom = 1.0
 
-    var cleanup_tween = create_tween()
+    var cleanup_tween: Variant = create_tween()
     cleanup_tween.tween_interval(BANNER_DISPLAY_SECONDS + 0.5)
     cleanup_tween.tween_callback(_queue_free_if_valid.bind(effect_instance))
 

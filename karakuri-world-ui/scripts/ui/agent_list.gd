@@ -40,7 +40,7 @@ func _refresh(_arg = null, _arg2 = null) -> void:
             str(agent_data.get("state", "idle")),
             str(agent_data.get("node_id", "?")),
         ]
-        var icon = agent_data.get("avatar_texture", null)
+        var icon: Variant = agent_data.get("avatar_texture", null)
         if icon == null:
             icon = default_icon
         if icon == null:
@@ -51,7 +51,7 @@ func _refresh(_arg = null, _arg2 = null) -> void:
         agent_items.set_item_metadata(index, str(agent_data.get("agent_id", "")))
 
 func _on_item_selected(index: int) -> void:
-    var metadata = agent_items.get_item_metadata(index)
+    var metadata: Variant = agent_items.get_item_metadata(index)
     if metadata == null:
         return
     agent_selected.emit(str(metadata))
