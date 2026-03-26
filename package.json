@@ -14,7 +14,11 @@
     "start": "node --env-file=.env dist/src/index.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "docker:prepare": "node scripts/prepare-docker-build.mjs",
+    "docker:up": "npm run docker:prepare && docker compose up --build -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.8",
