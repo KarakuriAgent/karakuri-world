@@ -1,0 +1,11 @@
+node_modules
+dist
+coverage
+data
+config
+.env
+*.env
+karakuri-world-agent
+karakuri-world-ui
+!.docker-build/
+!.docker-build/**

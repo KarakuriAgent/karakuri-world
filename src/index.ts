@@ -136,7 +136,12 @@ export async function main(): Promise<void> {
 
   const shutdown = async (signal: string) => {
     console.log(`${signal} received, shutting down...`);
-    await runtime.stop();
+    try {
+      await runtime.stop();
+    } catch (error) {
+      console.error('Error during shutdown:', error);
+      process.exit(1);
+    }
     process.exit(0);
   };
 
@@ -153,5 +158,8 @@ export async function main(): Promise<void> {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  void main();
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
 }

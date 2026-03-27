@@ -1,0 +1,21 @@
+services:
+  world:
+    build: .
+    restart: unless-stopped
+    environment:
+      # Required — docker compose up will fail if these are not set in .env
+      ADMIN_KEY: ${ADMIN_KEY:?ADMIN_KEY must be set in .env}
+      DISCORD_TOKEN: ${DISCORD_TOKEN:?DISCORD_TOKEN must be set in .env}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:?DISCORD_GUILD_ID must be set in .env}
+      PORT: ${PORT:-3000}
+      # CONFIG_PATH is constructed from CONFIG_FILE for the container-internal path
+      CONFIG_PATH: /app/config/${CONFIG_FILE:-example.yaml}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      # Container-internal path (host path is set via volumes below)
+      DATA_DIR: /app/data
+      TZ: ${TZ:-Asia/Tokyo}
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    volumes:
+      - ${CONFIG_DIR:-./config}:/app/config
+      - ${DATA_DIR:-./data}:/app/data
