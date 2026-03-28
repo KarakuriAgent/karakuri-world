@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   formatActionCompletedMessage,
+  formatAvailableActionsInfoMessage,
   formatAgentLoggedInMessage,
   formatAgentLoggedOutMessage,
   formatConversationClosingPromptMessage,
@@ -12,10 +13,13 @@ import {
   formatConversationReplyPromptMessage,
   formatConversationServerEventClosingPromptMessage,
   formatIdleReminderMessage,
+  formatMapInfoMessage,
   formatMovementCompletedMessage,
+  formatPerceptionInfoMessage,
   formatServerEventMessage,
   formatServerEventSelectedMessage,
   formatWaitCompletedMessage,
+  formatWorldAgentsInfoMessage,
   formatWorldLogConversationMessage,
   formatWorldLogLoggedOut,
   type WorldContext,
@@ -35,17 +39,18 @@ function expectWorldContextHeader(message: string): void {
 describe('discord notifications', () => {
   it('includes world context in actionable agent notifications', () => {
     const skillName = 'karakuri-world';
+    const choicesText = '選択肢:\n- move: ノードIDを指定して移動する';
     const messages = [
-      formatAgentLoggedInMessage(worldContext, '現在地: 2-2', skillName),
-      formatMovementCompletedMessage(worldContext, '2-3', '広場', '現在地: 2-3', skillName),
-      formatActionCompletedMessage(worldContext, '調べる', '古い歯車を見つけました。', '現在地: 2-2', skillName),
-      formatWaitCompletedMessage(worldContext, 1000, '現在地: 2-2', skillName),
-      formatConversationRequestedMessage(worldContext, 'Bob', 'こんにちは。', 'conversation-1', skillName),
-      formatConversationRejectedMessage(worldContext, 'Bob', 'rejected', '現在地: 2-2', skillName),
-      formatConversationReplyPromptMessage(worldContext, 'Bob', 'こんにちは。', 'conversation-1', skillName),
-      formatConversationClosingPromptMessage(worldContext, 'Bob', 'またね。', 'conversation-1', skillName),
-      formatConversationEndedMessage(worldContext, 'max_turns', '現在地: 2-2', skillName),
-      formatConversationForcedEndedMessage(worldContext, 'Bob', '現在地: 2-2', skillName),
+      formatAgentLoggedInMessage(worldContext, '現在地: 2-2', skillName, choicesText),
+      formatMovementCompletedMessage(worldContext, '2-3', '広場', '現在地: 2-3', skillName, choicesText),
+      formatActionCompletedMessage(worldContext, '調べる', '古い歯車を見つけました。', '現在地: 2-2', skillName, choicesText),
+      formatWaitCompletedMessage(worldContext, 1000, '現在地: 2-2', skillName, choicesText),
+      formatConversationRequestedMessage(worldContext, 'Bob', 'こんにちは。', skillName),
+      formatConversationRejectedMessage(worldContext, 'Bob', 'rejected', '現在地: 2-2', skillName, choicesText),
+      formatConversationReplyPromptMessage(worldContext, 'Bob', 'こんにちは。', skillName),
+      formatConversationClosingPromptMessage(worldContext, 'Bob', 'またね。', skillName),
+      formatConversationEndedMessage(worldContext, 'max_turns', '現在地: 2-2', skillName, choicesText),
+      formatConversationForcedEndedMessage(worldContext, 'Bob', '現在地: 2-2', skillName, choicesText),
       formatServerEventMessage(
         worldContext,
         '不思議な装置',
@@ -60,9 +65,13 @@ describe('discord notifications', () => {
         'server-event-1',
         skillName,
       ),
-      formatServerEventSelectedMessage(worldContext, '不思議な装置', '調べる', '現在地: 2-2', skillName),
-      formatIdleReminderMessage(worldContext, 60000, '現在地: 2-2', skillName),
-      formatConversationServerEventClosingPromptMessage(worldContext, '不思議な装置', 'conversation-1', skillName),
+      formatServerEventSelectedMessage(worldContext, '不思議な装置', '調べる', '現在地: 2-2', skillName, choicesText),
+      formatIdleReminderMessage(worldContext, 60000, '現在地: 2-2', skillName, choicesText),
+      formatConversationServerEventClosingPromptMessage(worldContext, '不思議な装置', skillName),
+      formatMapInfoMessage(worldContext, 'マップ: 3行 × 5列', skillName, choicesText),
+      formatWorldAgentsInfoMessage(worldContext, '- Alice (agent-1) - 位置: 2-2 - 状態: idle', skillName, choicesText),
+      formatPerceptionInfoMessage(worldContext, '現在地: 2-2', skillName, choicesText),
+      formatAvailableActionsInfoMessage(worldContext, '実行可能なアクション:\n- 調べる', skillName, choicesText),
     ];
 
     for (const message of messages) {
@@ -77,11 +86,13 @@ describe('discord notifications', () => {
       '古い歯車を見つけました。',
       '現在地: 2-2',
       'karakuri-world',
+      '選択肢:\n- move: ノードIDを指定して移動する',
     );
 
     expectWorldContextHeader(message);
     expect(message).toContain('「調べる」が完了しました。');
     expect(message).toContain('古い歯車を見つけました。');
+    expect(message).toContain('選択肢:');
     expect(message).toContain('karakuri-world スキルで次の行動を選択してください。');
   });
 
@@ -101,39 +112,42 @@ describe('discord notifications', () => {
     expect(formatWorldLogLoggedOut('Alice', 'in_conversation')).toBe('Alice が会話を終了し、ログアウトしました');
   });
 
-  it('formats conversation prompts with the action prompt', () => {
+  it('formats conversation prompts with choices', () => {
     const skillName = 'karakuri-world';
-    const conversation = formatConversationRequestedMessage(worldContext, 'Alice', 'こんにちは。', 'conversation-1', skillName);
-    const reply = formatConversationReplyPromptMessage(worldContext, 'Alice', 'こんにちは。', 'conversation-1', skillName);
-    const closing = formatConversationClosingPromptMessage(worldContext, 'Alice', 'またね。', 'conversation-1', skillName);
+    const conversation = formatConversationRequestedMessage(worldContext, 'Alice', 'こんにちは。', skillName);
+    const reply = formatConversationReplyPromptMessage(worldContext, 'Alice', 'こんにちは。', skillName);
+    const closing = formatConversationClosingPromptMessage(worldContext, 'Alice', 'またね。', skillName);
     const serverEventClosing = formatConversationServerEventClosingPromptMessage(
       worldContext,
       '不思議な装置',
-      'conversation-1',
       skillName,
     );
 
     expectWorldContextHeader(conversation);
     expect(conversation).toContain('Alice が話しかけています。');
-    expect(conversation).toContain('conversation_id: conversation-1');
+    expect(conversation).toContain('選択肢:');
+    expect(conversation).toContain('conversation_accept');
+    expect(conversation).toContain('conversation_reject');
     expect(conversation).toContain('karakuri-world スキルで次の行動を選択してください。');
 
     expectWorldContextHeader(reply);
     expect(reply).toContain('Alice: 「こんにちは。」');
-    expect(reply).toContain('返答してください。');
-    expect(reply).toContain('conversation_id: conversation-1');
+    expect(reply).toContain('選択肢:');
+    expect(reply).toContain('conversation_speak');
+    expect(reply).toContain('end_conversation');
     expect(reply).toContain('karakuri-world スキルで次の行動を選択してください。');
 
     expectWorldContextHeader(closing);
     expect(closing).toContain('Alice: 「またね。」');
-    expect(closing).toContain('これが最後のメッセージです。お別れのメッセージを送ってください。');
-    expect(closing).toContain('conversation_id: conversation-1');
+    expect(closing).toContain('これが最後のメッセージです。');
+    expect(closing).toContain('選択肢:');
+    expect(closing).toContain('conversation_speak');
     expect(closing).toContain('karakuri-world スキルで次の行動を選択してください。');
 
     expectWorldContextHeader(serverEventClosing);
     expect(serverEventClosing).toContain('サーバーイベント「不思議な装置」の選択により会話を終了します。');
-    expect(serverEventClosing).toContain('お別れのメッセージを送ってください。');
-    expect(serverEventClosing).toContain('conversation_id: conversation-1');
+    expect(serverEventClosing).toContain('選択肢:');
+    expect(serverEventClosing).toContain('conversation_speak');
     expect(serverEventClosing).toContain('karakuri-world スキルで次の行動を選択してください。');
   });
 

@@ -108,22 +108,34 @@ describe('REST API', () => {
       headers: { Authorization: `Bearer ${registered.data.api_key}` },
     });
     expect(perception.response.status).toBe(200);
-    expect(perception.data.current_node.node_id).toBe(joined.data.node_id);
+    expect(perception.data).toEqual({
+      ok: true,
+      message: '正常に受け付けました。結果が通知されるまで待機してください。',
+    });
 
     const map = await requestJson(app, '/api/agents/map', {
       headers: { Authorization: `Bearer ${registered.data.api_key}` },
     });
-    expect(map.data.rows).toBe(3);
+    expect(map.data).toEqual({
+      ok: true,
+      message: '正常に受け付けました。結果が通知されるまで待機してください。',
+    });
 
     const worldAgents = await requestJson(app, '/api/agents/world-agents', {
       headers: { Authorization: `Bearer ${registered.data.api_key}` },
     });
-    expect(worldAgents.data.agents).toHaveLength(1);
+    expect(worldAgents.data).toEqual({
+      ok: true,
+      message: '正常に受け付けました。結果が通知されるまで待機してください。',
+    });
 
     const actions = await requestJson(app, '/api/agents/actions', {
       headers: { Authorization: `Bearer ${registered.data.api_key}` },
     });
-    expect(actions.data.actions).toEqual([]);
+    expect(actions.data).toEqual({
+      ok: true,
+      message: '正常に受け付けました。結果が通知されるまで待機してください。',
+    });
 
     const snapshot = await requestJson(app, '/api/snapshot', {
       headers: { 'X-Admin-Key': ADMIN_KEY },
@@ -260,16 +272,31 @@ describe('REST API', () => {
     const accepted = await requestJson(app, '/api/agents/conversation/accept', {
       method: 'POST',
       headers: { Authorization: `Bearer ${bob.data.api_key}` },
-      body: JSON.stringify({ conversation_id: started.data.conversation_id }),
+      body: JSON.stringify({ message: 'Hi Alice' }),
     });
     expect(accepted.data).toEqual({ status: 'ok' });
 
+    // advance interval timer so Alice gets her turn
+    vi.advanceTimersByTime(500);
+
     const spoke = await requestJson(app, '/api/agents/conversation/speak', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${bob.data.api_key}` },
-      body: JSON.stringify({ conversation_id: started.data.conversation_id, message: 'Hi Alice' }),
+      headers: { Authorization: `Bearer ${alice.data.api_key}` },
+      body: JSON.stringify({ message: 'Thanks Bob' }),
     });
-    expect(spoke.data.turn).toBe(2);
+    expect(spoke.response.status).toBe(200);
+    expect(spoke.data.turn).toBe(3);
+
+    // advance interval timer so Bob gets his turn
+    vi.advanceTimersByTime(500);
+
+    const ended = await requestJson(app, '/api/agents/conversation/end', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${bob.data.api_key}` },
+      body: JSON.stringify({ message: 'Goodbye Alice' }),
+    });
+    expect(ended.response.status).toBe(200);
+    expect(ended.data.turn).toBe(4);
 
     const fired = await requestJson(app, '/api/admin/server-events/sudden-rain/fire', {
       method: 'POST',
@@ -283,5 +310,39 @@ describe('REST API', () => {
       body: JSON.stringify({ server_event_id: fired.data.server_event_id, choice_id: 'take-shelter' }),
     });
     expect(selected.data).toEqual({ status: 'ok' });
+  });
+
+  it('emits info-request events for notification-based read endpoints', async () => {
+    const { engine } = createTestWorld();
+    const { app } = createApp(engine, { adminKey: ADMIN_KEY, configPath: CONFIG_PATH, publicBaseUrl: PUBLIC_BASE_URL });
+    const registered = await registerAgent(app, 'alice');
+    await requestJson(app, '/api/agents/login', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${registered.data.api_key}` },
+    });
+
+    const eventTypes: string[] = [];
+    const unsubscribe = engine.eventBus.onAny((event) => {
+      eventTypes.push(event.type);
+    });
+
+    await requestJson(app, '/api/agents/perception', {
+      headers: { Authorization: `Bearer ${registered.data.api_key}` },
+    });
+    await requestJson(app, '/api/agents/actions', {
+      headers: { Authorization: `Bearer ${registered.data.api_key}` },
+    });
+    await requestJson(app, '/api/agents/map', {
+      headers: { Authorization: `Bearer ${registered.data.api_key}` },
+    });
+    await requestJson(app, '/api/agents/world-agents', {
+      headers: { Authorization: `Bearer ${registered.data.api_key}` },
+    });
+    unsubscribe();
+
+    expect(eventTypes).toContain('perception_requested');
+    expect(eventTypes).toContain('available_actions_requested');
+    expect(eventTypes).toContain('map_info_requested');
+    expect(eventTypes).toContain('world_agents_info_requested');
   });
 });

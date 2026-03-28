@@ -1,8 +1,0 @@
-node_modules
-dist
-coverage
-data
-.env
-.env.compose
-!.docker-build/
-!.docker-build/**

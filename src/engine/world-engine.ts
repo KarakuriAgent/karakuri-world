@@ -8,6 +8,7 @@ import {
 import {
   acceptConversation as acceptConversationRequest,
   cancelPendingConversation,
+  endConversationByAgent,
   forceEndConversation,
   handleAcceptTimeout,
   handleConversationInterval,
@@ -34,7 +35,7 @@ import type {
   AdminAgentSummary,
   AvailableActionsResponse,
   ConversationAcceptRequest,
-  ConversationRejectRequest,
+  ConversationEndRequest,
   ConversationSpeakRequest,
   ConversationSpeakResponse,
   ConversationStartRequest,
@@ -312,12 +313,16 @@ export class WorldEngine {
     return acceptConversationRequest(this, _agentId, _request);
   }
 
-  rejectConversation(_agentId: string, _request: ConversationRejectRequest): OkResponse {
-    return rejectConversationRequest(this, _agentId, _request);
+  rejectConversation(_agentId: string): OkResponse {
+    return rejectConversationRequest(this, _agentId);
   }
 
   speak(_agentId: string, _request: ConversationSpeakRequest): ConversationSpeakResponse {
     return speakInConversation(this, _agentId, _request);
+  }
+
+  endConversation(_agentId: string, _request: ConversationEndRequest): ConversationSpeakResponse {
+    return endConversationByAgent(this, _agentId, _request);
   }
 
   selectServerEvent(_agentId: string, _request: ServerEventSelectRequest): OkResponse {

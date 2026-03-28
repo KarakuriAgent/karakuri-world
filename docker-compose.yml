@@ -15,7 +15,7 @@ services:
       DATA_DIR: /app/data
       TZ: ${TZ:-Asia/Tokyo}
     ports:
-      - "${PORT:-3000}:${PORT:-3000}"
+      - "${BIND_ADDRESS:-127.0.0.1}:${PORT:-3000}:${PORT:-3000}"
     volumes:
       - ${CONFIG_DIR:-./config}:/app/config
       - ${DATA_DIR:-./data}:/app/data

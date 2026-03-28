@@ -54,6 +54,8 @@ describe('DiscordEventHandler', () => {
     });
     expectWorldContextHeader(bot.agentMessages[0].content, 'Clockwork Alice');
     expect(bot.agentMessages[0].content).toContain('世界にログインしました。');
+    expect(bot.agentMessages[0].content).toContain('選択肢:');
+    expect(bot.agentMessages[0].content).toContain('- move: ノードIDを指定して移動する');
     handler.dispose();
   });
 
@@ -78,7 +80,7 @@ describe('DiscordEventHandler', () => {
       message: 'こんにちは。',
     });
     engine.acceptConversation(bob.agent_id, {
-      conversation_id: conversation.conversation_id,
+      message: 'やあ、Alice！',
     });
     bot.agentMessages.length = 0;
     bot.worldLogMessages.length = 0;
@@ -99,6 +101,7 @@ describe('DiscordEventHandler', () => {
     const bobMessage = bot.agentMessages.find((message) => message.channelId === 'channel-Bob');
     expect(bobMessage).toBeDefined();
     expectWorldContextHeader(bobMessage!.content, 'Clockwork Bob');
+    expect(bobMessage!.content).toContain('選択肢:');
 
     handler.dispose();
   });
@@ -119,23 +122,11 @@ describe('DiscordEventHandler', () => {
     bot.agentMessages.length = 0;
     bot.worldLogMessages.length = 0;
 
-    const conversation = engine.startConversation(alice.agent_id, {
+    engine.startConversation(alice.agent_id, {
       target_agent_id: bob.agent_id,
       message: 'こんにちは。',
     });
     engine.acceptConversation(bob.agent_id, {
-      conversation_id: conversation.conversation_id,
-    });
-
-    await vi.waitFor(() => {
-      expect(bot.worldLogMessages).toEqual([
-        'Alice と Bob の会話が始まりました',
-        'Alice: 「こんにちは。」',
-      ]);
-    });
-
-    engine.speak(bob.agent_id, {
-      conversation_id: conversation.conversation_id,
       message: '今日はいい天気ですね。',
     });
 
@@ -157,7 +148,7 @@ describe('DiscordEventHandler', () => {
     const { engine } = createTestWorld({
       config: {
         conversation: {
-          max_turns: 2,
+          max_turns: 3,
           interval_ms: 500,
           accept_timeout_ms: 1000,
           turn_timeout_ms: 1000,
@@ -178,23 +169,11 @@ describe('DiscordEventHandler', () => {
     bot.agentMessages.length = 0;
     bot.worldLogMessages.length = 0;
 
-    const conversation = engine.startConversation(alice.agent_id, {
+    engine.startConversation(alice.agent_id, {
       target_agent_id: bob.agent_id,
       message: 'こんにちは。',
     });
     engine.acceptConversation(bob.agent_id, {
-      conversation_id: conversation.conversation_id,
-    });
-
-    await vi.waitFor(() => {
-      expect(bot.worldLogMessages).toEqual([
-        'Alice と Bob の会話が始まりました',
-        'Alice: 「こんにちは。」',
-      ]);
-    });
-
-    engine.speak(bob.agent_id, {
-      conversation_id: conversation.conversation_id,
       message: '今日はいい天気ですね。',
     });
 
@@ -209,7 +188,6 @@ describe('DiscordEventHandler', () => {
     await vi.advanceTimersByTimeAsync(500);
 
     engine.speak(alice.agent_id, {
-      conversation_id: conversation.conversation_id,
       message: 'それではまた。',
     });
 
@@ -309,6 +287,7 @@ describe('DiscordEventHandler', () => {
     const arrivalMessage = bot.agentMessages.find((message) => message.channelId === 'channel-Alice');
     expect(arrivalMessage).toBeDefined();
     expectWorldContextHeader(arrivalMessage!.content, 'Clockwork Alice');
+    expect(arrivalMessage!.content).toContain('選択肢:');
 
     handler.dispose();
   });
@@ -344,6 +323,45 @@ describe('DiscordEventHandler', () => {
     expect(aliceMessage!.content).toContain('【サーバーイベント】Sudden Rain');
     expect(bobMessage!.content).toContain('【サーバーイベント】Sudden Rain');
     expect(aliceMessage!.content).not.toBe(bobMessage!.content);
+
+    handler.dispose();
+  });
+
+  it('sends notification-based info responses for map, perception, actions, and world agents', async () => {
+    const { engine } = createTestWorld();
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = registerAgent(engine, 'Alice', 'Clockwork Alice');
+    const bob = registerAgent(engine, 'Bob', 'Clockwork Bob');
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.worldLogMessages).toHaveLength(2);
+    });
+    bot.agentMessages.length = 0;
+
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.state.setNode(bob.agent_id, '1-2');
+    engine.emitEvent({ type: 'map_info_requested', agent_id: alice.agent_id });
+    engine.emitEvent({ type: 'world_agents_info_requested', agent_id: alice.agent_id });
+    engine.emitEvent({ type: 'perception_requested', agent_id: alice.agent_id });
+    engine.emitEvent({ type: 'available_actions_requested', agent_id: alice.agent_id });
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(4);
+    });
+
+    expect(bot.agentMessages[0]?.content).toContain('マップ: 3行 × 5列');
+    expect(bot.agentMessages[0]?.content).toContain('選択肢:');
+    expect(bot.agentMessages[1]?.content).toContain(`Bob (${bob.agent_id}) - 位置: 1-2 - 状態: idle`);
+    expect(bot.agentMessages[1]?.content).not.toContain(`Alice (${alice.agent_id})`);
+    expect(bot.agentMessages[1]?.content).toContain('選択肢:');
+    expect(bot.agentMessages[2]?.content).toContain('近くのノード:');
+    expect(bot.agentMessages[2]?.content).toContain('選択肢:');
+    expect(bot.agentMessages[3]?.content).toContain('実行可能なアクション:');
+    expect(bot.agentMessages[3]?.content).toContain('Greet the gatekeeper');
 
     handler.dispose();
   });

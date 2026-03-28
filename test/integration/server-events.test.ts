@@ -35,7 +35,7 @@ describe('server events integration', () => {
       target_agent_id: bob.agent_id,
       message: 'Hello',
     });
-    engine.acceptConversation(bob.agent_id, { conversation_id: started.conversation_id });
+    engine.acceptConversation(bob.agent_id, { message: 'Hi' });
 
     const fired = engine.fireServerEvent('sudden-rain');
     engine.selectServerEvent(bob.agent_id, {

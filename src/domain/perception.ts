@@ -86,7 +86,7 @@ export function buildPerceptionText(data: PerceptionData): string {
 
   return [
     `現在地: ${data.current_node.node_id}${data.current_node.label ? ` (${data.current_node.label})` : ''}`,
-    summarizeList('移動可能ノード', passableNodes ? [passableNodes] : []),
+    summarizeList('近くのノード', passableNodes ? [passableNodes] : []),
     summarizeList(
       '見えているエージェント',
       data.agents.map((agent) => `${agent.agent_name}@${agent.node_id}`),

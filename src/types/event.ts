@@ -19,7 +19,11 @@ export type EventType =
   | 'conversation_ended'
   | 'server_event_fired'
   | 'server_event_selected'
-  | 'idle_reminder_fired';
+  | 'idle_reminder_fired'
+  | 'map_info_requested'
+  | 'world_agents_info_requested'
+  | 'perception_requested'
+  | 'available_actions_requested';
 
 export interface EventBase {
   event_id: string;
@@ -168,6 +172,26 @@ export interface IdleReminderFiredEvent extends EventBase {
   idle_since: number;
 }
 
+export interface MapInfoRequestedEvent extends EventBase {
+  type: 'map_info_requested';
+  agent_id: string;
+}
+
+export interface WorldAgentsInfoRequestedEvent extends EventBase {
+  type: 'world_agents_info_requested';
+  agent_id: string;
+}
+
+export interface PerceptionRequestedEvent extends EventBase {
+  type: 'perception_requested';
+  agent_id: string;
+}
+
+export interface AvailableActionsRequestedEvent extends EventBase {
+  type: 'available_actions_requested';
+  agent_id: string;
+}
+
 export type WorldEvent =
   | AgentLoggedInEvent
   | AgentLoggedOutEvent
@@ -184,4 +208,8 @@ export type WorldEvent =
   | ConversationEndedEvent
   | ServerEventFiredEvent
   | ServerEventSelectedEvent
-  | IdleReminderFiredEvent;
+  | IdleReminderFiredEvent
+  | MapInfoRequestedEvent
+  | WorldAgentsInfoRequestedEvent
+  | PerceptionRequestedEvent
+  | AvailableActionsRequestedEvent;

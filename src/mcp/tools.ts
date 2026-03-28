@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import type { WorldEngine } from '../engine/world-engine.js';
 import type { NodeId } from '../types/data-model.js';
-import { WorldError, toErrorResponse } from '../types/api.js';
+import { createNotificationAcceptedResponse, WorldError, toErrorResponse } from '../types/api.js';
 
 export interface McpToolDefinition {
   name: string;
@@ -64,6 +64,19 @@ function wrapTool<TArguments>(
   };
 }
 
+function emitInfoRequest(
+  engine: WorldEngine,
+  agentId: string,
+  type: 'map_info_requested' | 'world_agents_info_requested' | 'perception_requested' | 'available_actions_requested',
+) {
+  if (!engine.state.getLoggedIn(agentId)) {
+    throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
+  }
+
+  engine.emitEvent({ type, agent_id: agentId });
+  return createNotificationAcceptedResponse();
+}
+
 export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): McpToolDefinition[] {
   return [
     {
@@ -75,7 +88,7 @@ export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): 
     },
     {
       name: 'action',
-      description: 'アクションを実行する。idle状態でのみ実行可能。利用可能なアクションはget_available_actionsで確認できる。',
+      description: 'アクションを実行する。idle状態でのみ実行可能。利用可能なアクションは通知の選択肢で確認できる。',
       inputSchema: z
         .object({
           action_id: z.string().min(1),
@@ -92,16 +105,16 @@ export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): 
     },
     {
       name: 'wait',
-      description: '指定した時間（ミリ秒）だけその場で待機する。idle状態でのみ実行可能。',
+      description: 'その場で待機する。duration は 10分単位の整数（1=10分, 2=20分, ..., 6=60分）。idle状態でのみ実行可能。',
       inputSchema: z
         .object({
-          duration_ms: z.number().int().min(1).max(3600000),
+          duration: z.number().int().min(1).max(6),
         })
         .strict(),
       execute: wrapTool(
         z
           .object({
-            duration_ms: z.number().int().min(1).max(3600000),
+            duration: z.number().int().min(1).max(6),
           })
           .strict(),
         async (arguments_) => engine.executeWait(agentId, arguments_),
@@ -129,16 +142,16 @@ export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): 
     },
     {
       name: 'conversation_accept',
-      description: '会話の着信を受諾する。',
+      description: '会話の着信を受諾して返答する。',
       inputSchema: z
         .object({
-          conversation_id: z.string().min(1),
+          message: z.string().min(1),
         })
         .strict(),
       execute: wrapTool(
         z
           .object({
-            conversation_id: z.string().min(1),
+            message: z.string().min(1),
           })
           .strict(),
         async (arguments_) => engine.acceptConversation(agentId, arguments_),
@@ -147,37 +160,41 @@ export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): 
     {
       name: 'conversation_reject',
       description: '会話の着信を拒否する。',
-      inputSchema: z
-        .object({
-          conversation_id: z.string().min(1),
-        })
-        .strict(),
-      execute: wrapTool(
-        z
-          .object({
-            conversation_id: z.string().min(1),
-          })
-          .strict(),
-        async (arguments_) => engine.rejectConversation(agentId, arguments_),
-      ),
+      inputSchema: emptySchema,
+      execute: wrapTool(emptySchema, async () => engine.rejectConversation(agentId)),
     },
     {
       name: 'conversation_speak',
       description: '会話中に発言する。in_conversation状態で自分のターンのときのみ実行可能。',
       inputSchema: z
         .object({
-          conversation_id: z.string().min(1),
           message: z.string().min(1),
         })
         .strict(),
       execute: wrapTool(
         z
           .object({
-            conversation_id: z.string().min(1),
             message: z.string().min(1),
           })
           .strict(),
         async (arguments_) => engine.speak(agentId, arguments_),
+      ),
+    },
+    {
+      name: 'end_conversation',
+      description: '会話を自発的に終了する。お別れのメッセージを送り、相手の最後の返答を待って会話を終了する。',
+      inputSchema: z
+        .object({
+          message: z.string().min(1),
+        })
+        .strict(),
+      execute: wrapTool(
+        z
+          .object({
+            message: z.string().min(1),
+          })
+          .strict(),
+        async (arguments_) => engine.endConversation(agentId, arguments_),
       ),
     },
     {
@@ -201,27 +218,27 @@ export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): 
     },
     {
       name: 'get_available_actions',
-      description: '現在位置で実行可能なアクションの一覧を取得する。',
+      description: '現在位置で実行可能なアクションを取得する。結果は通知で届く。',
       inputSchema: emptySchema,
-      execute: wrapTool(emptySchema, async () => engine.getAvailableActions(agentId)),
+      execute: wrapTool(emptySchema, async () => emitInfoRequest(engine, agentId, 'available_actions_requested')),
     },
     {
       name: 'get_perception',
-      description: '現在位置の知覚範囲内の情報を取得する。周囲のノード、エージェント、NPC、建物の情報を含む。',
+      description: '周囲の情報を取得する。結果は通知で届く。',
       inputSchema: emptySchema,
-      execute: wrapTool(emptySchema, async () => engine.getPerception(agentId)),
+      execute: wrapTool(emptySchema, async () => emitInfoRequest(engine, agentId, 'perception_requested')),
     },
     {
       name: 'get_map',
-      description: 'マップ全体の構造情報を取得する。ノード構成、建物、NPCの配置を含む。',
+      description: 'マップ全体の情報を取得する。結果は通知で届く。',
       inputSchema: emptySchema,
-      execute: wrapTool(emptySchema, async () => engine.getMap()),
+      execute: wrapTool(emptySchema, async () => emitInfoRequest(engine, agentId, 'map_info_requested')),
     },
     {
       name: 'get_world_agents',
-      description: '世界にログイン中のすべてのエージェントの位置と状態を取得する。',
+      description: '全エージェントの位置と状態を取得する。結果は通知で届く。',
       inputSchema: emptySchema,
-      execute: wrapTool(emptySchema, async () => engine.getWorldAgents()),
+      execute: wrapTool(emptySchema, async () => emitInfoRequest(engine, agentId, 'world_agents_info_requested')),
     },
   ];
 }

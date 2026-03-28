@@ -62,6 +62,7 @@ describe('perception', () => {
     const text = buildPerceptionText(data);
 
     expect(text).toContain('現在地: 2-1');
+    expect(text).toContain('近くのノード:');
     expect(text).toContain('Bob@3-2');
     expect(text).toContain('Gatekeeper@1-2');
     expect(text).toContain('Clockwork Workshop');

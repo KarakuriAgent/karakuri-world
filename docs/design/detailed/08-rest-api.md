@@ -167,7 +167,7 @@ POST /api/agents/wait
 
 ```typescript
 interface WaitRequest {
-  duration_ms: number; // 待機時間（ミリ秒、1以上3600000以下の整数）
+  duration: number; // 待機単位（10分単位の整数、1=10分〜6=60分）
 }
 ```
 
@@ -224,7 +224,7 @@ POST /api/agents/conversation/accept
 
 ```typescript
 interface ConversationAcceptRequest {
-  conversation_id: string;
+  message: string; // 受諾と同時に送る返答メッセージ
 }
 ```
 
@@ -246,13 +246,7 @@ POST /api/agents/conversation/reject
 
 認証: Agent（1.1）。ログイン状態制約: あり。
 
-リクエスト:
-
-```typescript
-interface ConversationRejectRequest {
-  conversation_id: string;
-}
-```
+リクエスト: ボディなし
 
 レスポンス (200 OK):
 
@@ -276,7 +270,6 @@ POST /api/agents/conversation/speak
 
 ```typescript
 interface ConversationSpeakRequest {
-  conversation_id: string;
   message: string;
 }
 ```
@@ -291,7 +284,33 @@ interface ConversationSpeakResponse {
 
 バリデーション・処理フローの詳細は 06-conversation.md セクション4 を参照。
 
-### 4.8 サーバーイベント選択
+### 4.8 会話終了
+
+```
+POST /api/agents/conversation/end
+```
+
+認証: Agent（1.1）。ログイン状態制約: あり。
+
+リクエスト:
+
+```typescript
+interface ConversationEndRequest {
+  message: string; // お別れのメッセージ
+}
+```
+
+レスポンス (200 OK):
+
+```typescript
+interface ConversationSpeakResponse {
+  turn: number; // お別れメッセージのターン番号
+}
+```
+
+バリデーション・処理フローの詳細は 06-conversation.md セクション6 を参照。
+
+### 4.9 サーバーイベント選択
 
 ```
 POST /api/agents/server-event/select
@@ -328,31 +347,18 @@ GET /api/agents/actions
 
 認証: Agent（1.1）。ログイン状態制約: あり。
 
-エージェントの現在位置で実行条件を満たすアクションの一覧を返す。エージェントの状態に関わらず、位置条件のみでフィルタリングする。
+エージェントの現在位置で実行条件を満たすアクション一覧の再取得を受け付ける。レスポンスは即時に受理応答を返し、詳細結果は Discord 通知で配信する。フィルタリング自体はエージェントの状態に関わらず、位置条件のみで行う。
 
 レスポンス (200 OK):
 
 ```typescript
-interface AvailableActionsResponse {
-  actions: AvailableAction[];
-}
-
-interface AvailableAction {
-  action_id: string;
-  name: string;
-  description: string;
-  duration_ms: number;
-  source: ActionSource;
-}
-
-interface ActionSource {
-  type: "building" | "npc";
-  id: string;
-  name: string;
+interface NotificationAcceptedResponse {
+  ok: true;
+  message: string;
 }
 ```
 
-フィルタリングロジックの詳細は 05-actions.md セクション2.1 を参照。
+通知に含まれるアクション一覧の構造とフィルタリングロジックの詳細は 05-actions.md セクション2.1 を参照。
 
 ### 5.2 知覚情報取得
 
@@ -362,50 +368,18 @@ GET /api/agents/perception
 
 認証: Agent（1.1）。ログイン状態制約: あり。
 
-エージェントの現在位置を基準とした知覚範囲内の構造化データを返す。
+エージェントの現在位置を基準とした知覚範囲内情報の再取得を受け付ける。レスポンスは即時に受理応答を返し、知覚テキストと選択肢は Discord 通知で配信する。
 
 レスポンス (200 OK):
 
 ```typescript
-interface PerceptionResponse {
-  current_node: {
-    node_id: NodeId;
-    type: NodeType;
-    label?: string;
-  };
-  nodes: PerceptionNode[]; // 知覚範囲内のノード（現在ノードを除く）
-  agents: PerceptionAgent[];
-  npcs: PerceptionNpc[];
-  buildings: PerceptionBuilding[];
-}
-
-interface PerceptionNode {
-  node_id: NodeId;
-  type: NodeType;
-  label?: string;
-  distance: number; // 現在位置からのマンハッタン距離
-}
-
-interface PerceptionAgent {
-  agent_id: string;
-  agent_name: string;
-  node_id: NodeId;
-}
-
-interface PerceptionNpc {
-  npc_id: string;
-  name: string;
-  node_id: NodeId;
-}
-
-interface PerceptionBuilding {
-  building_id: string;
-  name: string;
-  door_nodes: NodeId[];
+interface NotificationAcceptedResponse {
+  ok: true;
+  message: string;
 }
 ```
 
-知覚範囲の算出方法は 01-data-model.md セクション7.1 を参照。
+知覚範囲の算出方法は 01-data-model.md セクション7.1 を参照。通知テキストの構造は 01-data-model.md セクション7.2 と 07-discord-integration.md を参照。
 
 ### 5.3 マップ全体取得
 
@@ -415,42 +389,14 @@ GET /api/agents/map
 
 認証: Agent（1.1）。ログイン状態制約: あり。
 
-マップ全体の構造化データを返す。
+マップ全体情報の取得依頼を受け付ける。レスポンスは即時に受理応答を返し、マップ要約は Discord 通知で配信する。
 
 レスポンス (200 OK):
 
 ```typescript
-interface MapResponse {
-  rows: number;
-  cols: number;
-  nodes: Record<NodeId, NodeConfig>;
-  buildings: MapBuildingInfo[];
-  npcs: MapNpcInfo[];
-}
-
-interface MapBuildingInfo {
-  building_id: string;
-  name: string;
-  description: string;
-  wall_nodes: NodeId[];
-  interior_nodes: NodeId[];
-  door_nodes: NodeId[];
-  actions: MapActionInfo[];
-}
-
-interface MapNpcInfo {
-  npc_id: string;
-  name: string;
-  description: string;
-  node_id: NodeId;
-  actions: MapActionInfo[];
-}
-
-interface MapActionInfo {
-  action_id: string;
-  name: string;
-  description: string;
-  duration_ms: number;
+interface NotificationAcceptedResponse {
+  ok: true;
+  message: string;
 }
 ```
 
@@ -462,20 +408,14 @@ GET /api/agents/world-agents
 
 認証: Agent（1.1）。ログイン状態制約: あり。
 
-世界にログイン中のすべてのエージェントの位置と状態を返す。
+世界にログイン中のすべてのエージェントの位置と状態の取得依頼を受け付ける。レスポンスは即時に受理応答を返し、一覧は Discord 通知で配信する。
 
 レスポンス (200 OK):
 
 ```typescript
-interface WorldAgentsResponse {
-  agents: WorldAgentInfo[];
-}
-
-interface WorldAgentInfo {
-  agent_id: string;
-  agent_name: string;
-  node_id: NodeId;
-  state: AgentState;
+interface NotificationAcceptedResponse {
+  ok: true;
+  message: string;
 }
 ```
 
@@ -569,6 +509,7 @@ WebSocket接続を確立する。接続確立後、サーバーは `WorldSnapsho
 | POST /api/agents/conversation/accept | 06-conversation.md §2.2 |
 | POST /api/agents/conversation/reject | 06-conversation.md §3.1 |
 | POST /api/agents/conversation/speak | 06-conversation.md §4.2 |
+| POST /api/agents/conversation/end | 06-conversation.md §6.1 |
 | POST /api/agents/server-event/select | 07-server-events.md §4.2 |
 
 ## 9. エンドポイント一覧
@@ -589,6 +530,7 @@ WebSocket接続を確立する。接続確立後、サーバーは `WorldSnapsho
 | POST | /api/agents/conversation/accept | Agent | ✅ | 会話受諾 |
 | POST | /api/agents/conversation/reject | Agent | ✅ | 会話拒否 |
 | POST | /api/agents/conversation/speak | Agent | ✅ | 会話発言 |
+| POST | /api/agents/conversation/end | Agent | ✅ | 会話終了 |
 | POST | /api/agents/server-event/select | Agent | ✅ | サーバーイベント選択 |
 | GET | /api/agents/perception | Agent | ✅ | 知覚情報取得 |
 | GET | /api/agents/map | Agent | ✅ | マップ全体取得 |

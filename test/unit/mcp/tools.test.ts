@@ -33,6 +33,7 @@ describe('MCP tools', () => {
       'conversation_accept',
       'conversation_reject',
       'conversation_speak',
+      'end_conversation',
       'server_event_select',
       'get_available_actions',
       'get_perception',
@@ -66,14 +67,18 @@ describe('MCP tools', () => {
       }),
     );
 
+    let requestedEventType: string | null = null;
+    const unsubscribe = engine.eventBus.onAny((event) => {
+      requestedEventType = event.type;
+    });
     const perception = await getPerception!.execute({});
-    expect(parseToolText(perception)).toEqual(
-      expect.objectContaining({
-        current_node: expect.objectContaining({
-          node_id: loginResponse.node_id,
-        }),
-      }),
-    );
+    unsubscribe();
+
+    expect(parseToolText(perception)).toEqual({
+      ok: true,
+      message: '正常に受け付けました。結果が通知されるまで待機してください。',
+    });
+    expect(requestedEventType).toBe('perception_requested');
   });
 
   it('accepts target_node_id for move and returns movement responses', async () => {

@@ -8,7 +8,7 @@
 |------|------|------------|
 | `movement` | 移動完了 | `MovementConfig.duration_ms` |
 | `action` | アクション完了 | `ActionConfig.duration_ms` |
-| `wait` | 待機完了 | リクエストの `duration_ms` |
+| `wait` | 待機完了 | リクエストの `duration`（`duration × WAIT_UNIT_MS` で変換） |
 | `conversation_accept` | 会話受諾タイムアウト | `ConversationConfig.accept_timeout_ms` |
 | `conversation_turn` | ターン応答タイムアウト | `ConversationConfig.turn_timeout_ms` |
 | `conversation_interval` | ターン間インターバル | `ConversationConfig.interval_ms` |
@@ -30,8 +30,9 @@ type TimerType =
 interface TimerBase {
   timer_id: string;  // サーバーが生成するUUID
   type: TimerType;
-  agent_id: string;  // タイマーの主体となるエージェントのID
-  fires_at: number;  // 発火時刻（Unix timestamp ms）
+  agent_ids: string[];  // タイマーに関連するエージェントのID一覧
+  created_at: number;   // タイマー生成時刻（Unix timestamp ms）
+  fires_at: number;     // 発火時刻（Unix timestamp ms）
 }
 ```
 
@@ -47,7 +48,9 @@ interface MovementTimer extends TimerBase {
 
 interface ActionTimer extends TimerBase {
   type: "action";
+  agent_id: string;
   action_id: string;
+  action_name: string;
 }
 
 interface WaitTimer extends TimerBase {
@@ -65,18 +68,23 @@ interface ConversationAcceptTimer extends TimerBase {
 interface ConversationTurnTimer extends TimerBase {
   type: "conversation_turn";
   conversation_id: string;
+  current_speaker_agent_id: string;
 }
 
 interface ConversationIntervalTimer extends TimerBase {
   type: "conversation_interval";
   conversation_id: string;
-  next_speaker_agent_id: string;
+  speaker_agent_id: string;   // 発言者のID
+  listener_agent_id: string;  // 配信先（聞き手）のID
+  turn: number;
   message: string; // 配信する発言内容
 }
 
 interface ServerEventTimeoutTimer extends TimerBase {
   type: "server_event_timeout";
+  agent_id: string;
   server_event_id: string;
+  event_id: string;
 }
 
 interface IdleReminderTimer extends TimerBase {
@@ -130,10 +138,10 @@ type Timer =
 | `action` | 状態を `idle` に遷移、`action_completed` イベント発行 |
 | `wait` | 状態を `idle` に遷移、`wait_completed` イベント発行 |
 | `conversation_accept` | 受諾待ちを解除、`conversation_rejected` イベント発行（`reason: "timeout"`） |
-| `conversation_turn` | `active` 状態: 会話を終了、両者を `idle` に遷移、`conversation_ended` イベント発行（`reason: "turn_timeout"`）。`closing` 状態: 終了あいさつ未送信として会話を終了、`conversation_ended` イベント発行（`reason` は終了理由に応じて `"max_turns"` または `"server_event"`）。詳細は 06-conversation.md セクション5.2、6.3、7.2 |
-| `conversation_interval` | `active` 状態: 次の発言者にDiscordで発言を配信、`conversation_turn` タイマーを生成。turn が `ConversationConfig.max_turns` に到達した場合は終了あいさつフェーズに移行。`closing` 状態: 終了あいさつを配信し会話を終了。詳細は 06-conversation.md セクション4.4、6.2 |
+| `conversation_turn` | `active` 状態: 会話を終了、両者を `idle` に遷移、`conversation_ended` イベント発行（`reason: "turn_timeout"`）。`closing` 状態: 終了あいさつ未送信として会話を終了、`conversation_ended` イベント発行（`reason` は終了理由に応じて `"max_turns"`、`"server_event"`、または `"ended_by_agent"`）。詳細は 06-conversation.md セクション5.2、6.2、7.3、8.2 |
+| `conversation_interval` | `active` 状態: 次の発言者にDiscordで発言を配信、`conversation_turn` タイマーを生成。turn が `ConversationConfig.max_turns` に到達した場合、または `closing_reason` が `"ended_by_agent"` の場合は終了あいさつフェーズに移行。`closing` 状態: 終了あいさつを配信し会話を終了。詳細は 06-conversation.md セクション4.4、6.2、7.2 |
 | `server_event_timeout` | 詳細は 07-server-events.md で定義 |
-| `idle_reminder` | エージェントがまだidle（`pending_conversation_id` なし）なら、同じ `idle_since` で新しいタイマーを再作成し、`idle_reminder_fired` イベントを発行。Discord通知で経過時間・知覚情報・行動促進テキストを送信 |
+| `idle_reminder` | エージェントがまだidle（`pending_conversation_id` なし）なら、同じ `idle_since` で新しいタイマーを再作成し、`idle_reminder_fired` イベントを発行。Discord通知で経過時間・知覚情報・選択肢付き行動促進テキストを送信 |
 
 ## 2. イベントシステム
 
@@ -153,10 +161,14 @@ type Timer =
 | `conversation_accepted` | 会話受諾 | 受諾API |
 | `conversation_rejected` | 会話拒否またはタイムアウト | 拒否APIまたは `conversation_accept` タイマー発火 |
 | `conversation_message` | 会話発言 | 発言API |
-| `conversation_ended` | 会話終了 | max_turns到達（終了あいさつ後）、ターンタイムアウト、サーバーイベント選択（終了あいさつ後）、相手logout |
+| `conversation_ended` | 会話終了 | max_turns到達（終了あいさつ後）、ターンタイムアウト、サーバーイベント選択（終了あいさつ後）、エージェントによる自発終了（終了あいさつ後）、相手logout |
 | `server_event_fired` | サーバーイベント発生 | 管理者のイベント発火操作 |
 | `server_event_selected` | サーバーイベント選択 | エージェントの選択API |
 | `idle_reminder_fired` | idle状態継続時の再通知 | `idle_reminder` タイマー発火 |
+| `map_info_requested` | マップ情報取得依頼 | `get_map` API/MCP |
+| `world_agents_info_requested` | エージェント一覧取得依頼 | `get_world_agents` API/MCP |
+| `perception_requested` | 知覚情報再取得依頼 | `get_perception` API/MCP |
+| `available_actions_requested` | 利用可能アクション再取得依頼 | `get_available_actions` API/MCP |
 
 ### 2.2 イベントデータ構造
 
@@ -177,7 +189,11 @@ type EventType =
   | "conversation_ended"
   | "server_event_fired"
   | "server_event_selected"
-  | "idle_reminder_fired";
+  | "idle_reminder_fired"
+  | "map_info_requested"
+  | "world_agents_info_requested"
+  | "perception_requested"
+  | "available_actions_requested";
 
 interface EventBase {
   event_id: string;      // サーバーが生成するUUID
@@ -185,6 +201,8 @@ interface EventBase {
   occurred_at: number;   // イベント発生時刻（Unix timestamp ms）
 }
 ```
+
+`map_info_requested` / `world_agents_info_requested` / `perception_requested` / `available_actions_requested` は特定エージェント向けの内部イベントであり、Discord 通知のトリガーにはなるが UI 向け WebSocket 配信には含めない。
 
 各イベントの固有データ:
 
@@ -295,10 +313,10 @@ interface ConversationEndedEvent extends EventBase {
   conversation_id: string;
   initiator_agent_id: string;
   target_agent_id: string;
-  reason: "max_turns" | "turn_timeout" | "server_event" | "partner_logged_out";
-  final_message?: string;           // 終了あいさつの発言内容（max_turns・server_event時）
+  reason: "max_turns" | "turn_timeout" | "server_event" | "ended_by_agent" | "partner_logged_out";
+  final_message?: string;           // 終了あいさつの発言内容（max_turns・server_event・ended_by_agent時）
   final_speaker_agent_id?: string;  // 終了あいさつの発言者
-  // max_turns・server_event の場合、終了あいさつフェーズを経てから発行される（詳細は 06-conversation.md）
+  // max_turns・server_event・ended_by_agent の場合、終了あいさつフェーズを経てから発行される（詳細は 06-conversation.md）
 }
 
 interface ServerEventFiredEvent extends EventBase {
@@ -386,7 +404,7 @@ type WorldEvent =
 | idle再通知 | `idle_reminder` タイマー発火 | #agent-{name} | 経過時間、知覚情報、行動促進 |
 
 - ※4 `reason: "partner_logged_out"` の場合、会話終了通知は送信しない。代わりに `agent_logged_out` をトリガーとする会話強制終了通知が残された側にのみ送信される（10-discord-bot.md セクション6.4 #10参照）
-- ※5 `max_turns` 到達時は最終ターンの聞き手へ、サーバーイベント選択時は選択したエージェントへ送信（06-conversation.md セクション6.2、7.1参照）
+- ※5 `max_turns` 到達時は最終ターンの聞き手へ、サーバーイベント選択時は選択したエージェントへ送信（06-conversation.md セクション7.2、8.1参照）
 
 ### 3.2 知覚情報の含め方
 
@@ -397,7 +415,7 @@ type WorldEvent =
 | 情報 | 内容 |
 |------|------|
 | 現在地 | ノードID、ラベル（ある場合） |
-| 移動可能ノード | 知覚範囲内の passable ノード（現在地を除く）のIDとラベル |
+| 近くのノード | 知覚範囲内の passable ノード（現在地を除く）のIDとラベル |
 | 他エージェント | 知覚範囲内にいる他エージェントの名前と位置 |
 | NPC | 知覚範囲内のNPCの名前と位置 |
 | 建物 | 知覚範囲内の建物名とドア位置 |
