@@ -3,12 +3,12 @@ world:
   description: どこにでもありそうな日本の小さな町。神社や学校、商店街に映画館。穏やかな日常が流れている。
   skill_name: karakuri-world
 movement:
-  duration_ms: 10000
+  duration_ms: 30000
 conversation:
   max_turns: 10
-  interval_ms: 10000
-  accept_timeout_ms: 60000
-  turn_timeout_ms: 60000
+  interval_ms: 300000
+  accept_timeout_ms: 600000
+  turn_timeout_ms: 600000
 perception:
   range: 5
 spawn:
@@ -355,12 +355,12 @@ map:
         - action_id: pray
           name: お参りする
           description: 賽銭を入れて二礼二拍手一礼。
-          duration_ms: 600000
+          duration_ms: 1200000
           result_description: 静かに手を合わせた。清々しい気持ちになった。
         - action_id: draw-omikuji
           name: おみくじを引く
           description: おみくじ箱を振って一本引く。
-          duration_ms: 360000
+          duration_ms: 900000
           result_description: おみくじを引いた。今日の運勢が気になる。
 
     - building_id: building-house-a
@@ -373,7 +373,7 @@ map:
         - action_id: rest-house-a
           name: 休憩する
           description: 居間で少し休む。
-          duration_ms: 600000
+          duration_ms: 1200000
           result_description: 静かな部屋でひと休みした。
 
     - building_id: building-house-b
@@ -386,7 +386,7 @@ map:
         - action_id: rest-house-b
           name: 休憩する
           description: 居間で少し休む。
-          duration_ms: 600000
+          duration_ms: 1200000
           result_description: 静かな部屋でひと休みした。
 
     - building_id: building-school
@@ -417,7 +417,7 @@ map:
         - action_id: rest-house-c
           name: 休憩する
           description: 居間で少し休む。
-          duration_ms: 600000
+          duration_ms: 1200000
           result_description: 静かな部屋でひと休みした。
 
     - building_id: building-bakery
@@ -430,7 +430,7 @@ map:
         - action_id: buy-bread
           name: パンを買う
           description: 焼きたてのパンを選んで買う。
-          duration_ms: 360000
+          duration_ms: 900000
           result_description: 温かいパンを手に入れた。いい香りがする。
 
     - building_id: building-bookstore
@@ -443,7 +443,7 @@ map:
         - action_id: browse-books
           name: 本を探す
           description: 棚を眺めながら気になる本を探す。
-          duration_ms: 600000
+          duration_ms: 1200000
           result_description: 面白そうな本を見つけた。
         - action_id: read-book
           name: 立ち読みする
@@ -479,12 +479,12 @@ map:
         - action_id: buy-onigiri
           name: おにぎりを買う
           description: 棚からおにぎりを選んで買う。
-          duration_ms: 360000
+          duration_ms: 900000
           result_description: おにぎりを買った。小腹が満たされた。
         - action_id: buy-drink
           name: 飲み物を買う
           description: 冷蔵ケースから好きな飲み物を選ぶ。
-          duration_ms: 240000
+          duration_ms: 600000
           result_description: 冷たい飲み物を手に入れた。
 
     - building_id: building-ramen
@@ -510,7 +510,7 @@ map:
         - action_id: buy-flowers
           name: 花を買う
           description: 季節の花束を選んで買う。
-          duration_ms: 360000
+          duration_ms: 900000
           result_description: きれいな花束を手に入れた。
 
     - building_id: building-sento
@@ -523,7 +523,7 @@ map:
         - action_id: take-bath
           name: お風呂に入る
           description: 番台で料金を払い、ゆっくり湯船に浸かる。
-          duration_ms: 2400000
+          duration_ms: 3600000
           result_description: 温かいお湯で体がぽかぽかになった。極楽極楽。
 
     - building_id: building-koban
@@ -536,7 +536,7 @@ map:
         - action_id: check-bulletin
           name: 掲示板を見る
           description: 交番の掲示板に貼られたお知らせを確認する。
-          duration_ms: 240000
+          duration_ms: 600000
           result_description: 町のお知らせや注意喚起を確認した。
 
     - building_id: building-barber
@@ -562,7 +562,7 @@ map:
         - action_id: check-events
           name: 予定表を確認する
           description: 玄関の予定表で今月のイベントを確認する。
-          duration_ms: 240000
+          duration_ms: 600000
           result_description: 今月の町内イベントの予定を確認した。
         - action_id: use-library
           name: 図書室で本を読む
@@ -580,7 +580,7 @@ map:
         - action_id: buy-sake
           name: お酒を買う
           description: 棚から地酒を一本選ぶ。
-          duration_ms: 360000
+          duration_ms: 900000
           result_description: 店主おすすめの地酒を手に入れた。
 
     - building_id: building-house-d
@@ -593,7 +593,7 @@ map:
         - action_id: rest-house-d
           name: 休憩する
           description: 居間で少し休む。
-          duration_ms: 600000
+          duration_ms: 1200000
           result_description: 静かな部屋でひと休みした。
 
     - building_id: building-house-e
@@ -606,7 +606,7 @@ map:
         - action_id: rest-house-e
           name: 休憩する
           description: 居間で少し休む。
-          duration_ms: 600000
+          duration_ms: 1200000
           result_description: 静かな部屋でひと休みした。
 
     - building_id: building-cinema
@@ -624,7 +624,7 @@ map:
         - action_id: buy-popcorn
           name: ポップコーンを買う
           description: 売店でポップコーンとドリンクを買う。
-          duration_ms: 240000
+          duration_ms: 600000
           result_description: 出来たてのポップコーンを手に入れた。バターの香りがたまらない。
 
     - building_id: building-house-f
@@ -637,7 +637,7 @@ map:
         - action_id: rest-house-f
           name: 休憩する
           description: 居間で少し休む。
-          duration_ms: 600000
+          duration_ms: 1200000
           result_description: 静かな部屋でひと休みした。
 
     - building_id: building-house-g
@@ -650,7 +650,7 @@ map:
         - action_id: rest-house-g
           name: 休憩する
           description: 居間で少し休む。
-          duration_ms: 600000
+          duration_ms: 1200000
           result_description: 静かな部屋でひと休みした。
 
     - building_id: building-house-h
@@ -663,7 +663,7 @@ map:
         - action_id: rest-house-h
           name: 休憩する
           description: 居間で少し休む。
-          duration_ms: 600000
+          duration_ms: 1200000
           result_description: 静かな部屋でひと休みした。
 
   # ==========================================
@@ -678,7 +678,7 @@ map:
         - action_id: ask-fortune
           name: 運勢を聞く
           description: 今日の運勢について巫女さんに尋ねる。
-          duration_ms: 600000
+          duration_ms: 1200000
           result_description: 巫女さんが優しく今日の運勢を教えてくれた。
 
     - npc_id: npc-police
@@ -689,7 +689,7 @@ map:
         - action_id: ask-directions
           name: 道を聞く
           description: 町のことについておまわりさんに聞く。
-          duration_ms: 360000
+          duration_ms: 900000
           result_description: おまわりさんが親切に教えてくれた。
 
     - npc_id: npc-cat
@@ -700,7 +700,7 @@ map:
         - action_id: pet-cat
           name: 猫を撫でる
           description: しゃがんで猫の頭を撫でる。
-          duration_ms: 600000
+          duration_ms: 1200000
           result_description: 猫がゴロゴロと喉を鳴らした。癒された。
 
     - npc_id: npc-ojiisan
@@ -722,7 +722,7 @@ map:
         - action_id: ask-recommendation
           name: おすすめの映画を聞く
           description: 今上映中のおすすめ映画をスタッフに聞く。
-          duration_ms: 240000
+          duration_ms: 600000
           result_description: スタッフが目を輝かせながらおすすめの映画を教えてくれた。
 
 idle_reminder:

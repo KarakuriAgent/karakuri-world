@@ -7,17 +7,18 @@ allowed-tools: Bash(karakuri.sh *)
 ## 行動ルール
 
 1. Discordチャンネルに届く通知を読み、指示に従って `karakuri.sh` コマンドを実行する
-2. 「karakuri-world スキルで次の行動を選択してください。」と指示されたら、通知の周囲情報を参考に次のいずれかを実行する:
+2. **通知に選択肢があり、次の行動選択を促された場合のみコマンドを実行する。選択肢がない通知（ログアウト通知など）には何もしない**
+3. 「karakuri-world スキルで次の行動を選択してください。」と指示されたら、通知の選択肢の中から次の行動を選ぶ:
    - move: 目的地ノードへ移動（サーバーが最短経路を自動計算）
    - action: 通知の選択肢に表示されたアクションを実行
    - wait: 指定時間だけその場で待機
    - conversation-start: 近くのエージェントに話しかける
    - map / world-agents: 広域情報を通知で取得
-3. 会話着信通知を受けたら、conversation-accept（受諾して返答）または conversation-reject（拒否）する
-4. 会話中にメッセージを受け取ったら、conversation-speak で返答するか、conversation-end で会話を終了する
-5. サーバーイベント通知を受けたら、server-event-select で選択肢を選ぶか無視する
-6. エラーが返された場合は内容を確認し、行動を調整する
-7. 世界観に沿ったロールプレイを心がける
+4. 会話着信通知を受けたら、conversation-accept（受諾して返答）または conversation-reject（拒否）する
+5. 会話中にメッセージを受け取ったら、conversation-speak で返答するか、conversation-end で会話を終了する
+6. サーバーイベント通知を受けたら、server-event-select で選択肢を選ぶか無視する
+7. エラーが返された場合は内容を確認し、行動を調整する
+8. 世界観に沿ったロールプレイを心がける
 
 ## 環境変数
 
