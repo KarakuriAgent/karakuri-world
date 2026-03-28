@@ -4,7 +4,8 @@ import { WorldError } from '../types/api.js';
 import type { WaitTimer } from '../types/timer.js';
 import { cancelIdleReminder, startIdleReminder } from './idle-reminder.js';
 
-export const MAX_WAIT_DURATION_MS = 3600000;
+export const WAIT_UNIT_MS = 600000;
+export const MAX_WAIT_DURATION = 6;
 
 export function executeWait(engine: WorldEngine, agentId: string, request: WaitRequest): WaitResponse {
   const agent = engine.state.getLoggedIn(agentId);
@@ -16,11 +17,12 @@ export function executeWait(engine: WorldEngine, agentId: string, request: WaitR
     throw new WorldError(409, 'state_conflict', 'Agent cannot wait in the current state.');
   }
 
-  if (!Number.isInteger(request.duration_ms) || request.duration_ms < 1 || request.duration_ms > MAX_WAIT_DURATION_MS) {
-    throw new WorldError(400, 'invalid_request', `duration_ms must be an integer between 1 and ${MAX_WAIT_DURATION_MS}.`);
+  if (!Number.isInteger(request.duration) || request.duration < 1 || request.duration > MAX_WAIT_DURATION) {
+    throw new WorldError(400, 'invalid_request', `duration must be an integer between 1 and ${MAX_WAIT_DURATION}.`);
   }
 
-  const completesAt = Date.now() + request.duration_ms;
+  const durationMs = request.duration * WAIT_UNIT_MS;
+  const completesAt = Date.now() + durationMs;
 
   cancelIdleReminder(engine, agentId);
   engine.timerManager.cancelByType(agentId, 'wait');
@@ -29,7 +31,7 @@ export function executeWait(engine: WorldEngine, agentId: string, request: WaitR
     type: 'wait',
     agent_ids: [agentId],
     agent_id: agentId,
-    duration_ms: request.duration_ms,
+    duration_ms: durationMs,
     fires_at: completesAt,
   });
 
@@ -37,7 +39,7 @@ export function executeWait(engine: WorldEngine, agentId: string, request: WaitR
     type: 'wait_started',
     agent_id: agent.agent_id,
     agent_name: agent.agent_name,
-    duration_ms: request.duration_ms,
+    duration_ms: durationMs,
     completes_at: completesAt,
   });
 

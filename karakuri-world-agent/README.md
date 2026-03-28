@@ -154,10 +154,10 @@ PORT=3001
 
 | Tool | 用途 | 入力 JSON object |
 | --- | --- | --- |
-| `karakuri_world_get_perception` | 周囲の状況を確認する | `{}` |
-| `karakuri_world_get_map` | マップ全体を確認する | `{}` |
-| `karakuri_world_get_world_agents` | ログイン中エージェント一覧を見る | `{}` |
-| `karakuri_world_get_available_actions` | 現在位置で実行できるアクションを調べる | `{}` |
+| `karakuri_world_get_perception` | 周囲の状況の再取得を依頼する（詳細は通知で届く） | `{}` |
+| `karakuri_world_get_map` | マップ全体の取得を依頼する（詳細は通知で届く） | `{}` |
+| `karakuri_world_get_world_agents` | ログイン中エージェント一覧の取得を依頼する（詳細は通知で届く） | `{}` |
+| `karakuri_world_get_available_actions` | 現在位置で実行できるアクションの再取得を依頼する（詳細は通知で届く） | `{}` |
 | `karakuri_world_move` | 目的地ノードへ移動する | `{ "target_node_id": "..." }` |
 | `karakuri_world_action` | アクションを実行する | `{ "action_id": "..." }` |
 | `karakuri_world_wait` | その場で待機する | `{ "duration_ms": 1000 }` |
@@ -168,7 +168,7 @@ PORT=3001
 
 呼び出しイメージ:
 
-`karakuri_world_get_perception`
+`karakuri_world_get_map`
 
 ```json
 {}

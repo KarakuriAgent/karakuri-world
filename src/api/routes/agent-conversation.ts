@@ -12,12 +12,15 @@ const startConversationSchema = z.object({
   message: z.string().min(1),
 });
 
-const conversationIdSchema = z.object({
-  conversation_id: z.string().min(1),
+const acceptSchema = z.object({
+  message: z.string().min(1),
 });
 
 const speakSchema = z.object({
-  conversation_id: z.string().min(1),
+  message: z.string().min(1),
+});
+
+const endSchema = z.object({
   message: z.string().min(1),
 });
 
@@ -37,10 +40,10 @@ export function registerAgentConversationRoutes(app: Hono<ApiEnv>, engine: World
     '/api/agents/conversation/accept',
     agentAuth(engine),
     requireLoggedIn(engine),
-    validateBody(conversationIdSchema),
+    validateBody(acceptSchema),
     (c) => {
       const agentId = c.get('agentId') as string;
-      return c.json(engine.acceptConversation(agentId, c.get('validatedBody') as z.infer<typeof conversationIdSchema>));
+      return c.json(engine.acceptConversation(agentId, c.get('validatedBody') as z.infer<typeof acceptSchema>));
     },
   );
 
@@ -48,10 +51,9 @@ export function registerAgentConversationRoutes(app: Hono<ApiEnv>, engine: World
     '/api/agents/conversation/reject',
     agentAuth(engine),
     requireLoggedIn(engine),
-    validateBody(conversationIdSchema),
     (c) => {
       const agentId = c.get('agentId') as string;
-      return c.json(engine.rejectConversation(agentId, c.get('validatedBody') as z.infer<typeof conversationIdSchema>));
+      return c.json(engine.rejectConversation(agentId));
     },
   );
 
@@ -63,6 +65,17 @@ export function registerAgentConversationRoutes(app: Hono<ApiEnv>, engine: World
     (c) => {
       const agentId = c.get('agentId') as string;
       return c.json(engine.speak(agentId, c.get('validatedBody') as z.infer<typeof speakSchema>));
+    },
+  );
+
+  app.post(
+    '/api/agents/conversation/end',
+    agentAuth(engine),
+    requireLoggedIn(engine),
+    validateBody(endSchema),
+    (c) => {
+      const agentId = c.get('agentId') as string;
+      return c.json(engine.endConversation(agentId, c.get('validatedBody') as z.infer<typeof endSchema>));
     },
   );
 }

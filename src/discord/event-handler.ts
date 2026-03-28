@@ -1,12 +1,17 @@
+import { formatActionSourceLine, getAvailableActionSources } from '../domain/actions.js';
+import { buildChoicesText } from '../domain/choices.js';
 import { findConversationByAgent } from '../domain/conversation.js';
+import { buildMapSummaryText } from '../domain/map-summary.js';
 import { buildPerceptionText } from '../domain/perception.js';
 import type { WorldEngine } from '../engine/world-engine.js';
+import { WorldError } from '../types/api.js';
 import type { NodeId } from '../types/data-model.js';
 import type { WorldEvent } from '../types/event.js';
 import type { ConversationIntervalTimer, IdleReminderTimer } from '../types/timer.js';
 import type { DiscordNotificationAdapter } from './bot.js';
 import {
   formatActionCompletedMessage,
+  formatAvailableActionsInfoMessage,
   formatAgentLoggedInMessage,
   formatAgentLoggedOutMessage,
   formatConversationAcceptedMessage,
@@ -19,10 +24,13 @@ import {
   formatConversationRequestedMessage,
   formatConversationServerEventClosingPromptMessage,
   formatIdleReminderMessage,
+  formatMapInfoMessage,
   formatMovementCompletedMessage,
+  formatPerceptionInfoMessage,
   formatServerEventMessage,
   formatServerEventSelectedMessage,
   formatWaitCompletedMessage,
+  formatWorldAgentsInfoMessage,
   formatWorldLogAction,
   formatWorldLogActionStarted,
   formatWorldLogConversationMessage,
@@ -116,7 +124,6 @@ export class DiscordEventHandler {
           event.target_agent_id,
           this.getAgentName(event.initiator_agent_id),
           event.message,
-          event.conversation_id,
         );
         return;
       case 'conversation_accepted':
@@ -125,7 +132,6 @@ export class DiscordEventHandler {
           this.getAgentName(event.target_agent_id),
           this.getAgentName(event.initiator_agent_id),
           this.getAgentName(event.target_agent_id),
-          event.conversation_id,
         );
         return;
       case 'conversation_rejected':
@@ -155,6 +161,18 @@ export class DiscordEventHandler {
       case 'action_started':
         await this.handleActionStarted(event.agent_name, event.action_name, event.completes_at);
         return;
+      case 'map_info_requested':
+        await this.handleMapInfoRequested(event.agent_id);
+        return;
+      case 'world_agents_info_requested':
+        await this.handleWorldAgentsInfoRequested(event.agent_id);
+        return;
+      case 'perception_requested':
+        await this.handlePerceptionRequested(event.agent_id);
+        return;
+      case 'available_actions_requested':
+        await this.handleAvailableActionsRequested(event.agent_id);
+        return;
     }
   }
 
@@ -169,10 +187,11 @@ export class DiscordEventHandler {
       return;
     }
 
+    const choicesText = this.getChoicesText(timer.agent_id);
     const elapsedMs = Date.now() - timer.idle_since;
     await this.sendToAgent(
       timer.agent_id,
-      formatIdleReminderMessage(this.getWorldContext(timer.agent_id), elapsedMs, perceptionText, this.skillName),
+      formatIdleReminderMessage(this.getWorldContext(timer.agent_id), elapsedMs, perceptionText, this.skillName, choicesText),
     );
   }
 
@@ -182,19 +201,23 @@ export class DiscordEventHandler {
       return;
     }
 
+    const closing = conversation.status === 'closing' || conversation.closing_reason === 'ended_by_agent';
     await this.handleConversationMessage(
       timer.listener_agent_id,
       this.getAgentName(timer.speaker_agent_id),
       timer.message,
-      timer.conversation_id,
-      conversation.status === 'closing',
+      closing,
     );
   }
 
   private async handleAgentLoggedIn(agentId: string, agentName: string, _nodeId: NodeId): Promise<void> {
     const perceptionText = this.getPerceptionText(agentId);
     if (perceptionText) {
-      await this.sendToAgent(agentId, formatAgentLoggedInMessage(this.getWorldContext(agentId), perceptionText, this.skillName));
+      const choicesText = this.getChoicesText(agentId);
+      await this.sendToAgent(
+        agentId,
+        formatAgentLoggedInMessage(this.getWorldContext(agentId), perceptionText, this.skillName, choicesText),
+      );
     }
 
     await this.bot.sendWorldLog(formatWorldLogLoggedIn(agentName));
@@ -211,9 +234,16 @@ export class DiscordEventHandler {
     for (const partnerId of this.consumeForcedConversationPartners(event.agent_id)) {
       const perceptionText = this.getPerceptionText(partnerId);
       if (perceptionText) {
+        const choicesText = this.getChoicesText(partnerId);
         await this.sendToAgent(
           partnerId,
-          formatConversationForcedEndedMessage(this.getWorldContext(partnerId), event.agent_name, perceptionText, this.skillName),
+          formatConversationForcedEndedMessage(
+            this.getWorldContext(partnerId),
+            event.agent_name,
+            perceptionText,
+            this.skillName,
+            choicesText,
+          ),
         );
       }
     }
@@ -230,9 +260,17 @@ export class DiscordEventHandler {
     const perceptionText = this.getPerceptionText(agentId);
     if (perceptionText) {
       const label = this.engine.getMap().nodes[toNodeId]?.label;
+      const choicesText = this.getChoicesText(agentId);
       await this.sendToAgent(
         agentId,
-        formatMovementCompletedMessage(this.getWorldContext(agentId), toNodeId, label, perceptionText, this.skillName),
+        formatMovementCompletedMessage(
+          this.getWorldContext(agentId),
+          toNodeId,
+          label,
+          perceptionText,
+          this.skillName,
+          choicesText,
+        ),
       );
       await this.bot.sendWorldLog(formatWorldLogMovement(agentName, toNodeId, label));
     }
@@ -250,9 +288,17 @@ export class DiscordEventHandler {
   ): Promise<void> {
     const perceptionText = this.getPerceptionText(agentId);
     if (perceptionText) {
+      const choicesText = this.getChoicesText(agentId);
       await this.sendToAgent(
         agentId,
-        formatActionCompletedMessage(this.getWorldContext(agentId), actionName, resultDescription, perceptionText, this.skillName),
+        formatActionCompletedMessage(
+          this.getWorldContext(agentId),
+          actionName,
+          resultDescription,
+          perceptionText,
+          this.skillName,
+          choicesText,
+        ),
       );
     }
 
@@ -266,9 +312,10 @@ export class DiscordEventHandler {
   private async handleWaitCompleted(agentId: string, agentName: string, durationMs: number): Promise<void> {
     const perceptionText = this.getPerceptionText(agentId);
     if (perceptionText) {
+      const choicesText = this.getChoicesText(agentId);
       await this.sendToAgent(
         agentId,
-        formatWaitCompletedMessage(this.getWorldContext(agentId), durationMs, perceptionText, this.skillName),
+        formatWaitCompletedMessage(this.getWorldContext(agentId), durationMs, perceptionText, this.skillName, choicesText),
       );
     }
 
@@ -279,7 +326,6 @@ export class DiscordEventHandler {
     targetAgentId: string,
     initiatorName: string,
     initialMessage: string,
-    conversationId: string,
   ): Promise<void> {
     await this.sendToAgent(
       targetAgentId,
@@ -287,7 +333,6 @@ export class DiscordEventHandler {
         this.getWorldContext(targetAgentId),
         initiatorName,
         initialMessage,
-        conversationId,
         this.skillName,
       ),
     );
@@ -298,17 +343,9 @@ export class DiscordEventHandler {
     targetName: string,
     initiatorName: string,
     logTargetName: string,
-    conversationId: string,
   ): Promise<void> {
-    await this.sendToAgent(initiatorAgentId, formatConversationAcceptedMessage(targetName));
     await this.bot.sendWorldLog(formatWorldLogConversationStarted(initiatorName, logTargetName));
-
-    const conversation = this.engine.state.conversations.get(conversationId);
-    if (conversation) {
-      await this.bot.sendWorldLog(
-        formatWorldLogConversationMessage(initiatorName, conversation.initial_message),
-      );
-    }
+    await this.sendToAgent(initiatorAgentId, formatConversationAcceptedMessage(targetName));
   }
 
   private async handleConversationRejected(
@@ -321,9 +358,17 @@ export class DiscordEventHandler {
       return;
     }
 
+    const choicesText = this.getChoicesText(initiatorAgentId);
     await this.sendToAgent(
       initiatorAgentId,
-      formatConversationRejectedMessage(this.getWorldContext(initiatorAgentId), targetName, reason, perceptionText, this.skillName),
+      formatConversationRejectedMessage(
+        this.getWorldContext(initiatorAgentId),
+        targetName,
+        reason,
+        perceptionText,
+        this.skillName,
+        choicesText,
+      ),
     );
   }
 
@@ -331,7 +376,6 @@ export class DiscordEventHandler {
     listenerAgentId: string,
     speakerName: string,
     message: string,
-    conversationId: string,
     closing: boolean,
   ): Promise<void> {
     const content = closing
@@ -339,14 +383,12 @@ export class DiscordEventHandler {
           this.getWorldContext(listenerAgentId),
           speakerName,
           message,
-          conversationId,
           this.skillName,
         )
       : formatConversationReplyPromptMessage(
           this.getWorldContext(listenerAgentId),
           speakerName,
           message,
-          conversationId,
           this.skillName,
         );
 
@@ -377,9 +419,16 @@ export class DiscordEventHandler {
         continue;
       }
 
+      const choicesText = this.getChoicesText(participantId);
       await this.sendToAgent(
         participantId,
-        formatConversationEndedMessage(this.getWorldContext(participantId), event.reason, perceptionText, this.skillName),
+        formatConversationEndedMessage(
+          this.getWorldContext(participantId),
+          event.reason,
+          perceptionText,
+          this.skillName,
+          choicesText,
+        ),
       );
     }
 
@@ -410,6 +459,7 @@ export class DiscordEventHandler {
     if (event.source_state === 'in_action') {
       const perceptionText = this.getPerceptionText(event.agent_id);
       if (perceptionText) {
+        const choicesText = this.getChoicesText(event.agent_id);
         await this.sendToAgent(
           event.agent_id,
           formatServerEventSelectedMessage(
@@ -418,6 +468,7 @@ export class DiscordEventHandler {
             event.choice_label,
             perceptionText,
             this.skillName,
+            choicesText,
           ),
         );
       }
@@ -432,7 +483,6 @@ export class DiscordEventHandler {
           formatConversationServerEventClosingPromptMessage(
             this.getWorldContext(event.agent_id),
             event.name,
-            conversation.conversation_id,
             this.skillName,
           ),
         );
@@ -447,6 +497,69 @@ export class DiscordEventHandler {
     }
 
     return buildPerceptionText(this.engine.getPerception(agentId));
+  }
+
+  private getChoicesText(agentId: string): string {
+    try {
+      return buildChoicesText(this.engine, agentId);
+    } catch (error) {
+      if (!(error instanceof WorldError)) {
+        console.error(`Failed to build choices text for agent ${agentId}.`, error);
+      }
+      return '';
+    }
+  }
+
+  private async handleMapInfoRequested(agentId: string): Promise<void> {
+    const choicesText = this.getChoicesText(agentId);
+    await this.sendToAgent(
+      agentId,
+      formatMapInfoMessage(this.getWorldContext(agentId), buildMapSummaryText(this.engine.config.map), this.skillName, choicesText),
+    );
+  }
+
+  private async handleWorldAgentsInfoRequested(agentId: string): Promise<void> {
+    const agentsText = (() => {
+      const lines = this.engine
+        .getWorldAgents()
+        .agents
+        .filter((agent) => agent.agent_id !== agentId)
+        .sort((left, right) => left.agent_id.localeCompare(right.agent_id))
+        .map((agent) => `- ${agent.agent_name} (${agent.agent_id}) - 位置: ${agent.node_id} - 状態: ${agent.state}`);
+      return lines.length > 0 ? lines.join('\n') : '他にログイン中のエージェントはいません。';
+    })();
+
+    const choicesText = this.getChoicesText(agentId);
+    await this.sendToAgent(agentId, formatWorldAgentsInfoMessage(this.getWorldContext(agentId), agentsText, this.skillName, choicesText));
+  }
+
+  private async handlePerceptionRequested(agentId: string): Promise<void> {
+    const perceptionText = this.getPerceptionText(agentId);
+    if (!perceptionText) {
+      return;
+    }
+
+    const choicesText = this.getChoicesText(agentId);
+    await this.sendToAgent(
+      agentId,
+      formatPerceptionInfoMessage(this.getWorldContext(agentId), perceptionText, choicesText, this.skillName),
+    );
+  }
+
+  private async handleAvailableActionsRequested(agentId: string): Promise<void> {
+    if (!this.engine.state.getLoggedIn(agentId)) {
+      return;
+    }
+
+    const lines = getAvailableActionSources(this.engine, agentId).map(
+      (source) => `- action: ${formatActionSourceLine(source)}`,
+    );
+    const actionsText = lines.length > 0 ? `実行可能なアクション:\n${lines.join('\n')}` : '実行可能なアクションはありません。';
+    const choicesText = this.getChoicesText(agentId);
+    await this.sendToAgent(
+      agentId,
+      formatAvailableActionsInfoMessage(this.getWorldContext(agentId), actionsText, choicesText, this.skillName),
+    );
   }
 
   private getAgentName(agentId: string): string {

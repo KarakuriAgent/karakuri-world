@@ -6,6 +6,7 @@ export type ConversationClosureReason =
   | 'max_turns'
   | 'turn_timeout'
   | 'server_event'
+  | 'ended_by_agent'
   | 'partner_logged_out';
 
 export interface ConversationData {

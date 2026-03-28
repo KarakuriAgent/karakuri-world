@@ -15,17 +15,18 @@ Usage: karakuri.sh <command> [arguments]
 
 Commands:
   move <target_node_id>                          Move to a target node
-  perception                                     Get perception data
-  actions                                        List available actions
+  perception                                     Request refreshed perception via notification
+  actions                                        Request available actions via notification
   action <action_id>                             Execute an action
   wait <duration_ms>                             Wait for a specified duration
   conversation-start <target_agent_id> <message> Start a conversation
-  conversation-accept <conversation_id>          Accept a conversation
-  conversation-reject <conversation_id>          Reject a conversation
-  conversation-speak <conversation_id> <message> Speak in a conversation
+  conversation-accept <message>                  Accept a conversation and reply
+  conversation-reject                            Reject a conversation
+  conversation-speak <message>                   Speak in a conversation
+  conversation-end <message>                     End a conversation with a farewell message
   server-event-select <server_event_id> <choice_id>  Select a server event choice
-  map                                            Get full map
-  world-agents                                   List all agents
+  map                                            Request the full map via notification
+  world-agents                                   Request all agent states via notification
 EOF
 }
 
@@ -73,6 +74,10 @@ do_get() {
   do_request -H "${AUTH_HEADER}" "${BASE_URL}$1"
 }
 
+do_notification_get() {
+  do_get "$1"
+}
+
 do_post() {
   do_request -X POST -H "${AUTH_HEADER}" -H "Content-Type: application/json" -d "$2" "${BASE_URL}$1"
 }
@@ -86,10 +91,10 @@ case "${command}" in
     do_post "/agents/move" "$(json_obj target_node_id "$1")"
     ;;
   perception)
-    do_get "/agents/perception"
+    do_notification_get "/agents/perception"
     ;;
   actions)
-    do_get "/agents/actions"
+    do_notification_get "/agents/actions"
     ;;
   action)
     [ $# -lt 1 ] && { echo "Usage: karakuri.sh action <action_id>" >&2; exit 1; }
@@ -104,26 +109,29 @@ case "${command}" in
     do_post "/agents/conversation/start" "$(json_obj target_agent_id "$1" message "${*:2}")"
     ;;
   conversation-accept)
-    [ $# -lt 1 ] && { echo "Usage: karakuri.sh conversation-accept <conversation_id>" >&2; exit 1; }
-    do_post "/agents/conversation/accept" "$(json_obj conversation_id "$1")"
+    [ $# -lt 1 ] && { echo "Usage: karakuri.sh conversation-accept <message>" >&2; exit 1; }
+    do_post "/agents/conversation/accept" "$(json_obj message "${*:1}")"
     ;;
   conversation-reject)
-    [ $# -lt 1 ] && { echo "Usage: karakuri.sh conversation-reject <conversation_id>" >&2; exit 1; }
-    do_post "/agents/conversation/reject" "$(json_obj conversation_id "$1")"
+    do_post "/agents/conversation/reject" '{}'
     ;;
   conversation-speak)
-    [ $# -lt 2 ] && { echo "Usage: karakuri.sh conversation-speak <conversation_id> <message>" >&2; exit 1; }
-    do_post "/agents/conversation/speak" "$(json_obj conversation_id "$1" message "${*:2}")"
+    [ $# -lt 1 ] && { echo "Usage: karakuri.sh conversation-speak <message>" >&2; exit 1; }
+    do_post "/agents/conversation/speak" "$(json_obj message "${*:1}")"
+    ;;
+  conversation-end)
+    [ $# -lt 1 ] && { echo "Usage: karakuri.sh conversation-end <message>" >&2; exit 1; }
+    do_post "/agents/conversation/end" "$(json_obj message "${*:1}")"
     ;;
   server-event-select)
     [ $# -lt 2 ] && { echo "Usage: karakuri.sh server-event-select <server_event_id> <choice_id>" >&2; exit 1; }
     do_post "/agents/server-event/select" "$(json_obj server_event_id "$1" choice_id "$2")"
     ;;
   map)
-    do_get "/agents/map"
+    do_notification_get "/agents/map"
     ;;
   world-agents)
-    do_get "/agents/world-agents"
+    do_notification_get "/agents/world-agents"
     ;;
   *)
     echo "Error: Unknown command '${command}'" >&2

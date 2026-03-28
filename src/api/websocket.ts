@@ -21,7 +21,13 @@ export class WebSocketManager {
 
   constructor(private readonly engine: WorldEngine) {
     this.unsubscribe = this.engine.eventBus.onAny((event) => {
-      if (event.type === 'idle_reminder_fired') {
+      if (
+        event.type === 'idle_reminder_fired'
+        || event.type === 'map_info_requested'
+        || event.type === 'world_agents_info_requested'
+        || event.type === 'perception_requested'
+        || event.type === 'available_actions_requested'
+      ) {
         return;
       }
       this.broadcast({ type: 'event', data: event });

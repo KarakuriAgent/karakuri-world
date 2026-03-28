@@ -209,4 +209,58 @@ describe('websocket integration', () => {
       });
     });
   });
+
+  it('does not broadcast internal info-request events', async () => {
+    const { engine } = createTestWorld();
+    const { app, injectWebSocket, websocketManager } = createApp(engine, {
+      adminKey: ADMIN_KEY,
+      configPath: CONFIG_PATH,
+      publicBaseUrl: 'http://localhost:3000',
+    });
+
+    let serverInfo: AddressInfo | undefined;
+    const server = serve({ fetch: app.fetch, port: 0 }, (info) => {
+      serverInfo = info;
+    });
+    injectWebSocket(server);
+
+    if (!serverInfo) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    if (!serverInfo) {
+      throw new Error('Server failed to start.');
+    }
+
+    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+
+    const ws = new WebSocket(`ws://127.0.0.1:${serverInfo.port}/ws`, {
+      headers: { 'X-Admin-Key': ADMIN_KEY },
+    });
+    const messages: any[] = [];
+    ws.on('message', (raw) => {
+      messages.push(JSON.parse(raw.toString()));
+    });
+    await once(ws, 'open');
+    await waitForMessage(messages, (message) => message.type === 'snapshot');
+
+    const initialEventCount = messages.filter((message) => message.type === 'event').length;
+    engine.emitEvent({ type: 'perception_requested', agent_id: alice.agent_id });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(messages.filter((message) => message.type === 'event')).toHaveLength(initialEventCount);
+
+    ws.close();
+    await once(ws, 'close');
+    websocketManager.dispose();
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  });
 });

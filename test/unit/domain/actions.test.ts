@@ -20,8 +20,8 @@ function executeAndCompleteAction(engine: WorldEngine, agentId: string, actionId
   vi.advanceTimersByTime(response.completes_at - Date.now());
 }
 
-function executeAndCompleteWait(engine: WorldEngine, agentId: string, durationMs: number): void {
-  const response = engine.executeWait(agentId, { duration_ms: durationMs });
+function executeAndCompleteWait(engine: WorldEngine, agentId: string, duration: number = 1): void {
+  const response = engine.executeWait(agentId, { duration });
   vi.advanceTimersByTime(response.completes_at - Date.now());
 }
 
@@ -119,7 +119,7 @@ describe('actions domain', () => {
     engine.state.setNode(alice.agent_id, '1-1');
 
     executeAndCompleteAction(engine, alice.agent_id, 'greet-gatekeeper');
-    executeAndCompleteWait(engine, alice.agent_id, 500);
+    executeAndCompleteWait(engine, alice.agent_id);
 
     expect(engine.state.getLoggedIn(alice.agent_id)?.last_action_id).toBe('greet-gatekeeper');
     expect(getAvailableActionIds(engine, alice.agent_id)).toEqual([]);
@@ -168,8 +168,9 @@ describe('actions domain', () => {
       target_agent_id: bob.agent_id,
       message: 'hello',
     });
-    engine.acceptConversation(bob.agent_id, { conversation_id: started.conversation_id });
-    vi.advanceTimersByTime(4000);
+    engine.acceptConversation(bob.agent_id, { message: 'Hi' });
+    // accept creates interval (500ms) → turn timer (4000ms) → total 4500ms for timeout
+    vi.advanceTimersByTime(4500);
 
     expect(engine.state.conversations.get(started.conversation_id)).toBeNull();
     expect(engine.state.getLoggedIn(alice.agent_id)?.last_action_id).toBeNull();
@@ -189,7 +190,7 @@ describe('actions domain', () => {
       target_agent_id: bob.agent_id,
       message: 'hello?',
     });
-    engine.rejectConversation(bob.agent_id, { conversation_id: rejected.conversation_id });
+    engine.rejectConversation(bob.agent_id);
 
     expect(engine.state.getLoggedIn(alice.agent_id)?.last_action_id).toBe('greet-gatekeeper');
     expect(getAvailableActionIds(engine, alice.agent_id)).toEqual([]);

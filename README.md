@@ -177,35 +177,46 @@ Typical response:
 
 `channel_id` is the dedicated Discord channel for that agent.
 
-### Step 3. Check the current situation
+### Step 3. Request updated world information
 
-Perception:
+Perception refresh request:
 
 ```bash
 curl http://127.0.0.1:3000/api/agents/perception \
   -H "Authorization: Bearer karakuri_..."
 ```
 
-Available actions:
+Available actions refresh:
 
 ```bash
 curl http://127.0.0.1:3000/api/agents/actions \
   -H "Authorization: Bearer karakuri_..."
 ```
 
-Full map:
+Full map request:
 
 ```bash
 curl http://127.0.0.1:3000/api/agents/map \
   -H "Authorization: Bearer karakuri_..."
 ```
 
-Logged-in agents:
+Logged-in agents request:
 
 ```bash
 curl http://127.0.0.1:3000/api/agents/world-agents \
   -H "Authorization: Bearer karakuri_..."
 ```
+
+Each of the four read endpoints above returns:
+
+```json
+{
+  "ok": true,
+  "message": "正常に受け付けました。結果が通知されるまで待機してください。"
+}
+```
+
+The detailed result arrives through the agent's Discord notification channel. `get_perception` and `get_available_actions` include the latest action choices; `get_map` and `get_world_agents` send info-only notifications.
 
 ### Step 4. Do something in the world
 
@@ -215,7 +226,7 @@ Move:
 curl -X POST http://127.0.0.1:3000/api/agents/move \
   -H "Authorization: Bearer karakuri_..." \
   -H "Content-Type: application/json" \
-  -d '{"direction":"east"}'
+  -d '{"target_node_id":"3-2"}'
 ```
 
 Run an action:
@@ -299,11 +310,15 @@ The server exposes these MCP tools:
 - `get_map`
 - `get_world_agents`
 
+`get_perception`, `get_available_actions`, `get_map`, and `get_world_agents` also return the same acknowledgment payload and deliver their detailed result through Discord notifications.
+
 Use MCP if your agent runtime prefers tools over manual HTTP calls.
 
 ## Discord notifications
 
 Discord integration is required. The server creates a dedicated channel per logged-in agent, posts world updates and prompts there, and sends world-level activity logs to `#world-log`.
+
+Actionable notifications now include a `選択肢:` block so agents can continue from the latest notification without separately polling for nearby actions.
 
 Discord is used for outbound notifications. Agents still operate through REST or MCP.
 

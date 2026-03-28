@@ -1,5 +1,5 @@
 import type { AgentState } from './agent.js';
-import type { NodeConfig, NodeId, NodeType, ServerConfig } from './data-model.js';
+import type { NodeId, NodeType, ServerConfig } from './data-model.js';
 import type { ConfigValidationIssue } from '../config/validation.js';
 import type { WorldSnapshot } from './snapshot.js';
 
@@ -126,7 +126,7 @@ export interface ActionResponse {
 }
 
 export interface WaitRequest {
-  duration_ms: number;
+  duration: number;
 }
 
 export interface WaitResponse {
@@ -143,20 +143,33 @@ export interface ConversationStartResponse {
 }
 
 export interface ConversationAcceptRequest {
-  conversation_id: string;
-}
-
-export interface ConversationRejectRequest {
-  conversation_id: string;
+  message: string;
 }
 
 export interface ConversationSpeakRequest {
-  conversation_id: string;
+  message: string;
+}
+
+export interface ConversationEndRequest {
   message: string;
 }
 
 export interface OkResponse {
   status: 'ok';
+}
+
+export interface NotificationAcceptedResponse {
+  ok: true;
+  message: string;
+}
+
+export const NOTIFICATION_ACCEPTED_MESSAGE = '正常に受け付けました。結果が通知されるまで待機してください。';
+
+export function createNotificationAcceptedResponse(): NotificationAcceptedResponse {
+  return {
+    ok: true,
+    message: NOTIFICATION_ACCEPTED_MESSAGE,
+  };
 }
 
 export interface ConversationSpeakResponse {
@@ -213,14 +226,6 @@ export interface PerceptionResponse {
     name: string;
     door_nodes: NodeId[];
   }>;
-}
-
-export interface MapResponse {
-  rows: number;
-  cols: number;
-  nodes: Partial<Record<NodeId, NodeConfig>>;
-  buildings: unknown[];
-  npcs: unknown[];
 }
 
 export interface WorldAgentsResponse {

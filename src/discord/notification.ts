@@ -10,8 +10,9 @@ export interface WorldContext {
   agentLabel: string;
 }
 
-export function formatActionPrompt(skillName: string): string {
-  return `${skillName} スキルで次の行動を選択してください。`;
+export function formatActionPrompt(skillName: string, choicesText?: string): string {
+  const prompt = `${skillName} スキルで次の行動を選択してください。`;
+  return choicesText ? `${choicesText}\n\n${prompt}` : prompt;
 }
 
 function formatPromptInstruction(instruction: string, skillName: string, identifierLine: string): string {
@@ -52,6 +53,8 @@ function formatClosureReason(reason: Exclude<ConversationClosureReason, 'partner
       return '応答がタイムアウトしました';
     case 'server_event':
       return 'サーバーイベントにより終了しました';
+    case 'ended_by_agent':
+      return 'エージェントにより終了しました';
   }
 }
 
@@ -67,8 +70,13 @@ export function formatPerceptionMessage(perception: PerceptionResponse): string 
   return buildPerceptionText(perception);
 }
 
-export function formatAgentLoggedInMessage(ctx: WorldContext, perceptionText: string, skillName: string): string {
-  return joinSections(formatWorldContextHeader(ctx), '世界にログインしました。', perceptionText, formatActionPrompt(skillName));
+export function formatAgentLoggedInMessage(
+  ctx: WorldContext,
+  perceptionText: string,
+  skillName: string,
+  choicesText?: string,
+): string {
+  return joinSections(formatWorldContextHeader(ctx), '世界にログインしました。', perceptionText, formatActionPrompt(skillName, choicesText));
 }
 
 export function formatMovementCompletedMessage(
@@ -77,9 +85,10 @@ export function formatMovementCompletedMessage(
   label: string | undefined,
   perceptionText: string,
   skillName: string,
+  choicesText?: string,
 ): string {
   const destination = label ? `${toNodeId} (${label})` : toNodeId;
-  return joinSections(formatWorldContextHeader(ctx), `${destination} に到着しました。`, perceptionText, formatActionPrompt(skillName));
+  return joinSections(formatWorldContextHeader(ctx), `${destination} に到着しました。`, perceptionText, formatActionPrompt(skillName, choicesText));
 }
 
 export function formatActionCompletedMessage(
@@ -88,13 +97,14 @@ export function formatActionCompletedMessage(
   resultDescription: string,
   perceptionText: string,
   skillName: string,
+  choicesText?: string,
 ): string {
   return joinSections(
     formatWorldContextHeader(ctx),
     `「${actionName}」が完了しました。`,
     resultDescription,
     perceptionText,
-    formatActionPrompt(skillName),
+    formatActionPrompt(skillName, choicesText),
   );
 }
 
@@ -103,29 +113,34 @@ export function formatWaitCompletedMessage(
   durationMs: number,
   perceptionText: string,
   skillName: string,
+  choicesText?: string,
 ): string {
   const minutes = Math.floor(durationMs / 60000);
   const durationText = minutes >= 1 ? `${minutes}分間待機しました。` : `${Math.floor(durationMs / 1000)}秒間待機しました。`;
-  return joinSections(formatWorldContextHeader(ctx), durationText, perceptionText, formatActionPrompt(skillName));
+  return joinSections(formatWorldContextHeader(ctx), durationText, perceptionText, formatActionPrompt(skillName, choicesText));
 }
 
 export function formatConversationRequestedMessage(
   ctx: WorldContext,
   initiatorName: string,
   initialMessage: string,
-  conversationId: string,
   skillName: string,
 ): string {
+  const choices = [
+    '選択肢:',
+    '- conversation_accept: 会話を受諾して返答する (message: 発言内容)',
+    '- conversation_reject: 会話を拒否する',
+  ].join('\n');
   return joinSections(
     formatWorldContextHeader(ctx),
     `${initiatorName} が話しかけています。`,
     `「${initialMessage}」`,
-    formatPromptInstruction('会話を受諾するか拒否してください。', skillName, `conversation_id: ${conversationId}`),
+    formatActionPrompt(skillName, choices),
   );
 }
 
 export function formatConversationAcceptedMessage(targetName: string): string {
-  return `${targetName} が会話を受諾しました。相手の応答を待っています。`;
+  return `${targetName} が会話を受諾しました。返答しました。`;
 }
 
 export function formatConversationRejectedMessage(
@@ -134,21 +149,31 @@ export function formatConversationRejectedMessage(
   reason: ConversationRejectionReason,
   perceptionText: string,
   skillName: string,
+  choicesText?: string,
 ): string {
-  return joinSections(formatWorldContextHeader(ctx), formatReasonMessage(targetName, reason), perceptionText, formatActionPrompt(skillName));
+  return joinSections(
+    formatWorldContextHeader(ctx),
+    formatReasonMessage(targetName, reason),
+    perceptionText,
+    formatActionPrompt(skillName, choicesText),
+  );
 }
 
 export function formatConversationReplyPromptMessage(
   ctx: WorldContext,
   speakerName: string,
   message: string,
-  conversationId: string,
   skillName: string,
 ): string {
+  const choices = [
+    '選択肢:',
+    '- conversation_speak: 返答する (message: 発言内容)',
+    '- end_conversation: 会話を終了する (message: お別れのメッセージ)',
+  ].join('\n');
   return joinSections(
     formatWorldContextHeader(ctx),
     `${speakerName}: 「${message}」`,
-    formatPromptInstruction('返答してください。', skillName, `conversation_id: ${conversationId}`),
+    formatActionPrompt(skillName, choices),
   );
 }
 
@@ -156,17 +181,17 @@ export function formatConversationClosingPromptMessage(
   ctx: WorldContext,
   speakerName: string,
   message: string,
-  conversationId: string,
   skillName: string,
 ): string {
+  const choices = [
+    '選択肢:',
+    '- conversation_speak: お別れのメッセージを送る (message: 発言内容)',
+  ].join('\n');
   return joinSections(
     formatWorldContextHeader(ctx),
     `${speakerName}: 「${message}」`,
-    formatPromptInstruction(
-      'これが最後のメッセージです。お別れのメッセージを送ってください。',
-      skillName,
-      `conversation_id: ${conversationId}`,
-    ),
+    `これが最後のメッセージです。`,
+    formatActionPrompt(skillName, choices),
   );
 }
 
@@ -177,13 +202,16 @@ export function formatConversationDeliveredClosingMessage(speakerName: string, m
 export function formatConversationServerEventClosingPromptMessage(
   ctx: WorldContext,
   eventName: string,
-  conversationId: string,
   skillName: string,
 ): string {
+  const choices = [
+    '選択肢:',
+    '- conversation_speak: お別れのメッセージを送る (message: 発言内容)',
+  ].join('\n');
   return joinSections(
     formatWorldContextHeader(ctx),
     `サーバーイベント「${eventName}」の選択により会話を終了します。`,
-    formatPromptInstruction('お別れのメッセージを送ってください。', skillName, `conversation_id: ${conversationId}`),
+    formatActionPrompt(skillName, choices),
   );
 }
 
@@ -192,12 +220,13 @@ export function formatConversationEndedMessage(
   reason: Exclude<ConversationClosureReason, 'partner_logged_out'>,
   perceptionText: string,
   skillName: string,
+  choicesText?: string,
 ): string {
   return joinSections(
     formatWorldContextHeader(ctx),
     `会話が終了しました。（${formatClosureReason(reason)}）`,
     perceptionText,
-    formatActionPrompt(skillName),
+    formatActionPrompt(skillName, choicesText),
   );
 }
 
@@ -206,12 +235,13 @@ export function formatConversationForcedEndedMessage(
   partnerName: string,
   perceptionText: string,
   skillName: string,
+  choicesText?: string,
 ): string {
   return joinSections(
     formatWorldContextHeader(ctx),
     `${partnerName} が世界からログアウトしたため、会話が強制終了されました。`,
     perceptionText,
-    formatActionPrompt(skillName),
+    formatActionPrompt(skillName, choicesText),
   );
 }
 
@@ -237,13 +267,40 @@ export function formatServerEventSelectedMessage(
   choiceLabel: string,
   perceptionText: string,
   skillName: string,
+  choicesText?: string,
 ): string {
   return joinSections(
     formatWorldContextHeader(ctx),
     `サーバーイベント「${eventName}」で「${choiceLabel}」を選択しました。\n実行中の操作はキャンセルされました。`,
     perceptionText,
-    formatActionPrompt(skillName),
+    formatActionPrompt(skillName, choicesText),
   );
+}
+
+export function formatMapInfoMessage(ctx: WorldContext, mapSummaryText: string, skillName: string, choicesText?: string): string {
+  return joinSections(formatWorldContextHeader(ctx), mapSummaryText, formatActionPrompt(skillName, choicesText));
+}
+
+export function formatWorldAgentsInfoMessage(ctx: WorldContext, agentsText: string, skillName: string, choicesText?: string): string {
+  return joinSections(formatWorldContextHeader(ctx), agentsText, formatActionPrompt(skillName, choicesText));
+}
+
+export function formatPerceptionInfoMessage(
+  ctx: WorldContext,
+  perceptionText: string,
+  choicesText: string,
+  skillName: string,
+): string {
+  return joinSections(formatWorldContextHeader(ctx), perceptionText, formatActionPrompt(skillName, choicesText));
+}
+
+export function formatAvailableActionsInfoMessage(
+  ctx: WorldContext,
+  actionsText: string,
+  choicesText: string,
+  skillName: string,
+): string {
+  return joinSections(formatWorldContextHeader(ctx), actionsText, formatActionPrompt(skillName, choicesText));
 }
 
 export function formatWorldLogLoggedIn(agentName: string): string {
@@ -328,10 +385,16 @@ export function formatIdleReminderMessage(
   elapsedMs: number,
   perceptionText: string,
   skillName: string,
+  choicesText?: string,
 ): string {
   const minutes = Math.floor(elapsedMs / 60000);
   const elapsedText = minutes >= 1 ? `${minutes}分間` : `${Math.floor(elapsedMs / 1000)}秒間`;
-  return joinSections(formatWorldContextHeader(ctx), `前回の行動から${elapsedText}が経過しました。`, perceptionText, formatActionPrompt(skillName));
+  return joinSections(
+    formatWorldContextHeader(ctx),
+    `前回の行動から${elapsedText}が経過しました。`,
+    perceptionText,
+    formatActionPrompt(skillName, choicesText),
+  );
 }
 
 export function formatWorldLogServerEvent(eventName: string, description: string): string {

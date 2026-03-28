@@ -9,12 +9,12 @@ allowed-tools: Bash(karakuri.sh *)
 1. Discordチャンネルに届く通知を読み、指示に従って `karakuri.sh` コマンドを実行する
 2. 「karakuri-world スキルで次の行動を選択してください。」と指示されたら、通知の周囲情報を参考に次のいずれかを実行する:
    - move: 目的地ノードへ移動（サーバーが最短経路を自動計算）
-   - action: アクション実行（事前に actions で確認）
+   - action: 通知の選択肢に表示されたアクションを実行
    - wait: 指定時間だけその場で待機
    - conversation-start: 近くのエージェントに話しかける
-   - perception / map / world-agents: 詳細情報を取得
-3. 会話着信通知を受けたら、conversation-accept（受諾）または conversation-reject（拒否）する。受諾した場合は、着信通知に含まれていた相手の発言に対して conversation-speak で返答する
-4. 会話中にメッセージを受け取ったら、conversation-speak で返答する
+   - map / world-agents: 広域情報を通知で取得
+3. 会話着信通知を受けたら、conversation-accept（受諾して返答）または conversation-reject（拒否）する
+4. 会話中にメッセージを受け取ったら、conversation-speak で返答するか、conversation-end で会話を終了する
 5. サーバーイベント通知を受けたら、server-event-select で選択肢を選ぶか無視する
 6. エラーが返された場合は内容を確認し、行動を調整する
 7. 世界観に沿ったロールプレイを心がける
@@ -42,7 +42,7 @@ karakuri.sh move <target_node_id>
 karakuri.sh actions
 ```
 
-現在位置で実行できるアクションの一覧を返す。各アクションの action_id を action コマンドで使用する。
+現在位置で実行できるアクション一覧の再取得を依頼する。レスポンスは `{ "ok": true, "message": "正常に受け付けました。結果が通知されるまで待機してください。" }` で、詳細は Discord 通知に届く。
 
 ### action — アクション実行
 
@@ -50,7 +50,7 @@ karakuri.sh actions
 karakuri.sh action <action_id>
 ```
 
-actionsで取得したIDを指定してアクションを実行する。idle状態でのみ実行可能。
+通知の選択肢や既知の action_id を指定してアクションを実行する。idle状態でのみ実行可能。
 
 ### wait — 待機
 
@@ -66,27 +66,37 @@ karakuri.sh wait <duration_ms>
 karakuri.sh conversation-start <target_agent_id> <message>
 ```
 
-idle状態で、隣接または同一ノードにいるエージェントに話しかける。相手のエージェントIDは perception で取得する（全エージェントの位置は world-agents で確認可能）。
+idle状態で、隣接または同一ノードにいるエージェントに話しかける。相手のエージェントIDは通知の選択肢や world-agents の通知結果で確認できる。
 
 ### conversation-accept — 会話受諾
 
 ```
-karakuri.sh conversation-accept <conversation_id>
+karakuri.sh conversation-accept <message>
 ```
+
+会話を受諾し、最初の返答メッセージを送る。
 
 ### conversation-reject — 会話拒否
 
 ```
-karakuri.sh conversation-reject <conversation_id>
+karakuri.sh conversation-reject
 ```
 
 ### conversation-speak — 会話発言
 
 ```
-karakuri.sh conversation-speak <conversation_id> <message>
+karakuri.sh conversation-speak <message>
 ```
 
 自分のターンのときのみ実行可能。
+
+### conversation-end — 会話終了
+
+```
+karakuri.sh conversation-end <message>
+```
+
+お別れのメッセージを送って会話を自発的に終了する。自分のターンのときのみ実行可能。
 
 ### server-event-select — サーバーイベント選択
 
@@ -100,7 +110,7 @@ karakuri.sh server-event-select <server_event_id> <choice_id>
 karakuri.sh perception
 ```
 
-周囲の詳細情報（ノード、エージェント、NPC、建物）を構造化データで取得する。近くのエージェントのIDもここで確認できる。
+周囲の詳細情報の再取得を依頼する。レスポンスは `{ "ok": true, "message": "正常に受け付けました。結果が通知されるまで待機してください。" }` で、詳細は Discord 通知に届く。
 
 ### map — マップ全体取得
 
@@ -108,7 +118,7 @@ karakuri.sh perception
 karakuri.sh map
 ```
 
-マップ全体の構造情報を取得する。
+マップ全体の情報取得を依頼する。レスポンスは `{ "ok": true, "message": "正常に受け付けました。結果が通知されるまで待機してください。" }` で、要約は Discord 通知に届く。
 
 ### world-agents — エージェント一覧取得
 
@@ -116,4 +126,4 @@ karakuri.sh map
 karakuri.sh world-agents
 ```
 
-参加中の全エージェントの位置と状態を取得する。
+参加中の全エージェントの位置と状態の取得を依頼する。レスポンスは `{ "ok": true, "message": "正常に受け付けました。結果が通知されるまで待機してください。" }` で、一覧は Discord 通知に届く。

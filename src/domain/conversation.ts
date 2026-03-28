@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { WorldEngine } from '../engine/world-engine.js';
 import type {
   ConversationAcceptRequest,
-  ConversationRejectRequest,
+  ConversationEndRequest,
   ConversationSpeakRequest,
   ConversationSpeakResponse,
   ConversationStartRequest,
@@ -199,13 +199,17 @@ export function startConversation(
 }
 
 export function acceptConversation(engine: WorldEngine, agentId: string, request: ConversationAcceptRequest): OkResponse {
-  const conversation = engine.state.conversations.get(request.conversation_id);
-  if (!conversation || conversation.status !== 'pending') {
-    throw new WorldError(400, 'conversation_not_found', `Conversation not found: ${request.conversation_id}`);
+  const conversation = findConversationByAgent(engine, agentId, ['pending']);
+  if (!conversation) {
+    throw new WorldError(400, 'conversation_not_found', 'No pending conversation found for this agent.');
   }
 
   if (conversation.target_agent_id !== agentId) {
     throw new WorldError(403, 'not_target', 'Only the target agent can accept this conversation.');
+  }
+
+  if (!request.message.trim()) {
+    throw new WorldError(400, 'invalid_request', 'Conversation message must not be empty.');
   }
 
   const initiator = engine.state.getLoggedIn(conversation.initiator_agent_id);
@@ -235,7 +239,6 @@ export function acceptConversation(engine: WorldEngine, agentId: string, request
   engine.state.setState(initiator.agent_id, 'in_conversation');
   engine.state.setState(target.agent_id, 'in_conversation');
   conversation.status = 'active';
-  scheduleTurnTimer(engine, conversation, target.agent_id);
 
   engine.emitEvent({
     type: 'conversation_accepted',
@@ -244,13 +247,44 @@ export function acceptConversation(engine: WorldEngine, agentId: string, request
     target_agent_id: target.agent_id,
   });
 
+  engine.emitEvent({
+    type: 'conversation_message',
+    conversation_id: conversation.conversation_id,
+    speaker_agent_id: initiator.agent_id,
+    listener_agent_id: agentId,
+    turn: conversation.current_turn,
+    message: conversation.initial_message,
+  });
+
+  const turn = conversation.current_turn + 1;
+  const message = request.message.trim();
+  conversation.current_turn = turn;
+  engine.emitEvent({
+    type: 'conversation_message',
+    conversation_id: conversation.conversation_id,
+    speaker_agent_id: agentId,
+    listener_agent_id: initiator.agent_id,
+    turn,
+    message,
+  });
+  engine.timerManager.create({
+    type: 'conversation_interval',
+    agent_ids: getConversationParticipants(conversation),
+    conversation_id: conversation.conversation_id,
+    speaker_agent_id: agentId,
+    listener_agent_id: initiator.agent_id,
+    turn,
+    message,
+    fires_at: Date.now() + engine.config.conversation.interval_ms,
+  });
+
   return { status: 'ok' };
 }
 
-export function rejectConversation(engine: WorldEngine, agentId: string, request: ConversationRejectRequest): OkResponse {
-  const conversation = engine.state.conversations.get(request.conversation_id);
-  if (!conversation || conversation.status !== 'pending') {
-    throw new WorldError(400, 'conversation_not_found', `Conversation not found: ${request.conversation_id}`);
+export function rejectConversation(engine: WorldEngine, agentId: string): OkResponse {
+  const conversation = findConversationByAgent(engine, agentId, ['pending']);
+  if (!conversation) {
+    throw new WorldError(400, 'conversation_not_found', 'No pending conversation found for this agent.');
   }
 
   if (conversation.target_agent_id !== agentId) {
@@ -317,13 +351,9 @@ export function speak(engine: WorldEngine, agentId: string, request: Conversatio
     throw new WorldError(400, 'invalid_request', 'Conversation message must not be empty.');
   }
 
-  const conversation = engine.state.conversations.get(request.conversation_id);
-  if (!conversation || !['active', 'closing'].includes(conversation.status)) {
-    throw new WorldError(400, 'conversation_not_found', `Conversation not found: ${request.conversation_id}`);
-  }
-
-  if (!getConversationParticipants(conversation).includes(agentId)) {
-    throw new WorldError(400, 'conversation_not_found', `Conversation not found: ${request.conversation_id}`);
+  const conversation = findConversationByAgent(engine, agentId, ['active', 'closing']);
+  if (!conversation) {
+    throw new WorldError(400, 'conversation_not_found', 'No active conversation found for this agent.');
   }
 
   if (conversation.current_speaker_agent_id !== agentId) {
@@ -340,6 +370,58 @@ export function speak(engine: WorldEngine, agentId: string, request: Conversatio
   const turn = conversation.current_turn + 1;
   const message = request.message.trim();
   conversation.current_turn = turn;
+  engine.emitEvent({
+    type: 'conversation_message',
+    conversation_id: conversation.conversation_id,
+    speaker_agent_id: agentId,
+    listener_agent_id: otherAgentId,
+    turn,
+    message,
+  });
+  engine.timerManager.create({
+    type: 'conversation_interval',
+    agent_ids: getConversationParticipants(conversation),
+    conversation_id: conversation.conversation_id,
+    speaker_agent_id: agentId,
+    listener_agent_id: otherAgentId,
+    turn,
+    message,
+    fires_at: Date.now() + engine.config.conversation.interval_ms,
+  });
+
+  return { turn };
+}
+
+export function endConversationByAgent(engine: WorldEngine, agentId: string, request: ConversationEndRequest): ConversationSpeakResponse {
+  const agent = requireLoggedInAgent(engine, agentId);
+  if (agent.state !== 'in_conversation') {
+    throw new WorldError(409, 'state_conflict', 'Agent is not in a conversation.');
+  }
+
+  if (!request.message.trim()) {
+    throw new WorldError(400, 'invalid_request', 'Conversation message must not be empty.');
+  }
+
+  const conversation = findConversationByAgent(engine, agentId, ['active']);
+  if (!conversation) {
+    throw new WorldError(400, 'conversation_not_found', 'No active conversation found for this agent.');
+  }
+
+  if (conversation.current_speaker_agent_id !== agentId) {
+    throw new WorldError(409, 'not_your_turn', 'It is not your turn to speak.');
+  }
+
+  const turnTimer = findTurnTimer(engine, conversation.conversation_id, agentId);
+  if (!turnTimer) {
+    throw new WorldError(409, 'not_your_turn', 'It is not your turn to speak.');
+  }
+
+  engine.timerManager.cancel(turnTimer.timer_id);
+  const otherAgentId = getOtherAgentId(conversation, agentId);
+  const turn = conversation.current_turn + 1;
+  const message = request.message.trim();
+  conversation.current_turn = turn;
+  conversation.closing_reason = 'ended_by_agent';
   engine.emitEvent({
     type: 'conversation_message',
     conversation_id: conversation.conversation_id,
@@ -386,9 +468,9 @@ export function handleConversationInterval(engine: WorldEngine, timer: Conversat
     return;
   }
 
-  if (timer.turn >= engine.config.conversation.max_turns) {
+  if (timer.turn >= engine.config.conversation.max_turns || conversation.closing_reason === 'ended_by_agent') {
     conversation.status = 'closing';
-    conversation.closing_reason = 'max_turns';
+    conversation.closing_reason ??= 'max_turns';
     scheduleTurnTimer(engine, conversation, timer.listener_agent_id);
     return;
   }
@@ -404,6 +486,11 @@ export function handleTurnTimeout(engine: WorldEngine, timer: ConversationTurnTi
 
   if (conversation.status === 'closing') {
     endConversation(engine, conversation.conversation_id, conversation.closing_reason ?? 'max_turns');
+    return;
+  }
+
+  if (conversation.closing_reason === 'ended_by_agent') {
+    endConversation(engine, conversation.conversation_id, 'ended_by_agent');
     return;
   }
 

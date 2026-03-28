@@ -133,7 +133,7 @@ type Timer =
 | `conversation_turn` | `active` 状態: 会話を終了、両者を `idle` に遷移、`conversation_ended` イベント発行（`reason: "turn_timeout"`）。`closing` 状態: 終了あいさつ未送信として会話を終了、`conversation_ended` イベント発行（`reason` は終了理由に応じて `"max_turns"` または `"server_event"`）。詳細は 06-conversation.md セクション5.2、6.3、7.2 |
 | `conversation_interval` | `active` 状態: 次の発言者にDiscordで発言を配信、`conversation_turn` タイマーを生成。turn が `ConversationConfig.max_turns` に到達した場合は終了あいさつフェーズに移行。`closing` 状態: 終了あいさつを配信し会話を終了。詳細は 06-conversation.md セクション4.4、6.2 |
 | `server_event_timeout` | 詳細は 07-server-events.md で定義 |
-| `idle_reminder` | エージェントがまだidle（`pending_conversation_id` なし）なら、同じ `idle_since` で新しいタイマーを再作成し、`idle_reminder_fired` イベントを発行。Discord通知で経過時間・知覚情報・行動促進テキストを送信 |
+| `idle_reminder` | エージェントがまだidle（`pending_conversation_id` なし）なら、同じ `idle_since` で新しいタイマーを再作成し、`idle_reminder_fired` イベントを発行。Discord通知で経過時間・知覚情報・選択肢付き行動促進テキストを送信 |
 
 ## 2. イベントシステム
 
@@ -157,6 +157,10 @@ type Timer =
 | `server_event_fired` | サーバーイベント発生 | 管理者のイベント発火操作 |
 | `server_event_selected` | サーバーイベント選択 | エージェントの選択API |
 | `idle_reminder_fired` | idle状態継続時の再通知 | `idle_reminder` タイマー発火 |
+| `map_info_requested` | マップ情報取得依頼 | `get_map` API/MCP |
+| `world_agents_info_requested` | エージェント一覧取得依頼 | `get_world_agents` API/MCP |
+| `perception_requested` | 知覚情報再取得依頼 | `get_perception` API/MCP |
+| `available_actions_requested` | 利用可能アクション再取得依頼 | `get_available_actions` API/MCP |
 
 ### 2.2 イベントデータ構造
 
@@ -177,7 +181,11 @@ type EventType =
   | "conversation_ended"
   | "server_event_fired"
   | "server_event_selected"
-  | "idle_reminder_fired";
+  | "idle_reminder_fired"
+  | "map_info_requested"
+  | "world_agents_info_requested"
+  | "perception_requested"
+  | "available_actions_requested";
 
 interface EventBase {
   event_id: string;      // サーバーが生成するUUID
@@ -185,6 +193,8 @@ interface EventBase {
   occurred_at: number;   // イベント発生時刻（Unix timestamp ms）
 }
 ```
+
+`map_info_requested` / `world_agents_info_requested` / `perception_requested` / `available_actions_requested` は特定エージェント向けの内部イベントであり、Discord 通知のトリガーにはなるが UI 向け WebSocket 配信には含めない。
 
 各イベントの固有データ:
 
@@ -397,7 +407,7 @@ type WorldEvent =
 | 情報 | 内容 |
 |------|------|
 | 現在地 | ノードID、ラベル（ある場合） |
-| 移動可能ノード | 知覚範囲内の passable ノード（現在地を除く）のIDとラベル |
+| 近くのノード | 知覚範囲内の passable ノード（現在地を除く）のIDとラベル |
 | 他エージェント | 知覚範囲内にいる他エージェントの名前と位置 |
 | NPC | 知覚範囲内のNPCの名前と位置 |
 | 建物 | 知覚範囲内の建物名とドア位置 |

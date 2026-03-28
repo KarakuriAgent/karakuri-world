@@ -2,6 +2,7 @@ import type { Hono } from 'hono';
 import { z } from 'zod';
 
 import type { WorldEngine } from '../../engine/world-engine.js';
+import { createNotificationAcceptedResponse } from '../../types/api.js';
 import type { NodeId } from '../../types/data-model.js';
 import type { ApiEnv } from '../context.js';
 import { agentAuth } from '../middleware/auth.js';
@@ -17,13 +18,14 @@ const actionSchema = z.object({
 });
 
 const waitSchema = z.object({
-  duration_ms: z.number().int().min(1).max(3600000),
+  duration: z.number().int().min(1).max(6),
 });
 
 export function registerAgentActionRoutes(app: Hono<ApiEnv>, engine: WorldEngine): void {
   app.get('/api/agents/actions', agentAuth(engine), requireLoggedIn(engine), (c) => {
     const agentId = c.get('agentId') as string;
-    return c.json(engine.getAvailableActions(agentId));
+    engine.emitEvent({ type: 'available_actions_requested', agent_id: agentId });
+    return c.json(createNotificationAcceptedResponse());
   });
 
   app.post('/api/agents/move', agentAuth(engine), requireLoggedIn(engine), validateBody(moveSchema), (c) => {

@@ -39,7 +39,7 @@ describe('conversation integration', () => {
       target_agent_id: bob.agent_id,
       message: 'Can we talk?',
     });
-    engine.acceptConversation(bob.agent_id, { conversation_id: started.conversation_id });
+    engine.acceptConversation(bob.agent_id, { message: 'Sure, let\'s talk!' });
 
     expect(engine.state.getLoggedIn(bob.agent_id)?.state).toBe('in_conversation');
     expect(engine.timerManager.list().some((timer) => timer.type === 'action' && timer.agent_id === bob.agent_id)).toBe(false);

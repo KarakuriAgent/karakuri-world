@@ -25,6 +25,7 @@ const EXPECTED_TOOL_NAMES = [
   'karakuri_world_conversation_accept',
   'karakuri_world_conversation_reject',
   'karakuri_world_conversation_speak',
+  'karakuri_world_end_conversation',
   'karakuri_world_server_event_select',
 ] as const;
 
@@ -41,12 +42,12 @@ describe('karakuri-world tools', () => {
       operation: 'move',
       target_node_id: '1-2',
     });
-    expect(karakuriWorldInputSchema.parse({ operation: 'wait', duration_ms: '1000' })).toEqual({
+    expect(karakuriWorldInputSchema.parse({ operation: 'wait', duration: '3' })).toEqual({
       operation: 'wait',
-      duration_ms: 1000,
+      duration: 3,
     });
     expect(() => karakuriWorldInputSchema.parse({ operation: 'get_map', extra: true })).toThrow();
-    expect(() => karakuriWorldInputSchema.parse({ operation: 'wait', duration_ms: '1000ms' })).toThrow();
+    expect(() => karakuriWorldInputSchema.parse({ operation: 'wait', duration: '1000ms' })).toThrow();
   });
 
   it('posts move requests with bearer auth and returns the API result directly', async () => {
@@ -97,11 +98,8 @@ describe('karakuri-world tools', () => {
     const fetch = vi.fn<typeof globalThis.fetch>(async () =>
       new Response(
         JSON.stringify({
-          rows: 2,
-          cols: 2,
-          nodes: { '1-1': { type: 'plain' } },
-          buildings: [],
-          npcs: [],
+          ok: true,
+          message: '正常に受け付けました。結果が通知されるまで待機してください。',
         }),
         {
           status: 200,
@@ -134,36 +132,17 @@ describe('karakuri-world tools', () => {
     });
     expect(requestInit).not.toHaveProperty('body');
     expect(result).toEqual({
-      rows: 2,
-      cols: 2,
-      nodes: { '1-1': { type: 'plain' } },
-      buildings: [],
-      npcs: [],
+      ok: true,
+      message: '正常に受け付けました。結果が通知されるまで待機してください。',
     });
   });
 
-
-  it('accepts perception current_node metadata that the server may include', async () => {
+  it('accepts notification acknowledgements for perception requests', async () => {
     const fetch = vi.fn<typeof globalThis.fetch>(async () =>
       new Response(
         JSON.stringify({
-          current_node: {
-            node_id: '1-1',
-            type: 'door',
-            label: 'Gate',
-            building_id: 'gatehouse',
-          },
-          nodes: [
-            {
-              node_id: '1-1',
-              type: 'door',
-              label: 'Gate',
-              distance: 0,
-            },
-          ],
-          agents: [],
-          npcs: [],
-          buildings: [],
+          ok: true,
+          message: '正常に受け付けました。結果が通知されるまで待機してください。',
         }),
         {
           status: 200,
@@ -180,23 +159,8 @@ describe('karakuri-world tools', () => {
 
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(result).toEqual({
-      current_node: {
-        node_id: '1-1',
-        type: 'door',
-        label: 'Gate',
-        building_id: 'gatehouse',
-      },
-      nodes: [
-        {
-          node_id: '1-1',
-          type: 'door',
-          label: 'Gate',
-          distance: 0,
-        },
-      ],
-      agents: [],
-      npcs: [],
-      buildings: [],
+      ok: true,
+      message: '正常に受け付けました。結果が通知されるまで待機してください。',
     });
   });
 
@@ -220,7 +184,7 @@ describe('karakuri-world tools', () => {
     });
 
     const result = await tools.karakuri_world_wait.execute!(
-      { duration_ms: 1000 },
+      { duration: 3 },
       DEFAULT_OPTIONS,
     );
 
@@ -242,7 +206,7 @@ describe('karakuri-world tools', () => {
 
     const parsedInput = karakuriWorldInputSchema.parse({
       operation: 'wait',
-      duration_ms: '1000',
+      duration: '3',
     });
     if (parsedInput.operation !== 'wait') {
       throw new Error('Expected a wait input.');
@@ -255,7 +219,7 @@ describe('karakuri-world tools', () => {
       'https://example.com/api/agents/wait',
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ duration_ms: 1000 }),
+        body: JSON.stringify({ duration: 3 }),
         headers: expect.objectContaining({
           Accept: 'application/json',
           Authorization: 'Bearer secret',
@@ -313,7 +277,7 @@ describe('karakuri-world tools', () => {
     });
 
     const result = await tools.karakuri_world_conversation_speak.execute!(
-      { conversation_id: 'conv-1', message: 'hello' },
+      { message: 'hello' },
       DEFAULT_OPTIONS,
     );
 

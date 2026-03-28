@@ -47,26 +47,21 @@ interface ActionValidationError {
 
 ### 2.1 利用可能アクション一覧の取得
 
-エージェントの現在位置で実行条件を満たすアクションの候補一覧はAPI/MCPで取得する。この一覧はエージェントの状態（`idle` / `moving` 等）に関わらず、位置条件のみでフィルタリングして返却する。実際にアクションを実行できるかどうかは、アクション実行リクエスト時の状態バリデーション（セクション1.3）で判定する。
+エージェントの現在位置で実行条件を満たすアクションの候補一覧は API/MCP で再取得を依頼する。この一覧はエージェントの状態（`idle` / `moving` 等）に関わらず、位置条件のみでフィルタリングされ、詳細結果は Discord 通知の `選択肢` ブロックおよび `get_available_actions` 通知で返る。実際にアクションを実行できるかどうかは、アクション実行リクエスト時の状態バリデーション（セクション1.3）で判定する。
+
+API/MCP の即時レスポンス:
 
 ```typescript
-interface AvailableActionsResponse {
-  actions: AvailableAction[];
+interface NotificationAcceptedResponse {
+  ok: true;
+  message: string;
 }
+```
 
-interface AvailableAction {
-  action_id: string;
-  name: string;
-  description: string;
-  duration_ms: number;
-  source: ActionSource;
-}
+通知に含まれるアクション行の構造:
 
-interface ActionSource {
-  type: "building" | "npc";
-  id: string;   // building_id または npc_id
-  name: string; // 建物名またはNPC名
-}
+```text
+- action: {name} (action_id: {action_id}, {duration_sec}秒) - {source.name}
 ```
 
 フィルタリングロジック:

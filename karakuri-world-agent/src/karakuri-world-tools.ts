@@ -18,9 +18,15 @@ const waitDurationSchema = z
 
     const parsed = Number(trimmed);
     return Number.isSafeInteger(parsed) ? parsed : value;
-  }, z.number().int().min(1).max(3_600_000))
-  .describe('待機時間（ミリ秒）');
+  }, z.number().int().min(1).max(6))
+  .describe('待機時間（10分単位、1=10分〜6=60分）');
 const okResponseSchema = z.object({ status: z.literal('ok') }).strict();
+const notificationAckResponseSchema = z
+  .object({
+    ok: z.literal(true),
+    message: z.string().min(1),
+  })
+  .strict();
 const errorResponseSchema = z
   .object({
     error: z.string().min(1),
@@ -46,7 +52,7 @@ const actionOperationSchema = z
 const waitOperationSchema = z
   .object({
     operation: z.literal('wait'),
-    duration_ms: waitDurationSchema,
+    duration: waitDurationSchema,
   })
   .strict();
 
@@ -61,22 +67,27 @@ const conversationStartOperationSchema = z
 const conversationAcceptOperationSchema = z
   .object({
     operation: z.literal('conversation_accept'),
-    conversation_id: z.string().min(1).describe('会話ID'),
+    message: z.string().min(1).describe('受諾と同時に送る返答'),
   })
   .strict();
 
 const conversationRejectOperationSchema = z
   .object({
     operation: z.literal('conversation_reject'),
-    conversation_id: z.string().min(1).describe('会話ID'),
   })
   .strict();
 
 const conversationSpeakOperationSchema = z
   .object({
     operation: z.literal('conversation_speak'),
-    conversation_id: z.string().min(1).describe('会話ID'),
     message: z.string().min(1).describe('発言内容'),
+  })
+  .strict();
+
+const endConversationOperationSchema = z
+  .object({
+    operation: z.literal('end_conversation'),
+    message: z.string().min(1).describe('お別れのメッセージ'),
   })
   .strict();
 
@@ -101,6 +112,7 @@ export const karakuriWorldInputSchema = z.discriminatedUnion('operation', [
   conversationAcceptOperationSchema,
   conversationRejectOperationSchema,
   conversationSpeakOperationSchema,
+  endConversationOperationSchema,
   serverEventSelectOperationSchema,
   getAvailableActionsOperationSchema,
   getPerceptionOperationSchema,
@@ -115,6 +127,7 @@ const conversationStartToolInputSchema = conversationStartOperationSchema.omit({
 const conversationAcceptToolInputSchema = conversationAcceptOperationSchema.omit({ operation: true });
 const conversationRejectToolInputSchema = conversationRejectOperationSchema.omit({ operation: true });
 const conversationSpeakToolInputSchema = conversationSpeakOperationSchema.omit({ operation: true });
+const endConversationToolInputSchema = endConversationOperationSchema.omit({ operation: true });
 const serverEventSelectToolInputSchema = serverEventSelectOperationSchema.omit({ operation: true });
 const getAvailableActionsToolInputSchema = getAvailableActionsOperationSchema.omit({ operation: true });
 const getPerceptionToolInputSchema = getPerceptionOperationSchema.omit({ operation: true });
@@ -152,104 +165,6 @@ const conversationStartResponseSchema = z
 const conversationSpeakResponseSchema = z
   .object({
     turn: z.number().int(),
-  })
-  .strict();
-
-const availableActionsResponseSchema = z
-  .object({
-    actions: z.array(
-      z
-        .object({
-          action_id: z.string().min(1),
-          name: z.string().min(1),
-          description: z.string(),
-          duration_ms: z.number().int(),
-          source: z
-            .object({
-              type: z.enum(['building', 'npc']),
-              id: z.string().min(1),
-              name: z.string().min(1),
-            })
-            .strict(),
-        })
-        .strict(),
-    ),
-  })
-  .strict();
-
-const perceptionResponseSchema = z
-  .object({
-    current_node: z
-      .object({
-        node_id: nodeIdSchema,
-        type: z.string().min(1),
-        label: z.string().optional(),
-        building_id: z.string().min(1).optional(),
-        npc_id: z.string().min(1).optional(),
-      })
-      .strict(),
-    nodes: z.array(
-      z
-        .object({
-          node_id: nodeIdSchema,
-          type: z.string().min(1),
-          label: z.string().optional(),
-          distance: z.number(),
-        })
-        .strict(),
-    ),
-    agents: z.array(
-      z
-        .object({
-          agent_id: z.string().min(1),
-          agent_name: z.string().min(1),
-          node_id: nodeIdSchema,
-        })
-        .strict(),
-    ),
-    npcs: z.array(
-      z
-        .object({
-          npc_id: z.string().min(1),
-          name: z.string().min(1),
-          node_id: nodeIdSchema,
-        })
-        .strict(),
-    ),
-    buildings: z.array(
-      z
-        .object({
-          building_id: z.string().min(1),
-          name: z.string().min(1),
-          door_nodes: z.array(nodeIdSchema),
-        })
-        .strict(),
-    ),
-  })
-  .strict();
-
-const mapResponseSchema = z
-  .object({
-    rows: z.number().int().positive(),
-    cols: z.number().int().positive(),
-    nodes: z.record(z.string(), z.unknown()),
-    buildings: z.array(z.unknown()),
-    npcs: z.array(z.unknown()),
-  })
-  .strict();
-
-const worldAgentsResponseSchema = z
-  .object({
-    agents: z.array(
-      z
-        .object({
-          agent_id: z.string().min(1),
-          agent_name: z.string().min(1),
-          node_id: nodeIdSchema,
-          state: z.string().min(1),
-        })
-        .strict(),
-    ),
   })
   .strict();
 
@@ -598,7 +513,7 @@ async function executeKarakuriWorldOperation(
           method: 'POST',
           path: 'agents/wait',
           body: {
-            duration_ms: input.duration_ms,
+            duration: input.duration,
           },
           responseSchema: waitResponseSchema,
         });
@@ -621,7 +536,7 @@ async function executeKarakuriWorldOperation(
           method: 'POST',
           path: 'agents/conversation/accept',
           body: {
-            conversation_id: input.conversation_id,
+            message: input.message,
           },
           responseSchema: okResponseSchema,
         });
@@ -631,9 +546,7 @@ async function executeKarakuriWorldOperation(
           operation: input.operation,
           method: 'POST',
           path: 'agents/conversation/reject',
-          body: {
-            conversation_id: input.conversation_id,
-          },
+          body: {},
           responseSchema: okResponseSchema,
         });
       case 'conversation_speak':
@@ -643,7 +556,17 @@ async function executeKarakuriWorldOperation(
           method: 'POST',
           path: 'agents/conversation/speak',
           body: {
-            conversation_id: input.conversation_id,
+            message: input.message,
+          },
+          responseSchema: conversationSpeakResponseSchema,
+        });
+      case 'end_conversation':
+        return requestJson({
+          ...context,
+          operation: input.operation,
+          method: 'POST',
+          path: 'agents/conversation/end',
+          body: {
             message: input.message,
           },
           responseSchema: conversationSpeakResponseSchema,
@@ -666,7 +589,7 @@ async function executeKarakuriWorldOperation(
           operation: input.operation,
           method: 'GET',
           path: 'agents/actions',
-          responseSchema: availableActionsResponseSchema,
+          responseSchema: notificationAckResponseSchema,
         });
       case 'get_perception':
         return requestJson({
@@ -674,7 +597,7 @@ async function executeKarakuriWorldOperation(
           operation: input.operation,
           method: 'GET',
           path: 'agents/perception',
-          responseSchema: perceptionResponseSchema,
+          responseSchema: notificationAckResponseSchema,
         });
       case 'get_map':
         return requestJson({
@@ -682,7 +605,7 @@ async function executeKarakuriWorldOperation(
           operation: input.operation,
           method: 'GET',
           path: 'agents/map',
-          responseSchema: mapResponseSchema,
+          responseSchema: notificationAckResponseSchema,
         });
       case 'get_world_agents':
         return requestJson({
@@ -690,7 +613,7 @@ async function executeKarakuriWorldOperation(
           operation: input.operation,
           method: 'GET',
           path: 'agents/world-agents',
-          responseSchema: worldAgentsResponseSchema,
+          responseSchema: notificationAckResponseSchema,
         });
     }
   })();
@@ -763,22 +686,22 @@ export function createKarakuriWorldTools({
 
   return {
     karakuri_world_get_perception: tool({
-      description: '現在地と周囲の状況を取得する。引数は不要。',
+      description: '現在地と周囲の状況の再取得を依頼する。詳細は通知で届く。引数は不要。',
       inputSchema: getPerceptionToolInputSchema,
       execute: async (input) => executeKarakuriWorldTool('get_perception', input, context),
     }),
     karakuri_world_get_available_actions: tool({
-      description: '現在地で実行できる行動候補を取得する。引数は不要。',
+      description: '現在地で実行できる行動候補の再取得を依頼する。詳細は通知で届く。引数は不要。',
       inputSchema: getAvailableActionsToolInputSchema,
       execute: async (input) => executeKarakuriWorldTool('get_available_actions', input, context),
     }),
     karakuri_world_get_map: tool({
-      description: 'ワールド全体の地図情報を取得する。引数は不要。',
+      description: 'ワールド全体の地図情報取得を依頼する。詳細は通知で届く。引数は不要。',
       inputSchema: getMapToolInputSchema,
       execute: async (input) => executeKarakuriWorldTool('get_map', input, context),
     }),
     karakuri_world_get_world_agents: tool({
-      description: 'ログイン中エージェントの一覧と状態を取得する。引数は不要。',
+      description: 'ログイン中エージェントの一覧と状態の取得を依頼する。詳細は通知で届く。引数は不要。',
       inputSchema: getWorldAgentsToolInputSchema,
       execute: async (input) => executeKarakuriWorldTool('get_world_agents', input, context),
     }),
@@ -793,7 +716,7 @@ export function createKarakuriWorldTools({
       execute: async (input) => executeKarakuriWorldTool('action', input, context),
     }),
     karakuri_world_wait: tool({
-      description: 'その場で待機する。`duration_ms` を渡す。',
+      description: 'その場で待機する。`duration` を渡す（10分単位、1〜6）。',
       inputSchema: waitToolInputSchema,
       execute: async (input) => executeKarakuriWorldTool('wait', input, context),
     }),
@@ -803,19 +726,24 @@ export function createKarakuriWorldTools({
       execute: async (input) => executeKarakuriWorldTool('conversation_start', input, context),
     }),
     karakuri_world_conversation_accept: tool({
-      description: '会話着信を受諾する。`conversation_id` を渡す。',
+      description: '会話着信を受諾して返答する。`message` を渡す。',
       inputSchema: conversationAcceptToolInputSchema,
       execute: async (input) => executeKarakuriWorldTool('conversation_accept', input, context),
     }),
     karakuri_world_conversation_reject: tool({
-      description: '会話着信を拒否する。`conversation_id` を渡す。',
+      description: '会話着信を拒否する。引数不要。',
       inputSchema: conversationRejectToolInputSchema,
       execute: async (input) => executeKarakuriWorldTool('conversation_reject', input, context),
     }),
     karakuri_world_conversation_speak: tool({
-      description: '会話中に発言する。`conversation_id` と `message` を渡す。',
+      description: '会話中に発言する。`message` を渡す。',
       inputSchema: conversationSpeakToolInputSchema,
       execute: async (input) => executeKarakuriWorldTool('conversation_speak', input, context),
+    }),
+    karakuri_world_end_conversation: tool({
+      description: '会話を自発的に終了する。お別れの `message` を渡す。',
+      inputSchema: endConversationToolInputSchema,
+      execute: async (input) => executeKarakuriWorldTool('end_conversation', input, context),
     }),
     karakuri_world_server_event_select: tool({
       description: 'サーバーイベントの選択肢を選ぶ。`server_event_id` と `choice_id` を渡す。',

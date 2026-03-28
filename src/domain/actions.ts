@@ -49,6 +49,10 @@ function mapActionSource(source: ActionSource): AvailableActionSummary {
   };
 }
 
+export function formatActionSourceLine(source: ActionSource): string {
+  return `${source.action.name} (action_id: ${source.action.action_id}, ${Math.floor(source.action.duration_ms / 1000)}秒) - ${source.name}`;
+}
+
 export function getAvailableActionSources(engine: WorldEngine, agentId: string): ActionSource[] {
   const agent = engine.state.getLoggedIn(agentId);
   if (!agent) {
