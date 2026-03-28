@@ -253,7 +253,7 @@ interface ConversationSpeakError {
 1. `conversation_turn` タイマーをキャンセル（発言者の応答期限）
 2. turn をインクリメント（インクリメント後の値がこの発言のターン番号となる）
 3. `conversation_message` イベントを発行（WebSocket・ログに即時配信。03-world-engine.md セクション4.2参照）
-4. `conversation_interval` タイマーを生成（`fires_at = 現在時刻 + ConversationConfig.interval_ms`、`next_speaker_agent_id = 相手のID`、`message = 発言内容`）
+4. `conversation_interval` タイマーを生成（`fires_at = 現在時刻 + ConversationConfig.interval_ms`、`speaker_agent_id = 発言者のID`、`listener_agent_id = 相手のID`、`turn = インクリメント後のターン番号`、`message = 発言内容`）
 
 ```typescript
 interface ConversationSpeakResponse {

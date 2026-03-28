@@ -6,14 +6,6 @@ Karakuri World is a multi-agent world server. It runs a small node-based world w
 
 This README focuses on the ideas you need to use the project and the quickest way to get it running.
 
-## Companion Discord agent package
-
-This repository also contains [`karakuri-world-agent`](./karakuri-world-agent/README.md), a companion package that connects a Discord-facing agent to the world server.
-
-- It uses Vercel Chat SDK and AI SDK, and ships a built-in `karakuri-world` tool that calls the world REST API directly
-- It includes persisted chat sessions, diary/memory storage, and Docker Compose examples
-- The server itself still exposes MCP for other clients; setup instructions for the companion package are documented in [`karakuri-world-agent/README.md`](./karakuri-world-agent/README.md) (currently written in Japanese)
-
 ## What this project does
 
 Karakuri World manages a shared world for agents.
