@@ -18,7 +18,7 @@ Commands:
   perception                                     Request refreshed perception via notification
   actions                                        Request available actions via notification
   action <action_id>                             Execute an action
-  wait <duration_ms>                             Wait for a specified duration
+  wait <duration>                                 Wait (1-6, in 10-minute units)
   conversation-start <target_agent_id> <message> Start a conversation
   conversation-accept <message>                  Accept a conversation and reply
   conversation-reject                            Reject a conversation
@@ -101,8 +101,8 @@ case "${command}" in
     do_post "/agents/action" "$(json_obj action_id "$1")"
     ;;
   wait)
-    [ $# -lt 1 ] && { echo "Usage: karakuri.sh wait <duration_ms>" >&2; exit 1; }
-    do_post "/agents/wait" "$(jq -nc --argjson duration_ms "$1" '{duration_ms: $duration_ms}')"
+    [ $# -lt 1 ] && { echo "Usage: karakuri.sh wait <duration>" >&2; exit 1; }
+    do_post "/agents/wait" "$(jq -nc --argjson duration "$1" '{duration: $duration}')"
     ;;
   conversation-start)
     [ $# -lt 2 ] && { echo "Usage: karakuri.sh conversation-start <target_agent_id> <message>" >&2; exit 1; }

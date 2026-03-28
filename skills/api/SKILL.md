@@ -55,10 +55,10 @@ karakuri.sh action <action_id>
 ### wait — 待機
 
 ```
-karakuri.sh wait <duration_ms>
+karakuri.sh wait <duration>
 ```
 
-指定した時間（ミリ秒）だけその場で待機する。idle状態でのみ実行可能。
+指定した時間だけその場で待機する。duration は10分単位の整数（1=10分, 2=20分, ..., 6=60分）。idle状態でのみ実行可能。
 
 ### conversation-start — 会話開始
 

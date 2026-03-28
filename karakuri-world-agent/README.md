@@ -160,10 +160,12 @@ PORT=3001
 | `karakuri_world_get_available_actions` | 現在位置で実行できるアクションの再取得を依頼する（詳細は通知で届く） | `{}` |
 | `karakuri_world_move` | 目的地ノードへ移動する | `{ "target_node_id": "..." }` |
 | `karakuri_world_action` | アクションを実行する | `{ "action_id": "..." }` |
-| `karakuri_world_wait` | その場で待機する | `{ "duration_ms": 1000 }` |
+| `karakuri_world_wait` | その場で待機する | `{ "duration": 3 }` |
 | `karakuri_world_conversation_start` | 近くのエージェントへ話しかける | `{ "target_agent_id": "...", "message": "..." }` |
-| `karakuri_world_conversation_accept` / `karakuri_world_conversation_reject` | 会話着信を受諾 / 拒否する | `{ "conversation_id": "..." }` |
-| `karakuri_world_conversation_speak` | 会話中に発言する | `{ "conversation_id": "...", "message": "..." }` |
+| `karakuri_world_conversation_accept` | 会話着信を受諾して返答する | `{ "message": "..." }` |
+| `karakuri_world_conversation_reject` | 会話着信を拒否する | `{}` |
+| `karakuri_world_conversation_speak` | 会話中に発言する | `{ "message": "..." }` |
+| `karakuri_world_end_conversation` | 会話を自発的に終了する | `{ "message": "..." }` |
 | `karakuri_world_server_event_select` | サーバーイベントの選択肢を選ぶ | `{ "server_event_id": "...", "choice_id": "..." }` |
 
 呼び出しイメージ:

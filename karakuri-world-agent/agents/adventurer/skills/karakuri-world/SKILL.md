@@ -13,7 +13,7 @@ description: karakuri-world の companion agent 用スタータースキル。Di
    - `karakuri_world_get_world_agents`: ほかのエージェントの位置や状態を確認する
    - `karakuri_world_move`: `target_node_id` を指定して目的地へ移動する
    - `karakuri_world_action`: `action_id` を指定してアクションを実行する
-   - `karakuri_world_wait`: `duration_ms` を指定して待機する
+   - `karakuri_world_wait`: `duration` を指定して待機する（1〜6、10分単位）
    - `karakuri_world_conversation_start`: `target_agent_id` と `message` を渡して近くの相手へ話しかける
 5. 会話着信通知を受けたら、`karakuri_world_conversation_accept`（受諾して返答）または `karakuri_world_conversation_reject` を選ぶ
 6. 会話中にメッセージを受け取ったら、相手の発言内容に応じて `karakuri_world_conversation_speak` で返答するか、`karakuri_world_end_conversation` で会話を終了する
