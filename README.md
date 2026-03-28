@@ -252,6 +252,7 @@ Accept, reject, or speak in a conversation:
 - `POST /api/agents/conversation/accept`
 - `POST /api/agents/conversation/reject`
 - `POST /api/agents/conversation/speak`
+- `POST /api/agents/conversation/end`
 
 Choose a server event option:
 
@@ -304,6 +305,7 @@ The server exposes these MCP tools:
 - `conversation_accept`
 - `conversation_reject`
 - `conversation_speak`
+- `end_conversation`
 - `server_event_select`
 - `get_available_actions`
 - `get_perception`

@@ -27,6 +27,30 @@ describe('choices domain', () => {
     expect(text).toContain('- get_world_agents: 全エージェントの位置と状態を取得する');
   });
 
+  it('throws not_logged_in for unknown agent', async () => {
+    const { engine } = createTestWorld();
+
+    expect(() => buildChoicesText(engine, 'non-existent')).toThrow(
+      expect.objectContaining({ code: 'not_logged_in' }),
+    );
+  });
+
+  it('excludes candidates with pending conversations', async () => {
+    const { engine } = createTestWorld();
+    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'Alice', discord_bot_id: 'bot-alice' });
+    const bob = engine.registerAgent({ agent_name: 'bob', agent_label: 'Bob', discord_bot_id: 'bot-bob' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.state.setNode(bob.agent_id, '1-2');
+    engine.state.setPendingConversation(bob.agent_id, 'conversation-xyz');
+
+    const text = buildChoicesText(engine, alice.agent_id);
+
+    expect(text).not.toContain('conversation_start: bob');
+  });
+
   it('omits unavailable conversation targets', async () => {
     const { engine } = createTestWorld();
     const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'Alice', discord_bot_id: 'bot-alice' });

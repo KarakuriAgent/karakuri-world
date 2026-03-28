@@ -288,8 +288,8 @@ export function formatWorldAgentsInfoMessage(ctx: WorldContext, agentsText: stri
 export function formatPerceptionInfoMessage(
   ctx: WorldContext,
   perceptionText: string,
-  choicesText: string,
   skillName: string,
+  choicesText?: string,
 ): string {
   return joinSections(formatWorldContextHeader(ctx), perceptionText, formatActionPrompt(skillName, choicesText));
 }
@@ -297,8 +297,8 @@ export function formatPerceptionInfoMessage(
 export function formatAvailableActionsInfoMessage(
   ctx: WorldContext,
   actionsText: string,
-  choicesText: string,
   skillName: string,
+  choicesText?: string,
 ): string {
   return joinSections(formatWorldContextHeader(ctx), actionsText, formatActionPrompt(skillName, choicesText));
 }

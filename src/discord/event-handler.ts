@@ -503,7 +503,9 @@ export class DiscordEventHandler {
     try {
       return buildChoicesText(this.engine, agentId);
     } catch (error) {
-      if (!(error instanceof WorldError)) {
+      if (error instanceof WorldError) {
+        console.warn(`Choices text skipped for agent ${agentId}: ${error.code} - ${error.message}`);
+      } else {
         console.error(`Failed to build choices text for agent ${agentId}.`, error);
       }
       return '';
@@ -511,6 +513,10 @@ export class DiscordEventHandler {
   }
 
   private async handleMapInfoRequested(agentId: string): Promise<void> {
+    if (!this.engine.state.getLoggedIn(agentId)) {
+      return;
+    }
+
     const choicesText = this.getChoicesText(agentId);
     await this.sendToAgent(
       agentId,
@@ -519,6 +525,10 @@ export class DiscordEventHandler {
   }
 
   private async handleWorldAgentsInfoRequested(agentId: string): Promise<void> {
+    if (!this.engine.state.getLoggedIn(agentId)) {
+      return;
+    }
+
     const agentsText = (() => {
       const lines = this.engine
         .getWorldAgents()
@@ -534,15 +544,16 @@ export class DiscordEventHandler {
   }
 
   private async handlePerceptionRequested(agentId: string): Promise<void> {
-    const perceptionText = this.getPerceptionText(agentId);
-    if (!perceptionText) {
+    if (!this.engine.state.getLoggedIn(agentId)) {
       return;
     }
+
+    const perceptionText = this.getPerceptionText(agentId);
 
     const choicesText = this.getChoicesText(agentId);
     await this.sendToAgent(
       agentId,
-      formatPerceptionInfoMessage(this.getWorldContext(agentId), perceptionText, choicesText, this.skillName),
+      formatPerceptionInfoMessage(this.getWorldContext(agentId), perceptionText, this.skillName, choicesText),
     );
   }
 
@@ -558,7 +569,7 @@ export class DiscordEventHandler {
     const choicesText = this.getChoicesText(agentId);
     await this.sendToAgent(
       agentId,
-      formatAvailableActionsInfoMessage(this.getWorldContext(agentId), actionsText, choicesText, this.skillName),
+      formatAvailableActionsInfoMessage(this.getWorldContext(agentId), actionsText, this.skillName, choicesText),
     );
   }
 

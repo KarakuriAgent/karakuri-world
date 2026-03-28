@@ -299,7 +299,7 @@ type AgentState = "idle" | "moving" | "in_action" | "in_conversation";
 | logout | ✅ | ✅ | ✅ | ✅ |
 
 - `idle` で受諾待ち中（4.4 参照）は、移動・アクション実行・会話開始を受け付けない
-- 会話拒否は状態を変更しないため、すべての状態から実行可能。バリデーションは `conversation_id` の存在と対象側であることの確認のみ（06-conversation.md セクション3.1参照）
+- 会話拒否は状態を変更しないため、すべての状態から実行可能。バリデーションはリクエスト元に pending 状態の会話が存在し、対象側であることの確認のみ（06-conversation.md セクション3.1参照）
 - moving中のサーバーイベントは移動完了後に遅延通知される（詳細は 07-server-events.md）
 - `idle` でのサーバーイベント選択は状態遷移を伴わない（選択結果の処理は 07-server-events.md で定義）
 - ※1 会話が `closing` 状態（終了あいさつフェーズ）の場合は選択不可（07-server-events.md セクション4.2参照）

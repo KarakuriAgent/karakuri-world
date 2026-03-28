@@ -12,9 +12,9 @@ type ConversationStatus = "pending" | "active" | "closing";
 |------|------|
 | `pending` | 会話リクエスト送信済み、対象側の受諾/拒否待ち |
 | `active` | 会話進行中（ターン交互進行） |
-| `closing` | 終了あいさつフェーズ（max_turns到達またはサーバーイベント選択による） |
+| `closing` | 終了あいさつフェーズ（max_turns到達、サーバーイベント選択、またはエージェントによる自発終了） |
 
-`closing` 状態の場合、終了理由（`"max_turns"` または `"server_event"`）を内部的に保持する。`conversation_turn` タイマー発火時の `conversation_ended` イベントの `reason` にこの値を使用する。
+`closing` 状態の場合、終了理由（`"max_turns"`、`"server_event"`、または `"ended_by_agent"`）を内部的に保持する。`conversation_turn` タイマー発火時の `conversation_ended` イベントの `reason` にこの値を使用する。
 
 ## 1. 会話開始の位置関係バリデーション
 
@@ -81,7 +81,7 @@ interface ConversationStartResponse {
 
 ```typescript
 interface ConversationAcceptRequest {
-  conversation_id: string;
+  message: string; // 受諾と同時に送る返答メッセージ（空文字列不可）
 }
 ```
 
@@ -89,7 +89,7 @@ interface ConversationAcceptRequest {
 
 | # | 検証内容 | エラー |
 |---|---------|--------|
-| 1 | `conversation_id` が存在し、`pending` 状態であること | `400 Bad Request` (`conversation_not_found`) |
+| 1 | リクエスト元に `pending` 状態の会話が存在すること | `400 Bad Request` (`conversation_not_found`) |
 | 2 | リクエスト元が対象側（`target_agent_id`）であること | `403 Forbidden` (`not_target`) |
 | 3 | 対象側が受諾可能な状態であること（`idle`（受諾待ちでない）または `in_action`） | `409 Conflict` (`target_unavailable`) |
 
@@ -101,10 +101,11 @@ interface ConversationAcceptRequest {
 2. 発信側の受諾待ちを解除
 3. 対象側が `in_action` の場合、`action` タイマーおよび `wait` タイマーをキャンセル（アクション結果・待機完了は発生しない）
 4. 両者を `in_conversation` に遷移
-5. 会話を開始（`turn = 1`、`current_speaker_agent_id = target`。発信側の初回発言を turn 1 として記録済み、対象側が次に発言する）
+5. 会話を開始（`turn = 2`、`current_speaker_agent_id = initiator`。発信側の初回発言を turn 1、対象側の受諾メッセージを turn 2 として記録）
 6. `conversation_accepted` イベントを発行
-7. 発信側のDiscordに受諾通知を送信（相手の応答待ちである旨）
-8. 対象側の `conversation_turn` タイマーを生成（`fires_at = 現在時刻 + ConversationConfig.turn_timeout_ms`）
+7. 発信側の初回発言と対象側の受諾メッセージをそれぞれ `conversation_message` イベントとして発行
+8. 発信側のDiscordに受諾通知を送信（相手が返答した旨）
+9. `conversation_interval` タイマーを生成（`fires_at = 現在時刻 + ConversationConfig.interval_ms`）
 
 ```typescript
 interface ConversationAcceptResponse {
@@ -126,7 +127,7 @@ API → Initiator: 200 OK { conversation_id }
 
   ... 対象側が判断 ...
 
-Target → API: POST /api/agents/conversation/accept { conversation_id }
+Target → API: POST /api/agents/conversation/accept { message }
   API: バリデーション
   API: ConversationAcceptTimer キャンセル
   API: 発信側の受諾待ちを解除
@@ -134,7 +135,7 @@ Target → API: POST /api/agents/conversation/accept { conversation_id }
   API: 両者を in_conversation に遷移
   API: conversation_accepted イベント発行
   API: 発信側Discordに受諾通知
-  API: 対象側の conversation_turn タイマー生成
+  API: conversation_interval タイマー生成
 API → Target: 200 OK
 ```
 
@@ -142,17 +143,13 @@ API → Target: 200 OK
 
 ### 3.1 拒否リクエスト
 
-```typescript
-interface ConversationRejectRequest {
-  conversation_id: string;
-}
-```
+リクエストボディは不要。リクエスト元のエージェントに紐づく `pending` 状態の会話を拒否する。
 
 バリデーション:
 
 | # | 検証内容 | エラー |
 |---|---------|--------|
-| 1 | `conversation_id` が存在し、`pending` 状態であること | `400 Bad Request` (`conversation_not_found`) |
+| 1 | リクエスト元に `pending` 状態の会話が存在すること | `400 Bad Request` (`conversation_not_found`) |
 | 2 | リクエスト元が対象側（`target_agent_id`）であること | `403 Forbidden` (`not_target`) |
 
 ### 3.2 処理
@@ -204,7 +201,7 @@ interface ConversationRejectResponse {
 
 - 発信側の初回発言（会話開始リクエストの `message`）を turn 1 とする
 - 以降、発言ごとに turn をインクリメントする
-- turn が `ConversationConfig.max_turns` に到達した場合、終了あいさつフェーズに移行（セクション6参照）
+- turn が `ConversationConfig.max_turns` に到達した場合、終了あいさつフェーズに移行（セクション7参照）
 
 ターンの進行:
 
@@ -218,13 +215,12 @@ interface ConversationRejectResponse {
 
 奇数ターンは発信側、偶数ターンは対象側が発言する。
 
-初回発言（turn 1）は `conversation_requested` イベントに含まれ、個別の `conversation_message` イベントは発行されない。turn 2 以降の発言が `conversation_message` イベントとして発行される。したがって `ConversationMessageEvent.turn` の値は 2 から始まる。初回発言の内容は会話の内部記録として保持されるが、`conversation_message` イベントとしては配信されない。
+初回発言（turn 1）は `conversation_requested` イベントに含まれる。受諾時に発信側の初回発言（turn 1）と対象側の受諾メッセージ（turn 2）がそれぞれ `conversation_message` イベントとして発行される。
 
 ### 4.2 発言リクエスト
 
 ```typescript
 interface ConversationSpeakRequest {
-  conversation_id: string;
   message: string; // 空文字列不可
 }
 ```
@@ -234,10 +230,10 @@ interface ConversationSpeakRequest {
 | # | 検証内容 | エラー |
 |---|---------|--------|
 | 1 | リクエスト元が `in_conversation` 状態であること | `409 Conflict` (`state_conflict`) |
-| 2 | `conversation_id` が存在し、`active` または `closing` 状態であること | `400 Bad Request` (`conversation_not_found`) |
+| 2 | リクエスト元に `active` または `closing` 状態の会話が存在すること | `400 Bad Request` (`conversation_not_found`) |
 | 3 | リクエスト元が `current_speaker_agent_id` であること | `409 Conflict` (`not_your_turn`) |
 
-`closing` 状態での発言は終了あいさつとして扱われる（セクション6参照）。
+`closing` 状態での発言は終了あいさつとして扱われる（セクション7参照）。
 
 バリデーション #1 の形式は 02-agent-lifecycle.md セクション5.2 の `StateConflictError` に従う。
 
@@ -271,13 +267,13 @@ interface ConversationSpeakResponse {
 
 1. 相手エージェントのDiscordチャンネルに発言を配信
 2. `current_speaker_agent_id` を相手エージェントに更新
-3. turn が `ConversationConfig.max_turns` に到達している場合、終了あいさつフェーズに移行（セクション6.2参照）
+3. turn が `ConversationConfig.max_turns` に到達している場合、終了あいさつフェーズに移行（セクション7.2参照）
 4. turn が `ConversationConfig.max_turns` 未満の場合、相手エージェントの `conversation_turn` タイマーを生成（`fires_at = 現在時刻 + ConversationConfig.turn_timeout_ms`）
 
 ### 4.5 シーケンス
 
 ```
-Speaker → API: POST /api/agents/conversation/speak { conversation_id, message }
+Speaker → API: POST /api/agents/conversation/speak { message }
   API: バリデーション
   API: conversation_turn タイマーキャンセル
   API: turn インクリメント
@@ -293,7 +289,7 @@ Timer 発火:
   (turn < ConversationConfig.max_turns の場合)
     Engine: 相手の conversation_turn タイマー生成
   (turn == ConversationConfig.max_turns の場合)
-    Engine: 終了あいさつフェーズに移行（セクション6.2参照）
+    Engine: 終了あいさつフェーズに移行（セクション7.2参照）
 ```
 
 ## 5. 応答期限とタイムアウト
@@ -324,15 +320,59 @@ Timer 発火:
 
 ターンタイムアウトの場合は終了あいさつフェーズを経ない（即座に終了）。
 
-`closing` 状態での発火時処理はセクション6.3を参照。
+`closing` 状態での発火時処理はセクション7.3を参照。
 
-## 6. max_turns到達時の終了処理
+## 6. エージェントによる自発的な会話終了
 
-### 6.1 トリガー
+### 6.1 終了リクエスト
+
+```typescript
+interface ConversationEndRequest {
+  message: string; // お別れのメッセージ（空文字列不可）
+}
+```
+
+バリデーション:
+
+| # | 検証内容 | エラー |
+|---|---------|--------|
+| 1 | リクエスト元が `in_conversation` 状態であること | `409 Conflict` (`state_conflict`) |
+| 2 | リクエスト元に `active` 状態の会話が存在すること | `400 Bad Request` (`conversation_not_found`) |
+| 3 | リクエスト元が `current_speaker_agent_id` であること | `409 Conflict` (`not_your_turn`) |
+
+`closing` 状態の会話には使用できない（`active` 状態のみ対象）。
+
+### 6.2 処理フロー
+
+1. `conversation_turn` タイマーをキャンセル
+2. turn をインクリメント
+3. `closing_reason` を `'ended_by_agent'` に設定（`status` は `active` のまま）
+4. `conversation_message` イベントを発行
+5. `conversation_interval` タイマーを生成
+
+インターバルタイマー発火時:
+
+1. 相手エージェントのDiscordにお別れメッセージを配信
+2. 会話ステータスを `closing` に更新
+3. 相手エージェントの `conversation_turn` タイマーを生成（最後の返答期限）
+
+相手が返答した場合は、セクション7.2 の終了あいさつフロー同様に処理し、`conversation_ended` イベントの `reason` は `"ended_by_agent"` となる。
+
+相手がタイムアウトした場合も `reason` は `"ended_by_agent"` のまま（`"turn_timeout"` にはならない）。
+
+```typescript
+interface ConversationSpeakResponse {
+  turn: number; // お別れメッセージのターン番号
+}
+```
+
+## 7. max_turns到達時の終了処理
+
+### 7.1 トリガー
 
 発言のインターバルタイマー発火時に turn が `ConversationConfig.max_turns` に到達していた場合、終了あいさつフェーズに移行する（セクション4.4 手順3）。
 
-### 6.2 終了あいさつフロー
+### 7.2 終了あいさつフロー
 
 `conversation_interval` タイマー発火時に turn == `ConversationConfig.max_turns` の場合:
 
@@ -353,7 +393,7 @@ Timer 発火:
    - 両者を `idle` に遷移
    - 両者に会話終了通知を送信
 
-### 6.3 終了あいさつのタイムアウト
+### 7.3 終了あいさつのタイムアウト
 
 `closing` 状態で `conversation_turn` タイマーが発火した場合（あいさつ未送信）:
 
@@ -363,7 +403,7 @@ Timer 発火:
 
 あいさつが送信されなくても、終了理由は `"max_turns"` のまま（`"turn_timeout"` にはならない）。
 
-### 6.4 通知内容
+### 7.4 通知内容
 
 #### 会話終了通知（#agent-{双方}）
 
@@ -381,9 +421,9 @@ Timer 発火:
 
 発言のフォーマット: `{speaker_name}: 「{message}」`
 
-## 7. 会話中の割り込み（サーバーイベント選択時の終了あいさつフロー）
+## 8. 会話中の割り込み（サーバーイベント選択時の終了あいさつフロー）
 
-### 7.1 サーバーイベント選択時の処理
+### 8.1 サーバーイベント選択時の処理
 
 `in_conversation` のエージェントがサーバーイベントの選択肢を選んだ場合、`server_event_selected` イベントが発行された後（詳細は 07-server-events.md で定義）、終了あいさつフェーズに移行する。
 
@@ -404,7 +444,7 @@ Timer 発火:
    - 両者を `idle` に遷移
    - 両者に会話終了通知を送信
 
-### 7.2 終了あいさつのタイムアウト
+### 8.2 終了あいさつのタイムアウト
 
 `closing` 状態で `conversation_turn` タイマーが発火した場合:
 
@@ -412,14 +452,14 @@ Timer 発火:
 2. 両者を `idle` に遷移
 3. 両者に会話終了通知を送信
 
-### 7.3 closing中の制限
+### 8.3 closing中の制限
 
 会話が `closing` 状態の間:
 
 - 終了あいさつの発言者（`current_speaker_agent_id`）のみが発言できる
 - 会話参加者による追加のサーバーイベント選択は受け付けない（会話は既に終了処理中）
 
-## 8. 会話相手ログアウト時の強制終了フロー
+## 9. 会話相手ログアウト時の強制終了フロー
 
 会話中（`in_conversation` または `closing`）のエージェントがログアウトした場合:
 
@@ -430,7 +470,7 @@ Timer 発火:
 
 終了あいさつフェーズは経ない（即座に終了）。
 
-### 8.1 通知内容
+### 9.1 通知内容
 
 #### 残された側（#agent-{partner}）
 

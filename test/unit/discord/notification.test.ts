@@ -70,8 +70,8 @@ describe('discord notifications', () => {
       formatConversationServerEventClosingPromptMessage(worldContext, '不思議な装置', skillName),
       formatMapInfoMessage(worldContext, 'マップ: 3行 × 5列', skillName, choicesText),
       formatWorldAgentsInfoMessage(worldContext, '- Alice (agent-1) - 位置: 2-2 - 状態: idle', skillName, choicesText),
-      formatPerceptionInfoMessage(worldContext, '現在地: 2-2', choicesText, skillName),
-      formatAvailableActionsInfoMessage(worldContext, '実行可能なアクション:\n- 調べる', choicesText, skillName),
+      formatPerceptionInfoMessage(worldContext, '現在地: 2-2', skillName, choicesText),
+      formatAvailableActionsInfoMessage(worldContext, '実行可能なアクション:\n- 調べる', skillName, choicesText),
     ];
 
     for (const message of messages) {

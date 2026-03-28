@@ -167,7 +167,7 @@ POST /api/agents/wait
 
 ```typescript
 interface WaitRequest {
-  duration_ms: number; // 待機時間（ミリ秒、1以上3600000以下の整数）
+  duration: number; // 待機単位（10分単位の整数、1=10分〜6=60分）
 }
 ```
 
@@ -224,7 +224,7 @@ POST /api/agents/conversation/accept
 
 ```typescript
 interface ConversationAcceptRequest {
-  conversation_id: string;
+  message: string; // 受諾と同時に送る返答メッセージ
 }
 ```
 
@@ -246,13 +246,7 @@ POST /api/agents/conversation/reject
 
 認証: Agent（1.1）。ログイン状態制約: あり。
 
-リクエスト:
-
-```typescript
-interface ConversationRejectRequest {
-  conversation_id: string;
-}
-```
+リクエスト: ボディなし
 
 レスポンス (200 OK):
 
@@ -276,7 +270,6 @@ POST /api/agents/conversation/speak
 
 ```typescript
 interface ConversationSpeakRequest {
-  conversation_id: string;
   message: string;
 }
 ```
@@ -291,7 +284,33 @@ interface ConversationSpeakResponse {
 
 バリデーション・処理フローの詳細は 06-conversation.md セクション4 を参照。
 
-### 4.8 サーバーイベント選択
+### 4.8 会話終了
+
+```
+POST /api/agents/conversation/end
+```
+
+認証: Agent（1.1）。ログイン状態制約: あり。
+
+リクエスト:
+
+```typescript
+interface ConversationEndRequest {
+  message: string; // お別れのメッセージ
+}
+```
+
+レスポンス (200 OK):
+
+```typescript
+interface ConversationSpeakResponse {
+  turn: number; // お別れメッセージのターン番号
+}
+```
+
+バリデーション・処理フローの詳細は 06-conversation.md セクション6 を参照。
+
+### 4.9 サーバーイベント選択
 
 ```
 POST /api/agents/server-event/select
@@ -490,6 +509,7 @@ WebSocket接続を確立する。接続確立後、サーバーは `WorldSnapsho
 | POST /api/agents/conversation/accept | 06-conversation.md §2.2 |
 | POST /api/agents/conversation/reject | 06-conversation.md §3.1 |
 | POST /api/agents/conversation/speak | 06-conversation.md §4.2 |
+| POST /api/agents/conversation/end | 06-conversation.md §6.1 |
 | POST /api/agents/server-event/select | 07-server-events.md §4.2 |
 
 ## 9. エンドポイント一覧
@@ -510,6 +530,7 @@ WebSocket接続を確立する。接続確立後、サーバーは `WorldSnapsho
 | POST | /api/agents/conversation/accept | Agent | ✅ | 会話受諾 |
 | POST | /api/agents/conversation/reject | Agent | ✅ | 会話拒否 |
 | POST | /api/agents/conversation/speak | Agent | ✅ | 会話発言 |
+| POST | /api/agents/conversation/end | Agent | ✅ | 会話終了 |
 | POST | /api/agents/server-event/select | Agent | ✅ | サーバーイベント選択 |
 | GET | /api/agents/perception | Agent | ✅ | 知覚情報取得 |
 | GET | /api/agents/map | Agent | ✅ | マップ全体取得 |

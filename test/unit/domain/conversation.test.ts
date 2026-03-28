@@ -230,6 +230,40 @@ describe('conversation domain', () => {
     unsubscribe();
   });
 
+  it('rejects acceptConversation with empty message', async () => {
+    const { engine, alice, bob } = await setupConversationWorld();
+    engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello',
+    });
+
+    expect(() => engine.acceptConversation(bob.agent_id, { message: '   ' })).toThrow(
+      expect.objectContaining({ code: 'invalid_request' }),
+    );
+  });
+
+  it('rejects speak when turn timer is missing', async () => {
+    const { engine, alice, bob } = await setupConversationWorld({ max_turns: 10 });
+    const started = engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hi' });
+    vi.advanceTimersByTime(500);
+
+    // Cancel Alice's turn timer to simulate missing timer
+    const turnTimer = engine.timerManager.list().find(
+      (timer) => timer.type === 'conversation_turn',
+    );
+    if (turnTimer) {
+      engine.timerManager.cancel(turnTimer.timer_id);
+    }
+
+    expect(() => engine.speak(alice.agent_id, { message: 'test' })).toThrow(
+      expect.objectContaining({ code: 'not_your_turn' }),
+    );
+  });
+
   it('ends when a turn times out', async () => {
     const { engine, alice, bob } = await setupConversationWorld({ max_turns: 4 });
     const started = engine.startConversation(alice.agent_id, {

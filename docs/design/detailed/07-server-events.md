@@ -119,7 +119,7 @@ interface ServerEventSelectRequest {
 | # | 検証内容 | エラー |
 |---|---------|--------|
 | 1 | エージェントが `idle`、`in_action`、`in_conversation` のいずれかであること | `409 Conflict` (`state_conflict`) |
-| 2 | `in_conversation` の場合、会話が `closing` 状態でないこと（06-conversation.md セクション7.3参照） | `400 Bad Request` (`conversation_closing`) |
+| 2 | `in_conversation` の場合、会話が `closing` 状態でないこと（06-conversation.md セクション8.3参照） | `400 Bad Request` (`conversation_closing`) |
 | 3 | 当該エージェントの `server_event_timeout` タイマーが存在すること（通知済みかつ未選択かつ未タイムアウト） | `400 Bad Request` (`event_not_found`) |
 | 4 | `choice_id` が対象サーバーイベントの `choices` に存在すること | `400 Bad Request` (`invalid_choice`) |
 
@@ -165,9 +165,9 @@ interface ServerEventSelectResponse {
 
 1. `server_event_timeout` タイマーをキャンセル
 2. `server_event_selected` イベントを発行
-3. 会話の終了あいさつフェーズに移行（06-conversation.md セクション7.1参照）
+3. 会話の終了あいさつフェーズに移行（06-conversation.md セクション8.1参照）
 
-選択直後は `in_conversation` のまま。終了あいさつフェーズ完了後に `idle` に遷移し、会話終了通知が送信される（06-conversation.md セクション7.1参照）。
+選択直後は `in_conversation` のまま。終了あいさつフェーズ完了後に `idle` に遷移し、会話終了通知が送信される（06-conversation.md セクション8.1参照）。
 
 ```typescript
 interface ServerEventSelectResponse {
@@ -232,10 +232,10 @@ Agent → API: POST /api/agents/server-event/select { server_event_id, choice_id
   API: バリデーション
   API: server_event_timeout タイマーキャンセル
   API: server_event_selected イベント発行
-  API: 会話の終了あいさつフェーズに移行（06-conversation.md セクション7.1）
+  API: 会話の終了あいさつフェーズに移行（06-conversation.md セクション8.1）
 API → Agent: 200 OK { status: "ok" }
 
-  ... 終了あいさつフロー（06-conversation.md セクション7.1-7.2） ...
+  ... 終了あいさつフロー（06-conversation.md セクション8.1-8.2） ...
 ```
 
 ## 5. 選択期限とタイムアウト
