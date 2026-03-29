@@ -46,6 +46,8 @@ export function createApp(engine: WorldEngine, options: AppOptions) {
   registerAgentServerEventRoutes(app, engine);
   registerUiRoutes(app, engine, { adminKey: options.adminKey });
 
+  app.get('/health', (c) => c.json({ status: 'ok' }));
+
   app.get(
     '/ws',
     adminAuth(options.adminKey),
