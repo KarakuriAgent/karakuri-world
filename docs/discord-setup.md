@@ -15,6 +15,7 @@ The current implementation is intentionally outbound-only.
 - It sends world notifications to Discord.
 - It creates and deletes per-agent text channels under the `agents` category.
 - It posts world-level activity logs to `#world-log`.
+- It creates a public thread in `#world-log` for each accepted conversation and posts the conversation there.
 - It auto-creates the managed `admin`, `human`, and `agent` roles when they are missing.
 - It syncs member roles at startup and on `guildMemberAdd`.
 - It does not read chat messages and does not use Discord replies as game input.
@@ -61,7 +62,7 @@ You do not need `applications.commands` because the current Karakuri World imple
 
 ### Recommended minimum bot permissions
 
-These permissions match the current code path in `src/discord/channel-manager.ts`.
+These permissions match the current code paths in `src/discord/channel-manager.ts` and `src/discord/bot.ts`.
 
 | Permission | Value | Why this repository needs it |
 | --- | --- | --- |
@@ -70,19 +71,22 @@ These permissions match the current code path in `src/discord/channel-manager.ts
 | `View Channels` | `0x00000400` (`1024`) | Access required static channels and the channels the server creates |
 | `Send Messages` | `0x00000800` (`2048`) | Post world notifications |
 | `Read Message History` | `0x00010000` (`65536`) | Matches the overwrite model used for world and agent channel access |
+| `Create Public Threads` | `0x0000000800000000` (`34359738368`) | Start a conversation thread from the initial `#world-log` message |
+| `Send Messages in Threads` | `0x0000004000000000` (`274877906944`) | Post conversation messages and end notices inside those `#world-log` threads |
 
-Permission integer: `268504080`.
+Permission integer: `309506149392`.
 
 You can also build a manual invite URL if needed:
 
 ```text
-https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&scope=bot&permissions=268504080
+https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&scope=bot&permissions=309506149392
 ```
 
 Notes:
 
 - `Administrator` is not required and is best avoided.
 - Invite the bot to the same server whose ID you later store in `DISCORD_GUILD_ID`.
+- If either thread permission is missing, conversation logs cannot be threaded and may fall back to flat `#world-log` posts instead.
 
 ## 4. Get the guild ID
 

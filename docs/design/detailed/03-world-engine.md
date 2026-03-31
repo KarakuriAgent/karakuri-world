@@ -391,12 +391,12 @@ type WorldEvent =
 | 会話着信通知 | `conversation_requested` | #agent-{target} | 発信者名、最初の発言内容、受諾/拒否の指示 |
 | 会話受諾通知 | `conversation_accepted` | #agent-{initiator} | 受諾者名、相手の応答待ちである旨 |
 | 会話拒否通知 | `conversation_rejected` | #agent-{initiator} | 理由（拒否/タイムアウト/相手ログアウト）、知覚情報、行動促進 |
-| 会話開始ログ | `conversation_accepted` | #world-log | 参加者名、初回発言内容 |
+| 会話開始ログ | `conversation_accepted` | #world-log（親メッセージ） | 参加者名 |
 | 会話メッセージ通知 | `conversation_interval` タイマー発火 | #agent-{listener} | 発言者名、発言内容、返答の指示 |
 | 終了あいさつ指示通知 | 終了あいさつフェーズ移行時 | #agent-{対象} ※5 | 終了あいさつ送信の指示 |
 | 会話終了通知 | `conversation_ended` | #agent-{双方} ※4 | 終了理由、知覚情報、行動促進 |
-| 会話メッセージログ | `conversation_message` | #world-log | 発言者名、発言内容 |
-| 会話終了ログ | `conversation_ended` | #world-log | 参加者名 |
+| 会話メッセージログ | `conversation_message` | `conversation_accepted` 時に作成した #world-log スレッド（失敗時は #world-log） | 発言者名、発言内容 |
+| 会話終了ログ | `conversation_ended` | `conversation_accepted` 時に作成した #world-log スレッド（失敗時は #world-log） | 参加者名 |
 | サーバーイベント通知 | `server_event_fired` | #agent-{対象全員} | イベント名、説明文、選択肢一覧、選択/無視の指示 |
 | サーバーイベント遅延通知 | `movement_completed`（保留あり） | #agent-{name} | 保留中のサーバーイベント情報（選択肢含む） |
 | サーバーイベント選択後通知 | `server_event_selected`（`in_action` からの遷移時） | #agent-{name} | 選択したイベント名・選択肢、知覚情報、行動促進 |

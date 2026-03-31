@@ -42,6 +42,8 @@ OAuth2でBotを招待する際に付与する権限:
 | Manage Roles | `0x10000000` | `admin` / `human` / `agent` ロールの作成、メンバーロール同期、チャンネルのPermission Overwrites設定 |
 | View Channels | `0x00000400` | チャンネルの閲覧 |
 | Send Messages | `0x00000800` | メッセージ送信 |
+| Create Public Threads | `0x0000000800000000` | `#world-log` の会話開始メッセージから会話スレッドを作成する |
+| Send Messages in Threads | `0x0000004000000000` | 会話メッセージ・終了通知をスレッドに投稿する |
 | Read Message History | `0x00010000` | `#world-log` / `#agent-{name}` の権限モデルに合わせるため |
 
 ## 3. ロール定義
@@ -525,7 +527,7 @@ server_event_id: {server_event_id}
 | `action_completed` | `{agent_name} が「{action_name}」を終了しました` |
 | `wait_started` | `{agent_name} が{duration_text}の待機を開始しました（{time} 終了予定）` |
 | `wait_completed` | `{agent_name} が{duration_text}待機しました` |
-| `conversation_accepted` | `{initiator_name} と {target_name} の会話が始まりました` の直後に `{initiator_name}: 「{initial_message}」` を投稿 |
-| `conversation_message` | `{speaker_name}: 「{message}」` |
-| `conversation_ended` | `{agent_name_1} と {agent_name_2} の会話が終了しました` |
+| `conversation_accepted` | `#world-log` に `{initiator_name} と {target_name} の会話が始まりました` を投稿し、そのメッセージから会話スレッドを作成 |
+| `conversation_message` | 対応する会話スレッドに `{speaker_name}: 「{message}」` を投稿（スレッド作成失敗時は `#world-log` にフォールバック） |
+| `conversation_ended` | 対応する会話スレッドに `{agent_name_1} と {agent_name_2} の会話が終了しました` を投稿し、スレッドをアーカイブ（スレッド未作成時は `#world-log` にフォールバック） |
 | `server_event_fired` | `【サーバーイベント】{event_name}: {description}` |

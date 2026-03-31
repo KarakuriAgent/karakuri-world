@@ -8,7 +8,7 @@ import { WorldError } from '../types/api.js';
 import type { NodeId } from '../types/data-model.js';
 import type { WorldEvent } from '../types/event.js';
 import type { ConversationIntervalTimer, IdleReminderTimer } from '../types/timer.js';
-import type { DiscordNotificationAdapter } from './bot.js';
+import { WorldLogThreadCreationError, type DiscordNotificationAdapter } from './bot.js';
 import {
   formatActionCompletedMessage,
   formatAvailableActionsInfoMessage,
@@ -51,9 +51,16 @@ interface PendingForcedConversationEnd {
   target_agent_id: string;
 }
 
+interface ForcedConversationPartner {
+  conversationId: string;
+  partnerId: string;
+}
+
 export class DiscordEventHandler {
   private unsubscribe: (() => void) | null = null;
   private readonly pendingForcedConversationEnds = new Map<string, PendingForcedConversationEnd>();
+  private readonly conversationThreads = new Map<string, Promise<string | null>>();
+  private readonly conversationLogDeliveries = new Map<string, Promise<void>>();
   private readonly skillName: string;
 
   constructor(
@@ -90,6 +97,8 @@ export class DiscordEventHandler {
       disposeIdleReminderSubscription();
       this.unsubscribe = null;
       this.pendingForcedConversationEnds.clear();
+      this.conversationThreads.clear();
+      this.conversationLogDeliveries.clear();
     };
 
     return this.unsubscribe;
@@ -128,6 +137,7 @@ export class DiscordEventHandler {
         return;
       case 'conversation_accepted':
         await this.handleConversationAccepted(
+          event.conversation_id,
           event.initiator_agent_id,
           this.getAgentName(event.target_agent_id),
           this.getAgentName(event.initiator_agent_id),
@@ -141,11 +151,30 @@ export class DiscordEventHandler {
           event.reason,
         );
         return;
-      case 'conversation_message':
-        await this.bot.sendWorldLog(
-          formatWorldLogConversationMessage(this.getAgentName(event.speaker_agent_id), event.message),
-        );
+      case 'conversation_message': {
+        const content = formatWorldLogConversationMessage(this.getAgentName(event.speaker_agent_id), event.message);
+        const threadPromise = this.conversationThreads.get(event.conversation_id);
+        await this.enqueueConversationLog(event.conversation_id, async () => {
+          if (threadPromise) {
+            const threadId = await threadPromise;
+            if (threadId) {
+              try {
+                await this.bot.sendToThread(threadId, content);
+                return;
+              } catch (error) {
+                console.warn(`Failed to send conversation message to thread ${threadId}, falling back to world log.`, error);
+              }
+            }
+          }
+
+          try {
+            await this.bot.sendWorldLog(content);
+          } catch (error) {
+            console.error('Failed to send conversation message to both thread and world log. Message lost.', error);
+          }
+        });
         return;
+      }
       case 'conversation_ended':
         await this.handleConversationEnded(event);
         return;
@@ -231,7 +260,9 @@ export class DiscordEventHandler {
       console.error('Failed to send logout notification to agent channel.', error);
     }
 
-    for (const partnerId of this.consumeForcedConversationPartners(event.agent_id)) {
+    const forcedConversationPartners = this.consumeForcedConversationPartners(event.agent_id);
+
+    for (const { partnerId } of forcedConversationPartners) {
       const perceptionText = this.getPerceptionText(partnerId);
       if (perceptionText) {
         const choicesText = this.getChoicesText(partnerId);
@@ -248,7 +279,10 @@ export class DiscordEventHandler {
       }
     }
 
-    await this.bot.sendWorldLog(formatWorldLogLoggedOut(event.agent_name, event.cancelled_state, event.cancelled_action_name));
+    await this.sendLogoutWorldLog(
+      forcedConversationPartners.map(({ conversationId }) => conversationId),
+      formatWorldLogLoggedOut(event.agent_name, event.cancelled_state, event.cancelled_action_name),
+    );
   }
 
   private async handleMovementStarted(agentName: string, toNodeId: NodeId, arrivesAt: number): Promise<void> {
@@ -339,12 +373,24 @@ export class DiscordEventHandler {
   }
 
   private async handleConversationAccepted(
+    conversationId: string,
     initiatorAgentId: string,
     targetName: string,
     initiatorName: string,
     logTargetName: string,
   ): Promise<void> {
-    await this.bot.sendWorldLog(formatWorldLogConversationStarted(initiatorName, logTargetName));
+    const content = formatWorldLogConversationStarted(initiatorName, logTargetName);
+    const threadName = `${initiatorName} と ${logTargetName}`;
+    const threadPromise = this.bot.createWorldLogThread(content, threadName).catch(async (error) => {
+      console.warn('Failed to create world log thread.', error);
+      if (!(error instanceof WorldLogThreadCreationError && error.startMessagePosted)) {
+        await this.bot.sendWorldLog(content).catch((fallbackError) => {
+          console.error('Failed to post conversation start to both thread and world log. Message lost.', fallbackError);
+        });
+      }
+      return null;
+    });
+    this.conversationThreads.set(conversationId, threadPromise);
     await this.sendToAgent(initiatorAgentId, formatConversationAcceptedMessage(targetName));
   }
 
@@ -396,11 +442,17 @@ export class DiscordEventHandler {
   }
 
   private async handleConversationEnded(event: Extract<WorldEvent, { type: 'conversation_ended' }>): Promise<void> {
+    const endContent = formatWorldLogConversationEnded(
+      this.getAgentName(event.initiator_agent_id),
+      this.getAgentName(event.target_agent_id),
+    );
+
     if (event.reason === 'partner_logged_out') {
       this.pendingForcedConversationEnds.set(event.conversation_id, {
         initiator_agent_id: event.initiator_agent_id,
         target_agent_id: event.target_agent_id,
       });
+      await this.finalizeConversationThread(event.conversation_id, endContent);
       return;
     }
 
@@ -432,9 +484,82 @@ export class DiscordEventHandler {
       );
     }
 
-    await this.bot.sendWorldLog(
-      formatWorldLogConversationEnded(this.getAgentName(event.initiator_agent_id), this.getAgentName(event.target_agent_id)),
+    await this.finalizeConversationThread(event.conversation_id, endContent);
+  }
+
+  private async finalizeConversationThread(conversationId: string, endContent: string): Promise<void> {
+    const threadPromise = this.conversationThreads.get(conversationId);
+    this.conversationThreads.delete(conversationId);
+    await this.enqueueConversationLog(conversationId, async () => {
+      if (!threadPromise) {
+        try {
+          await this.bot.sendWorldLog(endContent);
+        } catch (error) {
+          console.error('Failed to send conversation end to world log. Message lost.', error);
+        }
+        return;
+      }
+
+      const threadId = await threadPromise;
+      if (!threadId) {
+        try {
+          await this.bot.sendWorldLog(endContent);
+        } catch (error) {
+          console.error('Failed to send conversation end to world log. Message lost.', error);
+        }
+        return;
+      }
+
+      try {
+        await this.bot.sendToThread(threadId, endContent);
+      } catch (error) {
+        console.warn(`Failed to send conversation end to thread ${threadId}, falling back to world log.`, error);
+        try {
+          await this.bot.sendWorldLog(endContent);
+        } catch (fallbackError) {
+          console.error('Failed to send conversation end to both thread and world log. Message lost.', fallbackError);
+        }
+        return;
+      }
+
+      try {
+        await this.bot.archiveThread(threadId);
+      } catch (error) {
+        console.warn(`Failed to archive conversation thread ${threadId}.`, error);
+      }
+    });
+  }
+
+  private async sendLogoutWorldLog(conversationIds: string[], content: string): Promise<void> {
+    const uniqueConversationIds = [...new Set(conversationIds)];
+    if (uniqueConversationIds.length === 0) {
+      await this.bot.sendWorldLog(content);
+      return;
+    }
+
+    const trailingConversationId = uniqueConversationIds[uniqueConversationIds.length - 1]!;
+    const precedingConversationIds = uniqueConversationIds.slice(0, -1);
+
+    await Promise.all(
+      precedingConversationIds.map((conversationId) => this.enqueueConversationLog(conversationId, async () => undefined)),
     );
+    await this.enqueueConversationLog(trailingConversationId, async () => {
+      await this.bot.sendWorldLog(content);
+    });
+  }
+
+  private async enqueueConversationLog(conversationId: string, task: () => Promise<void>): Promise<void> {
+    const previous = this.conversationLogDeliveries.get(conversationId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(task);
+    this.conversationLogDeliveries.set(conversationId, next);
+
+    try {
+      await next;
+    } finally {
+      if (this.conversationLogDeliveries.get(conversationId) === next) {
+        this.conversationLogDeliveries.delete(conversationId);
+      }
+    }
   }
 
   private async handleServerEventFired(event: Extract<WorldEvent, { type: 'server_event_fired' }>): Promise<void> {
@@ -599,19 +724,19 @@ export class DiscordEventHandler {
     await this.bot.sendAgentMessage(loggedInAgent.discord_channel_id, content);
   }
 
-  private consumeForcedConversationPartners(agentId: string): string[] {
-    const partnerIds: string[] = [];
+  private consumeForcedConversationPartners(agentId: string): ForcedConversationPartner[] {
+    const partners: ForcedConversationPartner[] = [];
 
     for (const [conversationId, pending] of this.pendingForcedConversationEnds.entries()) {
       if (pending.initiator_agent_id === agentId) {
-        partnerIds.push(pending.target_agent_id);
+        partners.push({ conversationId, partnerId: pending.target_agent_id });
         this.pendingForcedConversationEnds.delete(conversationId);
       } else if (pending.target_agent_id === agentId) {
-        partnerIds.push(pending.initiator_agent_id);
+        partners.push({ conversationId, partnerId: pending.initiator_agent_id });
         this.pendingForcedConversationEnds.delete(conversationId);
       }
     }
 
-    return partnerIds;
+    return partners;
   }
 }
