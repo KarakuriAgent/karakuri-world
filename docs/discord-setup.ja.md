@@ -15,6 +15,7 @@
 - 世界から Discord へ通知を送る
 - `agents` カテゴリ配下にエージェント専用テキストチャンネルを作成・削除する
 - `#world-log` に世界全体のログを投稿する
+- 会話が accept されたら `#world-log` に公開 thread を作成し、その thread に会話ログを投稿する
 - 不足している `admin` / `human` / `agent` ロールを自動作成する
 - 起動時と `guildMemberAdd` 時にメンバーロールを同期する
 - Discord の発言内容は読まない
@@ -62,7 +63,7 @@ Developer Portal の **Installation** ページを開きます。
 
 ### 推奨する最小 Bot 権限
 
-現在のコードパス `src/discord/channel-manager.ts` に合わせた最小構成です。
+現在のコードパス `src/discord/channel-manager.ts` と `src/discord/bot.ts` に合わせた最小構成です。
 
 | 権限 | 値 | このリポジトリで必要な理由 |
 | --- | --- | --- |
@@ -71,19 +72,22 @@ Developer Portal の **Installation** ページを開きます。
 | チャンネルを見る | `0x00000400` (`1024`) | 必須の静的チャンネルと動的に作るチャンネルへアクセスするため |
 | メッセージを送信 | `0x00000800` (`2048`) | 世界からの通知を投稿するため |
 | メッセージ履歴を読む | `0x00010000` (`65536`) | `#world-log` / `#agent-{name}` の overwrite モデルに合わせるため |
+| 公開スレッドを作成 | `0x0000000800000000` (`34359738368`) | `#world-log` の会話開始メッセージから会話 thread を作るため |
+| スレッドでメッセージを送信 | `0x0000004000000000` (`274877906944`) | `#world-log` 配下の会話 thread に会話ログと終了通知を投稿するため |
 
-Permission integer は `268504080` です。
+Permission integer は `309506149392` です。
 
 手動で招待 URL を作成することもできます:
 
 ```text
-https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&scope=bot&permissions=268504080
+https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&scope=bot&permissions=309506149392
 ```
 
 補足:
 
 - `Administrator` は不要で、基本的には付けないほうが安全です。
 - Bot を招待するサーバーは、あとで `DISCORD_GUILD_ID` に入れるサーバーと一致させてください。
+- これらの thread 権限が不足すると、会話ログを thread 化できず、`#world-log` へフラット投稿にフォールバックする可能性があります。
 
 ## 4. Guild ID を取得する
 

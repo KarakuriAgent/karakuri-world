@@ -13,7 +13,20 @@ export interface DiscordBotOptions {
 export interface DiscordNotificationAdapter extends DiscordRuntimeAdapter {
   sendAgentMessage(channelId: string, content: string): Promise<void>;
   sendWorldLog(content: string): Promise<void>;
+  createWorldLogThread(content: string, threadName: string): Promise<string>;
+  sendToThread(threadId: string, content: string): Promise<void>;
+  archiveThread(threadId: string): Promise<void>;
   close(): Promise<void>;
+}
+
+export class WorldLogThreadCreationError extends Error {
+  constructor(
+    readonly startMessagePosted: boolean,
+    cause?: unknown,
+  ) {
+    super('Failed to create world log thread.', { cause });
+    this.name = 'WorldLogThreadCreationError';
+  }
 }
 
 function requireWorldBotUserId(client: Client): string {
@@ -137,6 +150,39 @@ export class DiscordBot implements DiscordNotificationAdapter {
   async sendWorldLog(content: string): Promise<void> {
     const channel = await this.channelManager.getWorldLogChannel();
     await channel.send(content);
+  }
+
+  async createWorldLogThread(content: string, threadName: string): Promise<string> {
+    const channel = await this.channelManager.getWorldLogChannel();
+    let startMessagePosted = false;
+
+    try {
+      const message = await channel.send(content);
+      startMessagePosted = true;
+      const thread = await message.startThread({ name: threadName.slice(0, 100) });
+      return thread.id;
+    } catch (error) {
+      throw new WorldLogThreadCreationError(startMessagePosted, error);
+    }
+  }
+
+  async sendToThread(threadId: string, content: string): Promise<void> {
+    const channel = await this.guild.channels.fetch(threadId);
+    if (!channel || !channel.isThread()) {
+      throw new Error(`Discord thread not found: ${threadId}`);
+    }
+
+    await channel.send(content);
+  }
+
+  async archiveThread(threadId: string): Promise<void> {
+    const channel = await this.guild.channels.fetch(threadId);
+    if (!channel || !channel.isThread()) {
+      console.warn(`Cannot archive thread ${threadId}: channel not found or not a thread.`);
+      return;
+    }
+
+    await channel.setArchived(true);
   }
 
   async close(): Promise<void> {
