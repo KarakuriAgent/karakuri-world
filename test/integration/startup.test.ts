@@ -1,26 +1,99 @@
+import { createServer } from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { startRuntime, type Runtime } from '../../src/index.js';
 import { saveAgents } from '../../src/storage/agent-storage.js';
 import type { AgentRegistration } from '../../src/types/agent.js';
 
-vi.mock('../../src/discord/bot.js', () => {
-  const bot = {
-    createAgentChannel: async () => 'channel-mock',
-    deleteAgentChannel: async () => {},
-    channelExists: async () => true,
-    sendAgentMessage: async () => {},
-    sendWorldLog: async () => {},
-    close: async () => {},
+const discordBotMocks = vi.hoisted(() => {
+  const statusBoardChannel = {
+    fetchMessages: async () => [],
+    bulkDelete: async () => {},
+    deleteMessage: async () => {},
+    sendMessage: async () => ({ id: 'status-message' }),
+    sendMessageWithImage: async () => ({ id: 'status-message-with-image' }),
   };
+  const createAgentChannel = vi.fn(async () => 'channel-mock');
+  const deleteAgentChannel = vi.fn(async () => {});
+  const channelExists = vi.fn(async () => true);
+  const sendAgentMessage = vi.fn(async () => {});
+  const sendWorldLog = vi.fn(async () => {});
+  const getStatusBoardChannel = vi.fn(async () => statusBoardChannel);
+  const close = vi.fn(async () => {});
+  const bot = {
+    createAgentChannel,
+    deleteAgentChannel,
+    channelExists,
+    sendAgentMessage,
+    sendWorldLog,
+    getStatusBoardChannel,
+    close,
+  };
+  const create = vi.fn(async () => bot);
+
+  function reset(): void {
+    createAgentChannel.mockReset().mockResolvedValue('channel-mock');
+    deleteAgentChannel.mockReset().mockResolvedValue(undefined);
+    channelExists.mockReset().mockResolvedValue(true);
+    sendAgentMessage.mockReset().mockResolvedValue(undefined);
+    sendWorldLog.mockReset().mockResolvedValue(undefined);
+    getStatusBoardChannel.mockReset().mockResolvedValue(statusBoardChannel);
+    close.mockReset().mockResolvedValue(undefined);
+    create.mockReset().mockResolvedValue(bot);
+  }
+
+  return {
+    create,
+    close,
+    getStatusBoardChannel,
+    reset,
+  };
+});
+
+const statusBoardMocks = vi.hoisted(() => {
+  const constructed = vi.fn();
+  const register = vi.fn(() => () => {});
+  const dispose = vi.fn(async () => {});
+  class StatusBoard {
+    constructor(...args: unknown[]) {
+      constructed(...args);
+    }
+
+    register = register;
+
+    dispose = dispose;
+  }
+
+  function reset(): void {
+    constructed.mockReset();
+    register.mockReset().mockReturnValue(() => {});
+    dispose.mockReset().mockResolvedValue(undefined);
+  }
+
+  return {
+    StatusBoard,
+    constructed,
+    register,
+    dispose,
+    reset,
+  };
+});
+
+vi.mock('../../src/discord/bot.js', () => {
   return {
     DiscordBot: {
-      create: async () => bot,
+      create: discordBotMocks.create,
     },
+  };
+});
+
+vi.mock('../../src/discord/status-board.js', () => {
+  return {
+    StatusBoard: statusBoardMocks.StatusBoard,
   };
 });
 
@@ -39,6 +112,11 @@ function createRegistration(overrides: Partial<AgentRegistration> = {}): AgentRe
 }
 
 describe('runtime startup', () => {
+  beforeEach(() => {
+    discordBotMocks.reset();
+    statusBoardMocks.reset();
+  });
+
   it('hydrates persisted agent registrations', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'karakuri-world-startup-'));
     let runtime: Runtime | null = null;
@@ -64,6 +142,7 @@ describe('runtime startup', () => {
         discordToken: 'fake-token',
         discordGuildId: 'fake-guild',
         timezone: 'Asia/Tokyo',
+        statusBoardDebounceMs: 3000,
       });
 
       expect(runtime.engine.listAgents()).toEqual([
@@ -82,5 +161,65 @@ describe('runtime startup', () => {
       }
       rmSync(dataDir, { recursive: true, force: true });
     }
+  });
+
+  it('closes the Discord bot if startup fails after login', async () => {
+    discordBotMocks.getStatusBoardChannel.mockRejectedValueOnce(new Error('status board unavailable'));
+
+    await expect(
+      startRuntime({
+        adminKey: 'test-admin-key',
+        configPath: './config/example.yaml',
+        dataDir: './data',
+        port: 0,
+        publicBaseUrl: 'http://127.0.0.1',
+        discordToken: 'fake-token',
+        discordGuildId: 'fake-guild',
+        timezone: 'Asia/Tokyo',
+        statusBoardDebounceMs: 3000,
+      }),
+    ).rejects.toThrow('status board unavailable');
+
+    expect(discordBotMocks.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not register the status board if listen fails', async () => {
+    const occupiedServer = createServer();
+    await new Promise<void>((resolve) => occupiedServer.listen(0, resolve));
+    const address = occupiedServer.address();
+    const occupiedPort = typeof address === 'object' && address ? address.port : null;
+
+    try {
+      expect(occupiedPort).not.toBeNull();
+
+      await expect(
+        startRuntime({
+          adminKey: 'test-admin-key',
+          configPath: './config/example.yaml',
+          dataDir: './data',
+          port: occupiedPort!,
+          publicBaseUrl: 'http://127.0.0.1',
+          discordToken: 'fake-token',
+          discordGuildId: 'fake-guild',
+          timezone: 'Asia/Tokyo',
+          statusBoardDebounceMs: 3000,
+        }),
+      ).rejects.toThrow(/EADDRINUSE|listen/i);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        occupiedServer.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      });
+    }
+
+    expect(statusBoardMocks.register).not.toHaveBeenCalled();
+    expect(statusBoardMocks.dispose).toHaveBeenCalledTimes(1);
+    expect(statusBoardMocks.dispose).toHaveBeenCalledWith({ postStoppedMessage: false });
+    expect(discordBotMocks.close).toHaveBeenCalledTimes(1);
   });
 });

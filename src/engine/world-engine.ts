@@ -55,7 +55,7 @@ import type {
 import type { AgentRegistration, AgentState } from '../types/agent.js';
 import type { MapConfig, NodeId, ServerConfig } from '../types/data-model.js';
 import type { WorldEvent } from '../types/event.js';
-import type { ActionTimer } from '../types/timer.js';
+import type { ActionTimer, WaitTimer } from '../types/timer.js';
 import type { WorldSnapshot } from '../types/snapshot.js';
 import { EventBus } from './event-bus.js';
 import { TimerManager } from './timer-manager.js';
@@ -365,6 +365,12 @@ export class WorldEngine {
       map: this.config.map,
       agents: this.state.listLoggedIn().map((agent) => {
         const movementTimer = agent.state === 'moving' ? getMovementTimer(this, agent.agent_id) : null;
+        const actionTimer = this.timerManager.find(
+          (timer): timer is ActionTimer => timer.type === 'action' && timer.agent_id === agent.agent_id,
+        );
+        const waitTimer = this.timerManager.find(
+          (timer): timer is WaitTimer => timer.type === 'wait' && timer.agent_id === agent.agent_id,
+        );
 
         return {
           agent_id: agent.agent_id,
@@ -382,6 +388,24 @@ export class WorldEngine {
                 },
               }
             : {}),
+          ...(actionTimer
+            ? {
+                current_activity: {
+                  type: 'action' as const,
+                  action_id: actionTimer.action_id,
+                  action_name: actionTimer.action_name,
+                  completes_at: actionTimer.fires_at,
+                },
+              }
+            : waitTimer
+              ? {
+                  current_activity: {
+                    type: 'wait' as const,
+                    duration_ms: waitTimer.duration_ms,
+                    completes_at: waitTimer.fires_at,
+                  },
+                }
+              : {}),
         };
       }),
       conversations: this.state.conversations.list().map((conversation) => ({
@@ -390,6 +414,7 @@ export class WorldEngine {
         initiator_agent_id: conversation.initiator_agent_id,
         target_agent_id: conversation.target_agent_id,
         current_turn: conversation.current_turn,
+        max_turns: this.config.conversation.max_turns,
         current_speaker_agent_id: conversation.current_speaker_agent_id,
         closing_reason: conversation.closing_reason,
       })),

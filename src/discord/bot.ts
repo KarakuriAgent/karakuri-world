@@ -1,9 +1,10 @@
 import { once } from 'node:events';
 
-import { Client, GatewayIntentBits, type Guild, type GuildMember } from 'discord.js';
+import { AttachmentBuilder, Client, GatewayIntentBits, type Guild, type GuildMember } from 'discord.js';
 
 import type { DiscordRuntimeAdapter } from '../engine/world-engine.js';
 import { ChannelManager, type StaticChannels } from './channel-manager.js';
+import type { StatusBoardChannel, StatusBoardMessage } from './status-board.js';
 
 export interface DiscordBotOptions {
   token: string;
@@ -94,7 +95,7 @@ export class DiscordBot implements DiscordNotificationAdapter {
 
   static async create(options: DiscordBotOptions): Promise<DiscordBot> {
     const client = new Client({
-      intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+      intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages],
     });
 
     await client.login(options.token);
@@ -150,6 +151,63 @@ export class DiscordBot implements DiscordNotificationAdapter {
   async sendWorldLog(content: string): Promise<void> {
     const channel = await this.channelManager.getWorldLogChannel();
     await channel.send(content);
+  }
+
+  async getStatusBoardChannel(): Promise<StatusBoardChannel> {
+    const channel = await this.channelManager.getWorldStatusChannel();
+
+    return {
+      fetchMessages: async (): Promise<StatusBoardMessage[]> => {
+        const messages: StatusBoardMessage[] = [];
+        let before: string | undefined;
+        const maxIterations = 10;
+
+        for (let iteration = 0; iteration < maxIterations; iteration++) {
+          const fetched = await channel.messages.fetch({
+            limit: 100,
+            ...(before ? { before } : {}),
+          });
+          if (fetched.size === 0) {
+            break;
+          }
+
+          const batch = [...fetched.values()];
+          messages.push(...batch.map((message) => ({ id: message.id })));
+          if (batch.length < 100) {
+            break;
+          }
+
+          before = batch.at(-1)?.id;
+        }
+
+        return messages;
+      },
+      bulkDelete: async (messageIds: string[]): Promise<void> => {
+        if (messageIds.length === 0) {
+          return;
+        }
+        await channel.bulkDelete(messageIds);
+      },
+      deleteMessage: async (messageId: string): Promise<void> => {
+        const message = await channel.messages.fetch(messageId);
+        await message.delete();
+      },
+      sendMessage: async (content: string): Promise<StatusBoardMessage> => {
+        const message = await channel.send(content);
+        return { id: message.id };
+      },
+      sendMessageWithImage: async (
+        content: string,
+        image: Buffer,
+        filename: string,
+      ): Promise<StatusBoardMessage> => {
+        const message = await channel.send({
+          content,
+          files: [new AttachmentBuilder(image, { name: filename })],
+        });
+        return { id: message.id };
+      },
+    };
   }
 
   async createWorldLogThread(content: string, threadName: string): Promise<string> {

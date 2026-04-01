@@ -53,6 +53,9 @@ function createMockGuild(options?: {
   if (!omitChannels.has('world-log')) {
     channels.set('world-log', { id: 'world-log', name: 'world-log', type: ChannelType.GuildText, parentId: null });
   }
+  if (!omitChannels.has('world-status')) {
+    channels.set('world-status', { id: 'world-status', name: 'world-status', type: ChannelType.GuildText, parentId: null });
+  }
   if (!omitChannels.has('agents')) {
     channels.set('agents', { id: 'agents', name: 'agents', type: ChannelType.GuildCategory, parentId: null });
   }
@@ -173,6 +176,7 @@ describe('ChannelManager', () => {
     expect(createdRoleOptions).toHaveLength(0);
     expect(result).toEqual({
       world_log_id: 'world-log',
+      world_status_id: 'world-status',
       agents_category_id: 'agents',
       admin_role_id: 'admin-role',
       human_role_id: 'human-role',
@@ -182,7 +186,7 @@ describe('ChannelManager', () => {
 
   it('auto-creates all missing resources', async () => {
     const { guild, createdChannelOptions, createdRoleOptions } = createMockGuild({
-      omitChannels: ['world-log', 'agents'],
+      omitChannels: ['world-log', 'world-status', 'agents'],
       omitAdminRole: true,
       omitHumanRole: true,
       omitAgentRole: true,
@@ -194,15 +198,50 @@ describe('ChannelManager', () => {
     expect(createdRoleOptions).toHaveLength(3);
     expect(createdRoleOptions.map((options) => options.name)).toEqual(['admin', 'human', 'agent']);
 
-    expect(createdChannelOptions).toHaveLength(2);
-    expect(createdChannelOptions.map((options) => options.name)).toEqual(['agents', 'world-log']);
+    expect(createdChannelOptions).toHaveLength(3);
+    expect(createdChannelOptions.map((options) => options.name)).toEqual(['agents', 'world-log', 'world-status']);
 
     expect(result).toEqual({
       world_log_id: 'created-channel-2',
+      world_status_id: 'created-channel-3',
       agents_category_id: 'created-channel-1',
       admin_role_id: 'created-role-1',
       human_role_id: 'created-role-2',
       agent_role_id: 'created-role-3',
+    });
+  });
+
+  it('creates #world-status with restricted permission overwrites', async () => {
+    const { guild, createdChannelOptions } = createMockGuild({
+      omitChannels: ['world-status'],
+    });
+    const manager = new ChannelManager(guild);
+
+    await manager.ensureStaticChannels();
+
+    const worldStatusCreate = createdChannelOptions.find((options) => options.name === 'world-status');
+    expect(worldStatusCreate).toBeDefined();
+    expect(worldStatusCreate).toMatchObject({
+      name: 'world-status',
+      type: ChannelType.GuildText,
+      permissionOverwrites: [
+        {
+          id: 'everyone',
+          type: OverwriteType.Role,
+          deny: PermissionFlagsBits.ViewChannel,
+        },
+        {
+          id: 'admin-role',
+          type: OverwriteType.Role,
+          allow: adminChannelAccess,
+        },
+        {
+          id: 'human-role',
+          type: OverwriteType.Role,
+          allow: humanReadAccess,
+          deny: humanWriteRestrictions,
+        },
+      ],
     });
   });
 

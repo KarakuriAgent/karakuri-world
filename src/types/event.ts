@@ -16,8 +16,10 @@ export type EventType =
   | 'conversation_accepted'
   | 'conversation_rejected'
   | 'conversation_message'
+  | 'conversation_closing'
   | 'conversation_ended'
   | 'server_event_fired'
+  | 'server_event_expired'
   | 'server_event_selected'
   | 'idle_reminder_fired'
   | 'map_info_requested'
@@ -132,6 +134,15 @@ export interface ConversationMessageEvent extends EventBase {
   message: string;
 }
 
+export interface ConversationClosingEvent extends EventBase {
+  type: 'conversation_closing';
+  conversation_id: string;
+  initiator_agent_id: string;
+  target_agent_id: string;
+  current_speaker_agent_id: string;
+  reason: Extract<ConversationClosureReason, 'ended_by_agent' | 'max_turns' | 'server_event'>;
+}
+
 export interface ConversationEndedEvent extends EventBase {
   type: 'conversation_ended';
   conversation_id: string;
@@ -163,6 +174,17 @@ export interface ServerEventSelectedEvent extends EventBase {
   choice_id: string;
   choice_label: string;
   source_state: 'idle' | 'in_action' | 'in_conversation';
+}
+
+export interface ServerEventExpiredEvent extends EventBase {
+  type: 'server_event_expired';
+  server_event_id: string;
+  event_id_ref: string;
+  name: string;
+  agent_id: string;
+  delivered_agent_ids: string[];
+  pending_agent_ids: string[];
+  fully_expired: boolean;
 }
 
 export interface IdleReminderFiredEvent extends EventBase {
@@ -205,8 +227,10 @@ export type WorldEvent =
   | ConversationAcceptedEvent
   | ConversationRejectedEvent
   | ConversationMessageEvent
+  | ConversationClosingEvent
   | ConversationEndedEvent
   | ServerEventFiredEvent
+  | ServerEventExpiredEvent
   | ServerEventSelectedEvent
   | IdleReminderFiredEvent
   | MapInfoRequestedEvent

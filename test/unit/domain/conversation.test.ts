@@ -36,11 +36,17 @@ describe('conversation domain', () => {
   it('runs through accept, max turns, goodbye, and end', async () => {
     const { engine, alice, bob } = await setupConversationWorld({ max_turns: 2 });
     const messageEvents: Array<{ turn: number; message: string }> = [];
+    const closingEvents: Array<{ speaker: string; reason: string }> = [];
     const unsubscribe = engine.eventBus.onAny((event) => {
       if (event.type === 'conversation_message') {
         messageEvents.push({
           turn: event.turn,
           message: event.message,
+        });
+      } else if (event.type === 'conversation_closing') {
+        closingEvents.push({
+          speaker: event.current_speaker_agent_id,
+          reason: event.reason,
         });
       }
     });
@@ -70,6 +76,7 @@ describe('conversation domain', () => {
     const conversation = engine.state.conversations.get(started.conversation_id);
     expect(conversation?.status).toBe('closing');
     expect(conversation?.current_speaker_agent_id).toBe(alice.agent_id);
+    expect(closingEvents).toEqual([{ speaker: alice.agent_id, reason: 'max_turns' }]);
 
     expect(engine.speak(alice.agent_id, { message: 'Goodbye' })).toEqual({
       turn: 3,
@@ -114,12 +121,35 @@ describe('conversation domain', () => {
     expect(engine.state.conversations.get(timed.conversation_id)).toBeNull();
   });
 
+  it('includes max turns in conversation snapshots', async () => {
+    const { engine, alice, bob } = await setupConversationWorld({ max_turns: 4 });
+
+    engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello Bob',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hello Alice' });
+
+    expect(engine.getSnapshot().conversations).toEqual([
+      expect.objectContaining({
+        current_turn: 2,
+        max_turns: 4,
+      }),
+    ]);
+  });
+
   it('ends conversation by agent request', async () => {
     const { engine, alice, bob } = await setupConversationWorld({ max_turns: 10 });
     const endEvents: Array<{ reason: string }> = [];
+    const closingEvents: Array<{ speaker: string; reason: string }> = [];
     const unsubscribe = engine.eventBus.onAny((event) => {
       if (event.type === 'conversation_ended') {
         endEvents.push({ reason: event.reason });
+      } else if (event.type === 'conversation_closing') {
+        closingEvents.push({
+          speaker: event.current_speaker_agent_id,
+          reason: event.reason,
+        });
       }
     });
 
@@ -136,6 +166,7 @@ describe('conversation domain', () => {
     const conversation = engine.state.conversations.get(started.conversation_id);
     expect(conversation?.status).toBe('closing');
     expect(conversation?.closing_reason).toBe('ended_by_agent');
+    expect(closingEvents).toEqual([{ speaker: bob.agent_id, reason: 'ended_by_agent' }]);
 
     engine.speak(bob.agent_id, { message: 'Farewell Alice' });
     vi.advanceTimersByTime(500);

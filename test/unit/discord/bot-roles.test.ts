@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => {
   const staticChannels = {
     world_log_id: 'world-log',
+    world_status_id: 'world-status',
     agents_category_id: 'agents',
     admin_role_id: 'admin-role',
     human_role_id: 'human-role',
@@ -51,6 +52,7 @@ const mocks = vi.hoisted(() => {
     deleteAgentChannel = vi.fn();
     getTextChannel = vi.fn();
     getWorldLogChannel = vi.fn();
+    getWorldStatusChannel = vi.fn();
   }
 
   function reset(): void {
@@ -195,7 +197,7 @@ describe('DiscordBot role sync', () => {
     });
 
     expect(mocks.Client).toHaveBeenCalledWith({
-      intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+      intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages],
     });
     expect(mocks.on).toHaveBeenCalledWith('guildMemberAdd', expect.any(Function));
     expect(mocks.on.mock.invocationCallOrder[0]).toBeLessThan(mocks.membersFetch.mock.invocationCallOrder[0]);

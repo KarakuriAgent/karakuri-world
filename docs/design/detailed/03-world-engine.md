@@ -161,8 +161,10 @@ type Timer =
 | `conversation_accepted` | 会話受諾 | 受諾API |
 | `conversation_rejected` | 会話拒否またはタイムアウト | 拒否APIまたは `conversation_accept` タイマー発火 |
 | `conversation_message` | 会話発言 | 発言API |
+| `conversation_closing` | 会話が終了あいさつフェーズに移行 | max_turns到達、サーバーイベント選択、自発終了 |
 | `conversation_ended` | 会話終了 | max_turns到達（終了あいさつ後）、ターンタイムアウト、サーバーイベント選択（終了あいさつ後）、エージェントによる自発終了（終了あいさつ後）、相手logout |
 | `server_event_fired` | サーバーイベント発生 | 管理者のイベント発火操作 |
+| `server_event_expired` | サーバーイベント応答待ち人数の変化 / 完全失効 | `server_event_timeout` タイマー発火 |
 | `server_event_selected` | サーバーイベント選択 | エージェントの選択API |
 | `idle_reminder_fired` | idle状態継続時の再通知 | `idle_reminder` タイマー発火 |
 | `map_info_requested` | マップ情報取得依頼 | `get_map` API/MCP |
@@ -186,8 +188,10 @@ type EventType =
   | "conversation_accepted"
   | "conversation_rejected"
   | "conversation_message"
+  | "conversation_closing"
   | "conversation_ended"
   | "server_event_fired"
+  | "server_event_expired"
   | "server_event_selected"
   | "idle_reminder_fired"
   | "map_info_requested"
@@ -308,6 +312,15 @@ interface ConversationMessageEvent extends EventBase {
   message: string;
 }
 
+interface ConversationClosingEvent extends EventBase {
+  type: "conversation_closing";
+  conversation_id: string;
+  initiator_agent_id: string;
+  target_agent_id: string;
+  current_speaker_agent_id: string; // 終了あいさつを送る側
+  reason: "max_turns" | "server_event" | "ended_by_agent";
+}
+
 interface ConversationEndedEvent extends EventBase {
   type: "conversation_ended";
   conversation_id: string;
@@ -326,9 +339,20 @@ interface ServerEventFiredEvent extends EventBase {
   name: string;               // イベント名
   description: string;
   choices: ServerEventChoiceConfig[]; // 選択肢一覧（07-server-events.md セクション1.1参照）
-  delivered_agent_ids: string[];  // 即時通知済みエージェントID一覧
-  pending_agent_ids: string[];   // 移動中で遅延通知待ちのエージェントID一覧
+  delivered_agent_ids: string[];  // 現在応答待ち中で、すでに通知済みのエージェントID一覧
+  pending_agent_ids: string[];   // 現在応答待ち中で、移動完了後に遅延通知するエージェントID一覧
   delayed: boolean;              // 遅延通知の場合 true
+}
+
+interface ServerEventExpiredEvent extends EventBase {
+  type: "server_event_expired";
+  server_event_id: string;
+  event_id_ref: string;
+  name: string;
+  agent_id: string;              // タイムアウトしたエージェント
+  delivered_agent_ids: string[]; // タイムアウト処理後も応答待ち中の即時通知済みエージェント
+  pending_agent_ids: string[];   // タイムアウト処理後も応答待ち中の遅延通知待ちエージェント
+  fully_expired: boolean;        // これでイベント自体を破棄した場合 true
 }
 
 interface ServerEventSelectedEvent extends EventBase {
@@ -362,8 +386,10 @@ type WorldEvent =
   | ConversationAcceptedEvent
   | ConversationRejectedEvent
   | ConversationMessageEvent
+  | ConversationClosingEvent
   | ConversationEndedEvent
   | ServerEventFiredEvent
+  | ServerEventExpiredEvent
   | ServerEventSelectedEvent
   | IdleReminderFiredEvent;
 ```
@@ -469,8 +495,10 @@ type WorldEvent =
 | `conversation_accepted` | ✅ 発信側 | ✅ | ✅ | ✅ |
 | `conversation_rejected` | ✅ 発信側 | - | ✅ | ✅ |
 | `conversation_message` | ✅ 聞き手 ※2 | ✅ | ✅ | ✅ |
+| `conversation_closing` | - | - | ✅ | ✅ |
 | `conversation_ended` | ✅ 双方 ※4 | ✅ | ✅ | ✅ |
 | `server_event_fired` | ✅ 対象全員 ※3 | ✅ | ✅ | ✅ |
+| `server_event_expired` | - | - | ✅ | ✅ |
 | `server_event_selected` | ✅ 当該 ※5 | - | ✅ | ✅ |
 | `idle_reminder_fired` | ✅ 当該 | - | - | ✅ |
 
@@ -558,6 +586,16 @@ interface AgentSnapshot {
     path: NodeId[]; // BFS最短経路（fromを含まず、toを含む）
     arrives_at: number; // 到着予定時刻（Unix timestamp ms）
   };
+  current_activity?: {
+    type: "action";
+    action_id: string;
+    action_name: string;
+    completes_at: number;
+  } | {
+    type: "wait";
+    duration_ms: number;
+    completes_at: number;
+  };
 }
 
 interface ConversationSnapshot {
@@ -566,6 +604,7 @@ interface ConversationSnapshot {
   initiator_agent_id: string;
   target_agent_id: string;
   current_turn: number;
+  max_turns: number;
   current_speaker_agent_id: string; // 現在の発言者（応答待ち対象）
   closing_reason?: ConversationClosureReason; // closing状態の終了理由
 }
@@ -576,8 +615,8 @@ interface ServerEventSnapshot {
   name: string;
   description: string;
   choices: ServerEventChoiceConfig[];
-  delivered_agent_ids: string[];  // 通知済みエージェントID一覧
-  pending_agent_ids: string[];   // 遅延通知待ちエージェントID一覧
+  delivered_agent_ids: string[];  // 現在応答待ち中で、すでに通知済みのエージェントID一覧
+  pending_agent_ids: string[];   // 現在応答待ち中で、遅延通知待ちのエージェントID一覧
 }
 ```
 
