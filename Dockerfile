@@ -2,6 +2,12 @@
 # (or via: npm run docker:prepare). This directory contains production-ready
 # node_modules and compiled dist output.
 FROM node:24-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fontconfig \
+    fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 ENV NODE_ENV=production
 
