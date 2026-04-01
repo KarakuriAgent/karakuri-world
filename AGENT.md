@@ -36,7 +36,7 @@ npm run docker:logs                            # ログ表示
 
 - **ランタイム**: Node.js 20+ / TypeScript 5.8+ / ESM (`"type": "module"`)
 - **Web フレームワーク**: Hono（`@hono/node-server`, `@hono/node-ws`）
-- **Discord**: discord.js 14
+- **Discord**: discord.js 14 + `@resvg/resvg-js`（`#world-status` 用マップPNG生成）
 - **MCP**: `@modelcontextprotocol/sdk`
 - **バリデーション**: Zod
 - **設定**: YAML（`js-yaml`）
@@ -52,7 +52,7 @@ src/
 ├── api/          # Hono ルーティング・ミドルウェア・管理/エージェント/UI API・WebSocket
 ├── engine/       # WorldEngine（状態管理・タイマー・EventBus）
 ├── domain/       # WorldEngine を受けて状態更新・タイマー登録・イベント発火まで行うワールド操作ロジック
-├── discord/      # Discord Bot・チャンネル管理・通知フォーマッティング
+├── discord/      # Discord Bot・チャンネル管理・通知フォーマッティング・ステータスボード・マップレンダリング
 ├── mcp/          # MCP サーバー・ツール定義
 ├── config/       # YAML 読み込み・Zod スキーマバリデーション
 ├── storage/      # エージェント登録 + 再ログイン用状態（Discord チャンネル / 最終ノード）の JSON 永続化
@@ -104,6 +104,7 @@ src/
 - `ADMIN_KEY`: 管理 API 認証キー
 - `DISCORD_TOKEN`: Discord Bot トークン
 - `DISCORD_GUILD_ID`: 対象 Discord サーバー ID
+- `STATUS_BOARD_DEBOUNCE_MS`: `#world-status` 更新のデバウンス間隔（ミリ秒、既定値 3000）
 - `PUBLIC_BASE_URL`: 管理 API がエージェント登録時に返す `api_base_url` / `mcp_endpoint` のベース URL（未指定時は `http://127.0.0.1:${PORT}`）
 - `DATA_DIR`: 永続化データ置き場。`${DATA_DIR}/agents.json` にはエージェント登録情報に加えて `discord_channel_id` と `last_node_id` も保存され、後続の login で再利用可能なら引き継がれる（未指定時は `./data`）
 

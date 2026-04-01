@@ -21,7 +21,7 @@ function createTimeoutTimer(engine: WorldEngine, agentId: string, serverEvent: S
   });
 }
 
-function maybeCleanupServerEvent(engine: WorldEngine, serverEventId: string): void {
+function maybeCleanupServerEvent(engine: WorldEngine, serverEventId: string): boolean {
   const hasPending = engine.state
     .listLoggedIn()
     .some((agent) => agent.pending_server_event_ids.includes(serverEventId));
@@ -31,7 +31,15 @@ function maybeCleanupServerEvent(engine: WorldEngine, serverEventId: string): vo
 
   if (!hasPending && !hasTimeout) {
     engine.state.serverEvents.delete(serverEventId);
+    return true;
   }
+
+  return false;
+}
+
+function removeAwaitingAgent(serverEvent: ServerEventInstance, agentId: string): void {
+  serverEvent.pending_agent_ids = serverEvent.pending_agent_ids.filter((id) => id !== agentId);
+  serverEvent.delivered_agent_ids = serverEvent.delivered_agent_ids.filter((id) => id !== agentId);
 }
 
 export function fireServerEvent(engine: WorldEngine, eventId: string): FireServerEventResponse {
@@ -154,6 +162,7 @@ export function selectServerEvent(engine: WorldEngine, agentId: string, request:
   }
 
   engine.timerManager.cancel(timeoutTimer.timer_id);
+  removeAwaitingAgent(serverEvent, agentId);
   if (sourceState === 'in_action') {
     cancelActiveAction(engine, agentId);
     cancelActiveWait(engine, agentId);
@@ -178,7 +187,23 @@ export function selectServerEvent(engine: WorldEngine, agentId: string, request:
 }
 
 export function handleServerEventTimeout(engine: WorldEngine, timer: ServerEventTimeoutTimer): void {
-  maybeCleanupServerEvent(engine, timer.server_event_id);
+  const serverEvent = engine.state.serverEvents.get(timer.server_event_id);
+  if (!serverEvent) {
+    return;
+  }
+
+  removeAwaitingAgent(serverEvent, timer.agent_id);
+  const fullyExpired = maybeCleanupServerEvent(engine, timer.server_event_id);
+  engine.emitEvent({
+    type: 'server_event_expired',
+    server_event_id: serverEvent.server_event_id,
+    event_id_ref: serverEvent.event_id,
+    name: serverEvent.name,
+    agent_id: timer.agent_id,
+    delivered_agent_ids: [...serverEvent.delivered_agent_ids],
+    pending_agent_ids: [...serverEvent.pending_agent_ids],
+    fully_expired: fullyExpired,
+  });
 }
 
 export function cleanupServerEventsForAgent(engine: WorldEngine, agentId: string): void {

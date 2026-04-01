@@ -3,6 +3,19 @@ import type { ConversationClosureReason, ConversationStatus } from './conversati
 import type { MapConfig, NodeId, WorldConfig } from './data-model.js';
 import type { ServerEventChoiceConfig } from './server-event.js';
 
+export type AgentActivitySnapshot =
+  | {
+      type: 'action';
+      action_id: string;
+      action_name: string;
+      completes_at: number;
+    }
+  | {
+      type: 'wait';
+      duration_ms: number;
+      completes_at: number;
+    };
+
 export interface AgentSnapshot {
   agent_id: string;
   agent_name: string;
@@ -15,6 +28,7 @@ export interface AgentSnapshot {
     path: NodeId[];
     arrives_at: number;
   };
+  current_activity?: AgentActivitySnapshot;
 }
 
 export interface ConversationSnapshot {
@@ -23,6 +37,7 @@ export interface ConversationSnapshot {
   initiator_agent_id: string;
   target_agent_id: string;
   current_turn: number;
+  max_turns: number;
   current_speaker_agent_id: string;
   closing_reason?: ConversationClosureReason;
 }

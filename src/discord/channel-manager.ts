@@ -10,6 +10,7 @@ import {
 
 export interface StaticChannels {
   world_log_id: string;
+  world_status_id: string;
   agents_category_id: string;
   admin_role_id: string;
   human_role_id: string;
@@ -146,8 +147,21 @@ export class ChannelManager {
       });
     }
 
+    let worldStatus = availableChannels.find(
+      (channel) => channel.type === ChannelType.GuildText && channel.name === 'world-status',
+    );
+    if (!worldStatus) {
+      console.log('Creating missing #world-status channel...');
+      worldStatus = await this.guild.channels.create({
+        name: 'world-status',
+        type: ChannelType.GuildText,
+        permissionOverwrites: restrictedOverwrites,
+      });
+    }
+
     this.staticChannels = {
       world_log_id: worldLog.id,
+      world_status_id: worldStatus.id,
       agents_category_id: agentsCategory.id,
       admin_role_id: adminRole.id,
       human_role_id: humanRole.id,
@@ -200,6 +214,16 @@ export class ChannelManager {
     const channel = await this.getTextChannel(staticChannels.world_log_id);
     if (!channel) {
       throw new Error('Discord guild is missing #world-log.');
+    }
+
+    return channel;
+  }
+
+  async getWorldStatusChannel(): Promise<TextChannel> {
+    const staticChannels = await this.ensureStaticChannels();
+    const channel = await this.getTextChannel(staticChannels.world_status_id);
+    if (!channel) {
+      throw new Error('Discord guild is missing #world-status.');
     }
 
     return channel;

@@ -63,6 +63,21 @@ function scheduleTurnTimer(engine: WorldEngine, conversation: ConversationData, 
   });
 }
 
+function emitConversationClosing(
+  engine: WorldEngine,
+  conversation: ConversationData,
+  reason: Extract<ConversationClosureReason, 'ended_by_agent' | 'max_turns' | 'server_event'>,
+): void {
+  engine.emitEvent({
+    type: 'conversation_closing',
+    conversation_id: conversation.conversation_id,
+    initiator_agent_id: conversation.initiator_agent_id,
+    target_agent_id: conversation.target_agent_id,
+    current_speaker_agent_id: conversation.current_speaker_agent_id,
+    reason,
+  });
+}
+
 function endConversation(
   engine: WorldEngine,
   conversationId: string,
@@ -472,6 +487,8 @@ export function handleConversationInterval(engine: WorldEngine, timer: Conversat
     conversation.status = 'closing';
     conversation.closing_reason ??= 'max_turns';
     scheduleTurnTimer(engine, conversation, timer.listener_agent_id);
+    const closingReason = conversation.closing_reason === 'ended_by_agent' ? 'ended_by_agent' : 'max_turns';
+    emitConversationClosing(engine, conversation, closingReason);
     return;
   }
 
@@ -512,6 +529,7 @@ export function beginClosingConversation(
   conversation.status = 'closing';
   conversation.closing_reason = reason;
   scheduleTurnTimer(engine, conversation, speakerAgentId);
+  emitConversationClosing(engine, conversation, reason);
 }
 
 export function cancelPendingConversation(engine: WorldEngine, agentId: string): void {

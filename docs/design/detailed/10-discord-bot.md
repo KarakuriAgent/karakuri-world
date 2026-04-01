@@ -6,7 +6,7 @@
 
 Discord Botは世界システムからDiscordへの一方向通知に使用する。
 
-- メッセージの送信とチャンネルの作成/削除のみを行う
+- メッセージの送信・ステータスボード更新用メッセージ削除・チャンネルの作成/削除のみを行う
 - メッセージの受信監視は行わない
 - エージェントBotがDiscordチャンネルに投稿するテキストは人間向け表示であり、世界システムはこれを読まない
 
@@ -22,8 +22,9 @@ World Engineがイベント配信ルール（03-world-engine.md セクション4
 |--------|--------|
 | `Guilds` (1 << 0) | Gateway接続を使用する場合に必要。ギルド・チャンネル情報の取得に使用する |
 | `Guild Members` (1 << 1) | 起動時に `guild.members.fetch()` で既存メンバーのロールを同期し、`guildMemberAdd` で新規参加者へロールを付与するために必要 |
+| `Guild Messages` (1 << 9) | `#world-status` チャンネルのメッセージイベントを受信するために宣言。REST API (`channel.messages.fetch` / `bulkDelete`) 自体は Intent 不要だが、将来的なメッセージイベント活用に備えて有効化 |
 
-Discord Botはメッセージ受信には使わないが、ロール同期のために `Guild Members` 特権Intentを有効にする。
+Discord Botはメッセージ内容を読んでゲーム入力には使わないが、ロール同期のために `Guild Members` 特権Intentを有効にする。`Guild Messages` はステータスボード管理の REST API 呼び出しには不要だが、将来的なメッセージイベント活用に備えて宣言している。
 
 不要な特権Intent:
 
@@ -42,6 +43,8 @@ OAuth2でBotを招待する際に付与する権限:
 | Manage Roles | `0x10000000` | `admin` / `human` / `agent` ロールの作成、メンバーロール同期、チャンネルのPermission Overwrites設定 |
 | View Channels | `0x00000400` | チャンネルの閲覧 |
 | Send Messages | `0x00000800` | メッセージ送信 |
+| Manage Messages | `0x00002000` | `#world-status` の既存メッセージを削除して再送信する |
+| Attach Files | `0x00008000` | `#world-status` にマップPNGを添付する |
 | Create Public Threads | `0x0000000800000000` | `#world-log` の会話開始メッセージから会話スレッドを作成する |
 | Send Messages in Threads | `0x0000004000000000` | 会話メッセージ・終了通知をスレッドに投稿する |
 | Read Message History | `0x00010000` | `#world-log` / `#agent-{name}` の権限モデルに合わせるため |
@@ -78,19 +81,21 @@ OAuth2でBotを招待する際に付与する権限:
 ```
 karakuri-world/
 ├── #world-log
+├── #world-status
 └── agents/          (カテゴリ)
 ```
 
 | 名前 | 種別 | 用途 |
 |------|------|------|
 | `#world-log` | テキストチャンネル | 世界全体のイベントログ |
+| `#world-status` | テキストチャンネル | 現在のワールド概要とマップ画像を常時表示するステータスボード |
 | `agents` | カテゴリ | エージェント専用チャンネルの親。動的チャンネルはこの配下に作成する |
 
 ### 4.2 Permission Overwrites
 
 Permission Overwriteの値の凡例: Allow / Deny / —（未設定）
 
-#### #world-log
+#### #world-log / #world-status
 
 | 対象 | 種別 | View Channel | Send Messages | Read Message History | Create Threads | Send in Threads | Add Reactions |
 |------|------|-------------|---------------|---------------------|----------------|-----------------|---------------|
@@ -100,11 +105,31 @@ Permission Overwriteの値の凡例: Allow / Deny / —（未設定）
 
 #### agents カテゴリ
 
-`#world-log` と同一のPermission Overwritesを設定する。
+`#world-log` / `#world-status` と同一のPermission Overwritesを設定する。
 
 人間管理者は `@admin` と `@human` を併用する。`@human` で deny した thread / reaction 系権限を `@admin` で明示 allow しないと、管理者でもそれらを使えなくなるため、`@admin` 側で明示的に許可する。
 
-### 4.3 セットアップ手順
+### 4.3 `#world-status` ボード更新仕様
+
+- 初回起動時に即座に表示し、以後は状態変化イベントをデバウンスして更新する
+- デバウンス間隔は `STATUS_BOARD_DEBOUNCE_MS` 環境変数で指定し、既定値は 3000ms
+- 更新はメッセージ編集ではなく、既存メッセージ全削除 → 最新内容の再送信で行う
+- 先頭メッセージにはマップSVGをPNG化した画像を添付する（PNG生成失敗時はテキストのみ）
+- 停止時は既存メッセージを削除して `ワールド停止中` を投稿する
+
+更新トリガーは次のイベントに限定する:
+
+- `agent_logged_in`, `agent_logged_out`
+- `movement_started`, `movement_completed`
+- `action_started`, `action_completed`
+- `wait_started`, `wait_completed`
+- `conversation_accepted`, `conversation_message`, `conversation_closing`, `conversation_rejected`, `conversation_ended`
+- `server_event_fired`, `server_event_expired`, `server_event_selected`
+
+`conversation_requested`, 各種 `*_requested`, `idle_reminder_fired` では更新しない。
+なお、会話発話などで内部タイマーが張り替わるケースでも、次の遷移時刻の再計算はデバウンス完了を待たず即時に再アームする。
+
+### 4.4 セットアップ手順
 
 1. Discordサーバーを作成する
 2. World Botをセクション2.2の権限で招待し、Developer Portalで `Server Members Intent` を有効化する

@@ -146,12 +146,14 @@ WorldState
 │   ├── agent_name
 │   ├── node_id
 │   ├── state: idle | moving | in_action | in_conversation
-│   └── movement?: { from_node_id, to_node_id, path, arrives_at }
+│   ├── movement?: { from_node_id, to_node_id, path, arrives_at }
+│   └── current_activity?: { type: 'action', action_id, action_name, completes_at } | { type: 'wait', duration_ms, completes_at }
 ├── conversations: { ConversationId → ConversationData }
 │   ├── status: pending | active | closing
 │   ├── initiator_agent_id
 │   ├── target_agent_id
 │   ├── current_turn
+│   ├── max_turns
 │   ├── current_speaker_agent_id
 │   ├── closing_reason?
 │   └── messages: { speaker, text }[]  # 表示用バッファ（初回発言含む、UIローカル管理）
@@ -159,8 +161,8 @@ WorldState
     ├── event_id              # 定義ID（テーマのエフェクトマッピング用）
     ├── name, description
     ├── choices
-    ├── delivered_agent_ids
-    └── pending_agent_ids
+    ├── delivered_agent_ids   # 現在応答待ち中で、すでに通知済みのエージェント
+    └── pending_agent_ids     # 現在応答待ち中で、遅延通知待ちのエージェント
 ```
 
 スナップショットに含まれない情報（会話メッセージ履歴、アクション詳細等）はUIがイベント受信時にローカルで管理する。再接続時にはこれらの情報はクリアされる（セクション3.2参照）。
@@ -206,8 +208,10 @@ WorldState
 | `conversation_accepted` | 両エージェントのstate → in_conversation、会話のstatus → active。受諾側が `in_action` だった場合はアクション情報をクリア |
 | `conversation_rejected` | 会話を削除、発信側のstate → idle |
 | `conversation_message` | 会話にメッセージを追加、`current_turn` と `current_speaker_agent_id` を更新（turn 2 以降。初回発言は `conversation_requested` で処理済み） |
+| `conversation_closing` | 会話のstatus → closing、`current_speaker_agent_id` と `closing_reason` を更新 |
 | `conversation_ended` | 会話を削除、両エージェントのstate → idle |
 | `server_event_fired` | サーバーイベントを記録（`event_id_ref`, `choices` をキャッシュ） |
+| `server_event_expired` | サーバーイベントの `delivered_agent_ids` / `pending_agent_ids` を更新し、`fully_expired` なら削除 |
 | `server_event_selected` | エージェントの選択を記録。`source_state` が `in_action` の場合はエージェントのstate → idle |
 
 ## 4. マップ描画

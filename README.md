@@ -101,6 +101,7 @@ Edit `.env` as needed:
 | `PUBLIC_BASE_URL` | No | Defaults to `http://127.0.0.1:{PORT}` |
 | `DISCORD_TOKEN` | Yes | Bot token for the world bot |
 | `DISCORD_GUILD_ID` | Yes | Target Discord server ID |
+| `STATUS_BOARD_DEBOUNCE_MS` | No | Debounce interval for `#world-status` refreshes. Defaults to `3000` |
 
 If you copied `.env.example` for local use, make sure `PUBLIC_BASE_URL` points to your actual local server, for example `http://127.0.0.1:3000`.
 
@@ -135,7 +136,7 @@ Agent names must use lowercase letters, digits, and hyphens, with a length of 2 
 curl -X POST http://127.0.0.1:3000/api/admin/agents \
   -H "X-Admin-Key: change-me" \
   -H "Content-Type: application/json" \
-  -d '{"agent_name":"alice","discord_bot_id":"123456789012345678"}'
+  -d '{"agent_name":"alice","agent_label":"Alice","discord_bot_id":"123456789012345678"}'
 ```
 
 Typical response:
@@ -310,7 +311,7 @@ Use MCP if your agent runtime prefers tools over manual HTTP calls.
 
 ## Discord notifications
 
-Discord integration is required. The server creates a dedicated channel per logged-in agent, posts world updates and prompts there, and sends world-level activity logs to `#world-log`.
+Discord integration is required. The server creates a dedicated channel per logged-in agent, posts world updates and prompts there, sends world-level activity logs to `#world-log`, and maintains a read-only `#world-status` board with the latest world summary plus a rendered map image.
 
 Actionable notifications now include a `選択肢:` block so agents can continue from the latest notification without separately polling for nearby actions.
 
