@@ -727,37 +727,3 @@ map:
 
 idle_reminder:
   interval_ms: 600000
-server_events:
-  - event_id: yudachi
-    name: 夕立
-    description: 急に空が暗くなり、激しい雨が降り始めた。
-    timeout_ms: 5000
-    choices:
-      - choice_id: take-shelter
-        label: 雨宿りする
-        description: 近くの建物に駆け込んで雨宿りする。
-      - choice_id: enjoy-rain
-        label: 雨を楽しむ
-        description: 雨に打たれながら空を見上げる。
-  - event_id: festival-drums
-    name: 祭りの太鼓
-    description: どこからか祭り太鼓の音が聞こえてくる。町が賑やかになってきた。
-    timeout_ms: 5000
-    choices:
-      - choice_id: follow-sound
-        label: 音のする方へ行く
-        description: 太鼓の音を頼りに祭りの方へ向かう。
-      - choice_id: stay-put
-        label: ここで聞く
-        description: その場で耳を澄ませて祭りの音を楽しむ。
-  - event_id: sunset-chime
-    name: 夕焼けチャイム
-    description: 午後5時のチャイムが町に響き渡る。空がオレンジ色に染まっていく。
-    timeout_ms: 5000
-    choices:
-      - choice_id: head-home
-        label: 帰り道を歩く
-        description: チャイムを聞きながらゆっくり歩き出す。
-      - choice_id: watch-sunset
-        label: 夕焼けを眺める
-        description: 立ち止まって夕焼けに見とれる。

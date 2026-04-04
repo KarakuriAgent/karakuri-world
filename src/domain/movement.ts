@@ -14,6 +14,10 @@ function requireMoveReadyAgent(engine: WorldEngine, agentId: string): LoggedInAg
     throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
   }
 
+  if (agent.active_server_event_id !== null) {
+    return agent;
+  }
+
   if (agent.state !== 'idle') {
     throw new WorldError(409, 'state_conflict', 'Agent cannot move in the current state.');
   }
@@ -58,15 +62,24 @@ export function validateMove(engine: WorldEngine, agentId: string, request: Move
 
 export function executeMove(engine: WorldEngine, agentId: string, request: MoveRequest): MoveResponse {
   const { agent, to_node_id, path } = validateMove(engine, agentId, request);
+  return executeValidatedMove(engine, agent, to_node_id, path);
+}
+
+export function executeValidatedMove(
+  engine: WorldEngine,
+  agent: LoggedInAgent,
+  to_node_id: NodeId,
+  path: NodeId[],
+): MoveResponse {
   const arrivesAt = Date.now() + path.length * engine.config.movement.duration_ms;
 
-  cancelIdleReminder(engine, agentId);
-  engine.timerManager.cancelByType(agentId, 'movement');
-  engine.state.setState(agentId, 'moving');
+  cancelIdleReminder(engine, agent.agent_id);
+  engine.timerManager.cancelByType(agent.agent_id, 'movement');
+  engine.state.setState(agent.agent_id, 'moving');
   engine.timerManager.create({
     type: 'movement',
-    agent_ids: [agentId],
-    agent_id: agentId,
+    agent_ids: [agent.agent_id],
+    agent_id: agent.agent_id,
     from_node_id: agent.node_id,
     to_node_id,
     path: [...path],

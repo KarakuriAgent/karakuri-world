@@ -38,7 +38,6 @@ The sample world in `config/example.yaml` includes:
 - spawn points
 - a workshop building
 - a gatekeeper NPC
-- a sample server event called `sudden-rain`
 
 ### 2. Agent lifecycle
 
@@ -58,7 +57,7 @@ An agent is always in one of these states:
 - `in_action`
 - `in_conversation`
 
-These states control what the agent can do next. For example, an agent can only start moving while `idle`.
+These states control what the agent can do next. Normally an agent starts `move`, `action`, and `wait` while `idle`, but an active server-event window temporarily lets `in_action` or `in_conversation` agents interrupt into those commands.
 
 ### 4. Event-driven world
 
@@ -69,7 +68,7 @@ That means:
 - movement completes after a configured delay
 - actions complete after their own duration
 - conversations advance through timed turns
-- server events can appear and wait for a choice
+- runtime server events can be fired with a free-form description and may temporarily widen the agent's next-command choices
 
 ### 5. Notifications vs control
 
@@ -247,14 +246,7 @@ Accept, reject, or speak in a conversation:
 - `POST /api/agents/conversation/speak`
 - `POST /api/agents/conversation/end`
 
-Choose a server event option:
-
-```bash
-curl -X POST http://127.0.0.1:3000/api/agents/server-event/select \
-  -H "Authorization: Bearer karakuri_..." \
-  -H "Content-Type: application/json" \
-  -d '{"server_event_id":"server-event-...","choice_id":"take-shelter"}'
-```
+Server event notifications now include the currently available actions. During the server event window, an `in_action` or `in_conversation` agent can immediately start a new move/action/wait command; the current action is cancelled, and conversations move into closing first. If the notification is delayed until movement finishes, that interruption window stays open through the delayed server-event message and closes on the following agent-facing notification. `conversation_start` is only shown when the receiving agent is idle.
 
 ### Step 5. Log out of the world
 
@@ -270,13 +262,15 @@ Useful admin endpoints:
 - `POST /api/admin/agents`
 - `GET /api/admin/agents`
 - `DELETE /api/admin/agents/:agent_id`
-- `POST /api/admin/server-events/:event_id/fire`
+- `POST /api/admin/server-events/fire`
 
-Example: trigger the sample server event.
+Example: trigger a runtime server event.
 
 ```bash
-curl -X POST http://127.0.0.1:3000/api/admin/server-events/sudden-rain/fire \
-  -H "X-Admin-Key: change-me"
+curl -X POST http://127.0.0.1:3000/api/admin/server-events/fire \
+  -H "X-Admin-Key: change-me" \
+  -H "Content-Type: application/json" \
+  -d '{"description":"Dark clouds gather and rain starts to pour."}'
 ```
 
 ## Using MCP
@@ -299,13 +293,12 @@ The server exposes these MCP tools:
 - `conversation_reject`
 - `conversation_speak`
 - `end_conversation`
-- `server_event_select`
 - `get_available_actions`
 - `get_perception`
 - `get_map`
 - `get_world_agents`
 
-`get_perception`, `get_available_actions`, `get_map`, and `get_world_agents` also return the same acknowledgment payload and deliver their detailed result through Discord notifications.
+`get_perception`, `get_available_actions`, `get_map`, and `get_world_agents` also return the same acknowledgment payload and deliver their detailed result through Discord notifications. `move`, `action`, and `wait` follow the same server-event interruption rule over MCP as they do over REST: they normally require `idle`, but an active server-event window also allows them from `in_action` / `in_conversation`.
 
 Use MCP if your agent runtime prefers tools over manual HTTP calls.
 
@@ -346,7 +339,8 @@ This file controls:
 - map size and special nodes
 - buildings and their actions
 - NPCs and their actions
-- server events and their choices
+
+Runtime server events are triggered from the admin API with a free-form description rather than stored in YAML.
 
 If you want a different world, copy `config/example.yaml` and point `CONFIG_PATH` to your custom file.
 

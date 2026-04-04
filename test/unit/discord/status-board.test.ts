@@ -107,7 +107,7 @@ describe('StatusBoard', () => {
     expect(channel.deleteMessage).toHaveBeenCalledWith('m2');
   });
 
-  it('refreshes when the last active server event expires', async () => {
+  it('does not schedule an extra refresh once an immediately-delivered server event is cleaned up', async () => {
     const { engine } = createTestWorld();
     const channel = createMockChannel();
     const board = new StatusBoard(engine, channel, {
@@ -131,7 +131,7 @@ describe('StatusBoard', () => {
     channel.fetchMessages.mockClear();
     channel.sendMessage.mockClear();
 
-    engine.fireServerEvent('sudden-rain');
+    engine.fireServerEvent('Dark clouds gather.');
     await vi.advanceTimersByTimeAsync(3000);
     await flushAsyncWork();
 
@@ -140,16 +140,14 @@ describe('StatusBoard', () => {
     channel.fetchMessages.mockClear();
     channel.sendMessage.mockClear();
 
-    await vi.advanceTimersByTimeAsync(5000);
-    await flushAsyncWork();
     await vi.advanceTimersByTimeAsync(3000);
     await flushAsyncWork();
 
-    expect(channel.fetchMessages).toHaveBeenCalled();
-    expect(channel.sendMessage).toHaveBeenCalled();
+    expect(channel.fetchMessages).not.toHaveBeenCalled();
+    expect(channel.sendMessage).not.toHaveBeenCalled();
   });
 
-  it('refreshes when a timeout changes outstanding server event counts before final cleanup', async () => {
+  it('refreshes when a pending server event is delivered after movement completes', async () => {
     const { engine } = createTestWorld({
       config: {
         movement: {
@@ -187,15 +185,7 @@ describe('StatusBoard', () => {
     channel.sendMessage.mockClear();
 
     engine.move(bob.agent_id, { target_node_id: '3-4' });
-    engine.fireServerEvent('sudden-rain');
-    await vi.advanceTimersByTimeAsync(3000);
-    await flushAsyncWork();
-
-    channel.fetchMessages.mockClear();
-    channel.sendMessage.mockClear();
-
-    await vi.advanceTimersByTimeAsync(2000);
-    await flushAsyncWork();
+    engine.fireServerEvent('Dark clouds gather.');
     await vi.advanceTimersByTimeAsync(3000);
     await flushAsyncWork();
 
@@ -737,6 +727,52 @@ describe('StatusBoard', () => {
 
     expect(errorSpy).toHaveBeenCalledWith('Failed to refresh status board.', expect.any(Error));
     expect(channel.sendMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it('tracks partially sent message IDs so the next refresh can clean them up', async () => {
+    const { engine } = createTestWorld();
+    const channel = createMockChannel();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const board = new StatusBoard(engine, channel, {
+      timezone: 'Asia/Tokyo',
+      debounceMs: 3000,
+      mapImage: null,
+    });
+
+    board.register();
+    await flushAsyncWork();
+
+    // Make the send fail on the initial render
+    channel.sendMessage.mockRejectedValueOnce(new Error('Discord rate limit'));
+
+    const agent = engine.registerAgent({
+      agent_name: 'sakura',
+      agent_label: 'Sakura',
+      discord_bot_id: 'discord-bot-1',
+    });
+    await engine.loginAgent(agent.agent_id);
+    await vi.advanceTimersByTimeAsync(3000);
+    await flushAsyncWork();
+
+    expect(errorSpy).toHaveBeenCalledWith('Failed to refresh status board.', expect.any(Error));
+
+    // Reset mocks for the recovery refresh
+    channel.sendMessage.mockImplementation(async () => ({ id: `recovered-${Date.now()}` }));
+    channel.fetchMessages.mockResolvedValue([]);
+    channel.bulkDelete.mockClear();
+    channel.sendMessage.mockClear();
+
+    // Trigger another refresh
+    engine.fireServerEvent('test');
+    await vi.advanceTimersByTimeAsync(3000);
+    await flushAsyncWork();
+
+    // The board should have forced a full refresh (lastMessages cleared) even though
+    // there were no leftover messages to delete from the channel
+    expect(channel.sendMessage).toHaveBeenCalled();
+
+    board.dispose({ postStoppedMessage: false });
   });
 
   it('treats stopped-message delivery as best effort during dispose', async () => {

@@ -65,6 +65,10 @@ export class WorldState {
     return this.agents.setPendingConversation(agentId, conversationId);
   }
 
+  setCurrentConversation(agentId: string, conversationId: string | null): LoggedInAgent {
+    return this.agents.setCurrentConversation(agentId, conversationId);
+  }
+
   addPendingServerEvent(agentId: string, serverEventId: string): LoggedInAgent {
     return this.agents.addPendingServerEvent(agentId, serverEventId);
   }
@@ -75,6 +79,14 @@ export class WorldState {
 
   clearPendingServerEvents(agentId: string): LoggedInAgent {
     return this.agents.clearPendingServerEvents(agentId);
+  }
+
+  setActiveServerEvent(agentId: string, serverEventId: string | null): LoggedInAgent {
+    return this.agents.setActiveServerEvent(agentId, serverEventId);
+  }
+
+  clearActiveServerEvent(agentId: string): LoggedInAgent {
+    return this.agents.clearActiveServerEvent(agentId);
   }
 
   setLastAction(agentId: string, actionId: string | null): LoggedInAgent {

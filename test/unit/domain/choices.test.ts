@@ -107,4 +107,26 @@ describe('choices domain', () => {
     expect(text).toContain('- get_map: マップ全体の情報を取得する');
     expect(text).toContain('- get_world_agents: 全エージェントの位置と状態を取得する');
   });
+
+  it.each(['in_action', 'in_conversation'] as const)(
+    'suppresses conversation_start in forced choices while %s',
+    async (state) => {
+      const { engine } = createTestWorld();
+      const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'Alice', discord_bot_id: 'bot-alice' });
+      const bob = engine.registerAgent({ agent_name: 'bob', agent_label: 'Bob', discord_bot_id: 'bot-bob' });
+      await engine.loginAgent(alice.agent_id);
+      await engine.loginAgent(bob.agent_id);
+
+      engine.state.setNode(alice.agent_id, '1-1');
+      engine.state.setNode(bob.agent_id, '1-2');
+      engine.state.setState(alice.agent_id, state);
+
+      const text = buildChoicesText(engine, alice.agent_id, { forceShowActions: true });
+
+      expect(text).toContain('- action:');
+      expect(text).toContain('- move: ノードIDを指定して移動する (target_node_id: ノードID)');
+      expect(text).toContain('- wait: その場で待機する (duration: 1〜6、10分単位)');
+      expect(text).not.toContain('conversation_start: bob');
+    },
+  );
 });

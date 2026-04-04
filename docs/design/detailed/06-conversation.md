@@ -12,7 +12,7 @@ type ConversationStatus = "pending" | "active" | "closing";
 |------|------|
 | `pending` | 会話リクエスト送信済み、対象側の受諾/拒否待ち |
 | `active` | 会話進行中（ターン交互進行） |
-| `closing` | 終了あいさつフェーズ（max_turns到達、サーバーイベント選択、またはエージェントによる自発終了） |
+| `closing` | 終了あいさつフェーズ（max_turns到達、サーバーイベントウィンドウによる割り込み、またはエージェントによる自発終了） |
 
 `closing` 状態の場合、終了理由（`"max_turns"`、`"server_event"`、または `"ended_by_agent"`）を内部的に保持する。`conversation_turn` タイマー発火時の `conversation_ended` イベントの `reason` にこの値を使用する。
 
@@ -194,6 +194,15 @@ interface ConversationRejectResponse {
 
 1. `ConversationAcceptTimer` をキャンセル
 2. `conversation_rejected` イベントは発行しない（相手への着信通知を取り消す）
+
+### 3.6 pending中のサーバーイベント割り込み
+
+pending conversation 中にどちらかがサーバーイベントウィンドウで `move` / `action` / `wait` を開始した場合:
+
+1. `ConversationAcceptTimer` をキャンセル
+2. 両者の `pending_conversation_id` を解除
+3. `conversation_rejected` イベントを発行（`reason: "server_event"`）
+4. Discord では両当事者に「サーバーイベントにより会話開始が中断された」旨を通知する
 
 ## 4. 会話ターン進行
 
@@ -422,19 +431,16 @@ interface ConversationSpeakResponse {
 
 発言のフォーマット: `{speaker_name}: 「{message}」`
 
-## 8. 会話中の割り込み（サーバーイベント選択時の終了あいさつフロー）
+## 8. 会話中の割り込み（サーバーイベントウィンドウ）
 
-### 8.1 サーバーイベント選択時の処理
-
-`in_conversation` のエージェントがサーバーイベントの選択肢を選んだ場合、`server_event_selected` イベントが発行された後（詳細は 07-server-events.md で定義）、終了あいさつフェーズに移行する。
+`in_conversation` のエージェントがサーバーイベントウィンドウ中に新しい `move` / `action` / `wait` を開始した場合、`handleServerEventInterruption` が会話を closing に進める。
 
 1. 活動中の会話タイマー（`conversation_turn`、`conversation_interval`）をすべてキャンセル
 2. 会話ステータスを `closing` に更新
-3. `current_speaker_agent_id` を選択したエージェントに設定
-4. 選択したエージェントのDiscordに終了あいさつ送信の指示を通知
-5. 選択したエージェントの `conversation_turn` タイマーを生成（あいさつの応答期限。`fires_at = 現在時刻 + ConversationConfig.turn_timeout_ms`）
+3. 実際に新行動へ移る側ではなく、残るパートナーを farewell speaker に設定
+4. パートナーにサーバーイベント専用の closing 通知を送り、最後の発言機会を与える
 
-選択したエージェントが終了あいさつを送信した場合:
+パートナー（終了あいさつ担当エージェント）が終了あいさつを送信した場合:
 
 1. `conversation_turn` タイマーをキャンセル
 2. `conversation_message` イベントを発行（`turn = 現在のturn + 1`。終了あいさつはその時点の次の番号を使用する）
@@ -458,7 +464,7 @@ interface ConversationSpeakResponse {
 会話が `closing` 状態の間:
 
 - 終了あいさつの発言者（`current_speaker_agent_id`）のみが発言できる
-- 会話参加者による追加のサーバーイベント選択は受け付けない（会話は既に終了処理中）
+- 会話が既に `closing` の場合、割り込みは可能だが `beginClosingConversation` の再呼び出しはスキップされる（二重closingを防止）
 
 ## 9. 会話相手ログアウト時の強制終了フロー
 

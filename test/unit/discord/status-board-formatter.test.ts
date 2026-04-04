@@ -58,10 +58,7 @@ function createSnapshot(): WorldSnapshot {
     server_events: [
       {
         server_event_id: 'server-event-1',
-        event_id: 'sudden-rain',
-        name: '突然の雨',
         description: '空が暗くなり雨が降り出した',
-        choices: [],
         delivered_agent_ids: ['agent-1'],
         pending_agent_ids: ['agent-2', 'agent-3'],
       },
@@ -81,8 +78,7 @@ describe('formatStatusBoard', () => {
     expect(message).toContain('- **hana** - 2-4 (Workshop Interior) - 行動中:「お茶を淹れる」');
     expect(message).toContain('## 進行中の会話 (1件)');
     expect(message).toContain('- sakura と taro (ターン 3/10, sakuraの番)');
-    expect(message).toContain('## アクティブなサーバーイベント (1件)');
-    expect(message).toContain('- 突然の雨: 空が暗くなり雨が降り出した (応答待ち: 3名)');
+    expect(message).not.toContain('サーバーイベント');
     expect(message).toContain('最終更新: 14:30');
   });
 
@@ -96,7 +92,7 @@ describe('formatStatusBoard', () => {
 
     expect(message).toContain('_ログイン中のエージェントはいません。_');
     expect(message).toContain('_進行中の会話はありません。_');
-    expect(message).toContain('_アクティブなサーバーイベントはありません。_');
+    expect(message).not.toContain('サーバーイベント');
   });
 
   it('clamps displayed turn progress while a conversation is closing', () => {
@@ -117,25 +113,6 @@ describe('formatStatusBoard', () => {
 
     expect(message).toContain('- sakura と taro (ターン 10/10, sakuraの番, 終了処理中)');
     expect(message).not.toContain('ターン 11/10');
-  });
-
-  it('counts delivered but unanswered agents in server event status', () => {
-    const snapshot = createSnapshot();
-    snapshot.server_events = [
-      {
-        server_event_id: 'server-event-2',
-        event_id: 'sudden-rain',
-        name: '突然の雨',
-        description: '空が暗くなり雨が降り出した',
-        choices: [],
-        delivered_agent_ids: ['agent-1'],
-        pending_agent_ids: [],
-      },
-    ];
-
-    const [message] = formatStatusBoard(snapshot, 'Asia/Tokyo');
-
-    expect(message).toContain('- 突然の雨: 空が暗くなり雨が降り出した (応答待ち: 1名)');
   });
 
   it('shows a moving agent without movement data using a plain fallback', () => {

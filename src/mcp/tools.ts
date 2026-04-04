@@ -82,13 +82,13 @@ export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): 
     {
       name: 'move',
       description:
-        '指定した目的地ノードへ移動する。サーバーがBFSで最短経路を計算し、経路のマス数に応じた移動時間で一括移動する。idle状態でのみ実行可能。',
+        '指定した目的地ノードへ移動する。サーバーがBFSで最短経路を計算し、経路のマス数に応じた移動時間で一括移動する。通常はidle状態でのみ実行可能だが、アクティブなサーバーイベント通知の割り込みウィンドウ中のみ in_action / in_conversation からも実行できる。',
       inputSchema: moveSchema,
       execute: wrapTool(moveSchema, async (arguments_) => engine.move(agentId, arguments_)),
     },
     {
       name: 'action',
-      description: 'アクションを実行する。idle状態でのみ実行可能。利用可能なアクションは通知の選択肢で確認できる。',
+      description: 'アクションを実行する。通常はidle状態でのみ実行可能だが、アクティブなサーバーイベント通知の割り込みウィンドウ中のみ in_action / in_conversation からも実行できる。利用可能なアクションは通知の選択肢で確認できる。',
       inputSchema: z
         .object({
           action_id: z.string().min(1),
@@ -105,7 +105,7 @@ export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): 
     },
     {
       name: 'wait',
-      description: 'その場で待機する。duration は 10分単位の整数（1=10分, 2=20分, ..., 6=60分）。idle状態でのみ実行可能。',
+      description: 'その場で待機する。duration は 10分単位の整数（1=10分, 2=20分, ..., 6=60分）。通常はidle状態でのみ実行可能だが、アクティブなサーバーイベント通知の割り込みウィンドウ中のみ in_action / in_conversation からも実行できる。',
       inputSchema: z
         .object({
           duration: z.number().int().min(1).max(6),
@@ -195,25 +195,6 @@ export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): 
           })
           .strict(),
         async (arguments_) => engine.endConversation(agentId, arguments_),
-      ),
-    },
-    {
-      name: 'server_event_select',
-      description: 'サーバーイベントの選択肢を選ぶ。',
-      inputSchema: z
-        .object({
-          server_event_id: z.string().min(1),
-          choice_id: z.string().min(1),
-        })
-        .strict(),
-      execute: wrapTool(
-        z
-          .object({
-            server_event_id: z.string().min(1),
-            choice_id: z.string().min(1),
-          })
-          .strict(),
-        async (arguments_) => engine.selectServerEvent(agentId, arguments_),
       ),
     },
     {

@@ -154,7 +154,6 @@ interface ServerConfig {
   perception: PerceptionConfig;
   spawn: SpawnConfig;
   map: MapConfig;
-  server_events: ServerEventConfig[]; // サーバーイベント定義（詳細は 07-server-events.md で定義）
   idle_reminder?: IdleReminderConfig; // idle再通知設定（オプション、未設定で無効）
 }
 ```

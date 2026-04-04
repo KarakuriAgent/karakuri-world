@@ -24,7 +24,6 @@ Commands:
   conversation-reject                            Reject a conversation
   conversation-speak <message>                   Speak in a conversation
   conversation-end <message>                     End a conversation with a farewell message
-  server-event-select <server_event_id> <choice_id>  Select a server event choice
   map                                            Request the full map via notification
   world-agents                                   Request all agent states via notification
 EOF
@@ -122,10 +121,6 @@ case "${command}" in
   conversation-end)
     [ $# -lt 1 ] && { echo "Usage: karakuri.sh conversation-end <message>" >&2; exit 1; }
     do_post "/agents/conversation/end" "$(json_obj message "${*:1}")"
-    ;;
-  server-event-select)
-    [ $# -lt 2 ] && { echo "Usage: karakuri.sh server-event-select <server_event_id> <choice_id>" >&2; exit 1; }
-    do_post "/agents/server-event/select" "$(json_obj server_event_id "$1" choice_id "$2")"
     ;;
   map)
     do_notification_get "/agents/map"

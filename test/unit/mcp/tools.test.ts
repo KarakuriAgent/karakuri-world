@@ -34,7 +34,6 @@ describe('MCP tools', () => {
       'conversation_reject',
       'conversation_speak',
       'end_conversation',
-      'server_event_select',
       'get_available_actions',
       'get_perception',
       'get_map',

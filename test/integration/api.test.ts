@@ -228,7 +228,7 @@ describe('REST API', () => {
     expect(conflict.data.error).toBe('state_conflict');
   });
 
-  it('wires action, conversation, and server event endpoints', async () => {
+  it('wires action, conversation, and admin server event endpoints', async () => {
     const { engine } = createTestWorld();
     const { app } = createApp(engine, { adminKey: ADMIN_KEY, configPath: CONFIG_PATH, publicBaseUrl: PUBLIC_BASE_URL });
 
@@ -298,18 +298,13 @@ describe('REST API', () => {
     expect(ended.response.status).toBe(200);
     expect(ended.data.turn).toBe(4);
 
-    const fired = await requestJson(app, '/api/admin/server-events/sudden-rain/fire', {
+    const fired = await requestJson(app, '/api/admin/server-events/fire', {
       method: 'POST',
       headers: { 'X-Admin-Key': ADMIN_KEY },
+      body: JSON.stringify({ description: 'Dark clouds gather.' }),
     });
     expect(fired.response.status).toBe(200);
-
-    const selected = await requestJson(app, '/api/agents/server-event/select', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${alice.data.api_key}` },
-      body: JSON.stringify({ server_event_id: fired.data.server_event_id, choice_id: 'take-shelter' }),
-    });
-    expect(selected.data).toEqual({ status: 'ok' });
+    expect(fired.data.server_event_id).toMatch(/^server-event-/);
   });
 
   it('emits info-request events for notification-based read endpoints', async () => {

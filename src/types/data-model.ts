@@ -1,5 +1,3 @@
-import type { ServerEventConfig } from './server-event.js';
-
 export type NodeId = `${number}-${number}`;
 
 export type NodeType = 'normal' | 'wall' | 'door' | 'building_interior' | 'npc';
@@ -88,6 +86,5 @@ export interface ServerConfig {
   perception: PerceptionConfig;
   spawn: SpawnConfig;
   map: MapConfig;
-  server_events: ServerEventConfig[];
   idle_reminder?: IdleReminderConfig;
 }

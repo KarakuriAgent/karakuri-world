@@ -1,7 +1,6 @@
 import type { AgentState } from './agent.js';
-import type { NodeId } from './data-model.js';
 import type { ConversationClosureReason, ConversationRejectionReason } from './conversation.js';
-import type { ServerEventChoiceConfig } from './server-event.js';
+import type { NodeId } from './data-model.js';
 
 export type EventType =
   | 'agent_logged_in'
@@ -19,8 +18,6 @@ export type EventType =
   | 'conversation_closing'
   | 'conversation_ended'
   | 'server_event_fired'
-  | 'server_event_expired'
-  | 'server_event_selected'
   | 'idle_reminder_fired'
   | 'map_info_requested'
   | 'world_agents_info_requested'
@@ -156,35 +153,10 @@ export interface ConversationEndedEvent extends EventBase {
 export interface ServerEventFiredEvent extends EventBase {
   type: 'server_event_fired';
   server_event_id: string;
-  event_id_ref: string;
-  name: string;
   description: string;
-  choices: ServerEventChoiceConfig[];
   delivered_agent_ids: string[];
   pending_agent_ids: string[];
   delayed: boolean;
-}
-
-export interface ServerEventSelectedEvent extends EventBase {
-  type: 'server_event_selected';
-  server_event_id: string;
-  event_id_ref: string;
-  name: string;
-  agent_id: string;
-  choice_id: string;
-  choice_label: string;
-  source_state: 'idle' | 'in_action' | 'in_conversation';
-}
-
-export interface ServerEventExpiredEvent extends EventBase {
-  type: 'server_event_expired';
-  server_event_id: string;
-  event_id_ref: string;
-  name: string;
-  agent_id: string;
-  delivered_agent_ids: string[];
-  pending_agent_ids: string[];
-  fully_expired: boolean;
 }
 
 export interface IdleReminderFiredEvent extends EventBase {
@@ -230,8 +202,6 @@ export type WorldEvent =
   | ConversationClosingEvent
   | ConversationEndedEvent
   | ServerEventFiredEvent
-  | ServerEventExpiredEvent
-  | ServerEventSelectedEvent
   | IdleReminderFiredEvent
   | MapInfoRequestedEvent
   | WorldAgentsInfoRequestedEvent

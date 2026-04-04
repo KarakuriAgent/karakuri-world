@@ -1,7 +1,6 @@
 import type { NodeId } from '../types/data-model.js';
-import type { AgentSnapshot, ConversationSnapshot, ServerEventSnapshot, WorldSnapshot } from '../types/snapshot.js';
+import type { AgentSnapshot, ConversationSnapshot, WorldSnapshot } from '../types/snapshot.js';
 
-// Discord's 2000-char limit with a safety margin for formatting overhead.
 const MESSAGE_CHAR_LIMIT = 1900;
 
 function formatTime(timestamp: number, timezone: string): string {
@@ -53,10 +52,6 @@ function formatConversation(conversation: ConversationSnapshot, agentNames: Map<
   return `- ${initiatorName} と ${targetName} (ターン ${displayedTurn}/${conversation.max_turns}, ${speakerName}の番${closingSuffix})`;
 }
 
-function formatServerEvent(serverEvent: ServerEventSnapshot): string {
-  const awaitingResponses = serverEvent.delivered_agent_ids.length + serverEvent.pending_agent_ids.length;
-  return `- ${serverEvent.name}: ${serverEvent.description} (応答待ち: ${awaitingResponses}名)`;
-}
 
 function buildSection(title: string, lines: string[]): string {
   return `## ${title}\n\n${lines.join('\n')}`;
@@ -141,15 +136,10 @@ export function formatStatusBoard(snapshot: WorldSnapshot, timezone: string): st
     ? conversations.map((conversation) => formatConversation(conversation, agentNames))
     : ['_進行中の会話はありません。_'];
 
-  const serverEventLines = snapshot.server_events.length > 0
-    ? snapshot.server_events.map((serverEvent) => formatServerEvent(serverEvent))
-    : ['_アクティブなサーバーイベントはありません。_'];
-
   const sections = [
     header,
     buildSection(`エージェント状況 (${agents.length}名ログイン中)`, agentLines),
     buildSection(`進行中の会話 (${conversations.length}件)`, conversationLines),
-    buildSection(`アクティブなサーバーイベント (${snapshot.server_events.length}件)`, serverEventLines),
     `---\n最終更新: ${formatTime(snapshot.generated_at, timezone)}`,
   ];
 

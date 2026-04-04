@@ -20,6 +20,7 @@ import type {
 } from '../types/timer.js';
 import { cancelActiveAction } from './actions.js';
 import { cancelIdleReminder, startIdleReminder } from './idle-reminder.js';
+import { clearActiveServerEvent } from './server-events.js';
 import { manhattanDistance } from './map-utils.js';
 import { cancelActiveWait } from './wait.js';
 
@@ -99,10 +100,21 @@ function endConversation(
       continue;
     }
 
-    engine.state.setState(participantId, 'idle');
-    engine.state.setPendingConversation(participantId, null);
-    engine.state.setLastAction(participantId, null);
-    startIdleReminder(engine, participantId);
+    const isCurrentConversation = agent.current_conversation_id === conversation.conversation_id;
+
+    if (agent.pending_conversation_id === conversation.conversation_id) {
+      engine.state.setPendingConversation(participantId, null);
+    }
+
+    if (isCurrentConversation) {
+      engine.state.setCurrentConversation(participantId, null);
+    }
+
+    if (isCurrentConversation && agent.state === 'in_conversation') {
+      engine.state.setState(participantId, 'idle');
+      engine.state.setLastAction(participantId, null);
+      startIdleReminder(engine, participantId);
+    }
   }
 
   engine.emitEvent({
@@ -132,6 +144,18 @@ export function findConversationByAgent(
   agentId: string,
   statuses: ConversationStatus[] = ['pending', 'active', 'closing'],
 ): ConversationData | null {
+  const agent = engine.state.getLoggedIn(agentId);
+  if (agent?.current_conversation_id) {
+    const currentConversation = engine.state.conversations.get(agent.current_conversation_id);
+    if (
+      currentConversation &&
+      statuses.includes(currentConversation.status) &&
+      (currentConversation.initiator_agent_id === agentId || currentConversation.target_agent_id === agentId)
+    ) {
+      return currentConversation;
+    }
+  }
+
   return (
     engine.state.conversations
       .list()
@@ -251,6 +275,8 @@ export function acceptConversation(engine: WorldEngine, agentId: string, request
   cancelIdleReminder(engine, target.agent_id);
   engine.state.setPendingConversation(initiator.agent_id, null);
   engine.state.setPendingConversation(target.agent_id, null);
+  engine.state.setCurrentConversation(initiator.agent_id, conversation.conversation_id);
+  engine.state.setCurrentConversation(target.agent_id, conversation.conversation_id);
   engine.state.setState(initiator.agent_id, 'in_conversation');
   engine.state.setState(target.agent_id, 'in_conversation');
   conversation.status = 'active';
@@ -334,6 +360,10 @@ export function handleAcceptTimeout(engine: WorldEngine, timer: ConversationAcce
   const conversation = engine.state.conversations.get(timer.conversation_id);
   if (!conversation || conversation.status !== 'pending') {
     return;
+  }
+
+  for (const agentId of timer.agent_ids) {
+    clearActiveServerEvent(engine, agentId);
   }
 
   engine.state.conversations.delete(conversation.conversation_id);
@@ -561,6 +591,38 @@ export function cancelPendingConversation(engine: WorldEngine, agentId: string):
       reason: 'target_logged_out',
     });
   }
+}
+
+export function cancelPendingConversationForServerEvent(engine: WorldEngine, agentId: string): void {
+  const conversation = findConversationByAgent(engine, agentId, ['pending']);
+  if (!conversation) {
+    return;
+  }
+
+  cancelConversationTimers(engine, conversation.conversation_id);
+  engine.state.conversations.delete(conversation.conversation_id);
+  const initiator = engine.state.getLoggedIn(conversation.initiator_agent_id);
+  const target = engine.state.getLoggedIn(conversation.target_agent_id);
+  if (initiator) {
+    engine.state.setPendingConversation(initiator.agent_id, null);
+    if (initiator.state === 'idle') {
+      startIdleReminder(engine, initiator.agent_id);
+    }
+  }
+  if (target) {
+    engine.state.setPendingConversation(target.agent_id, null);
+    if (target.state === 'idle') {
+      startIdleReminder(engine, target.agent_id);
+    }
+  }
+
+  engine.emitEvent({
+    type: 'conversation_rejected',
+    conversation_id: conversation.conversation_id,
+    initiator_agent_id: conversation.initiator_agent_id,
+    target_agent_id: conversation.target_agent_id,
+    reason: 'server_event',
+  });
 }
 
 export function forceEndConversation(engine: WorldEngine, agentId: string): void {

@@ -15,6 +15,10 @@ const registerAgentSchema = z.object({
   discord_bot_id: z.string().min(1),
 });
 
+const fireServerEventSchema = z.object({
+  description: z.string().trim().min(1),
+});
+
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, '');
 }
@@ -53,7 +57,8 @@ export function registerAdminRoutes(
     return c.json({ status: 'ok' });
   });
 
-  app.post('/api/admin/server-events/:event_id/fire', adminAuth(options.adminKey), (c) => {
-    return c.json(engine.fireServerEvent(c.req.param('event_id')));
+  app.post('/api/admin/server-events/fire', adminAuth(options.adminKey), validateBody(fireServerEventSchema), (c) => {
+    const body = c.get('validatedBody') as z.infer<typeof fireServerEventSchema>;
+    return c.json(engine.fireServerEvent(body));
   });
 }

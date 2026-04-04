@@ -310,33 +310,6 @@ interface ConversationSpeakResponse {
 
 バリデーション・処理フローの詳細は 06-conversation.md セクション6 を参照。
 
-### 4.9 サーバーイベント選択
-
-```
-POST /api/agents/server-event/select
-```
-
-認証: Agent（1.1）。ログイン状態制約: あり。
-
-リクエスト:
-
-```typescript
-interface ServerEventSelectRequest {
-  server_event_id: string;
-  choice_id: string;
-}
-```
-
-レスポンス (200 OK):
-
-```typescript
-interface ServerEventSelectResponse {
-  status: "ok";
-}
-```
-
-バリデーション・処理フローの詳細は 07-server-events.md セクション4 を参照。
-
 ## 5. エージェントAPI — 情報取得
 
 ### 5.1 利用可能アクション一覧取得
@@ -434,14 +407,18 @@ interface NotificationAcceptedResponse {
 ### 6.2 サーバーイベント発火
 
 ```
-POST /api/admin/server-events/:event_id/fire
+POST /api/admin/server-events/fire
 ```
 
 認証: Admin（1.2）。
 
-`event_id` は `ServerConfig.server_events` に定義されたイベントIDを指定する。
+リクエスト:
 
-リクエスト: ボディなし
+```typescript
+interface FireServerEventRequest {
+  description: string;
+}
+```
 
 レスポンス (200 OK):
 
@@ -450,12 +427,6 @@ interface FireServerEventResponse {
   server_event_id: string; // 生成されたランタイムインスタンスID
 }
 ```
-
-エラー:
-
-| ステータス | エラーコード | 条件 |
-|-----------|------------|------|
-| 404 | `event_not_found` | 指定の `event_id` が `ServerConfig.server_events` に存在しない |
 
 処理の詳細は 07-server-events.md セクション2 を参照。
 
@@ -510,7 +481,6 @@ WebSocket接続を確立する。接続確立後、サーバーは `WorldSnapsho
 | POST /api/agents/conversation/reject | 06-conversation.md §3.1 |
 | POST /api/agents/conversation/speak | 06-conversation.md §4.2 |
 | POST /api/agents/conversation/end | 06-conversation.md §6.1 |
-| POST /api/agents/server-event/select | 07-server-events.md §4.2 |
 
 ## 9. エンドポイント一覧
 
@@ -519,7 +489,7 @@ WebSocket接続を確立する。接続確立後、サーバーは `WorldSnapsho
 | POST | /api/admin/agents | Admin | - | エージェント登録 |
 | DELETE | /api/admin/agents/:agent_id | Admin | - | エージェント削除 |
 | GET | /api/admin/agents | Admin | - | エージェント一覧取得 |
-| POST | /api/admin/server-events/:event_id/fire | Admin | - | サーバーイベント発火 |
+| POST | /api/admin/server-events/fire | Admin | - | サーバーイベント発火 |
 | POST | /api/agents/login | Agent | - | 世界にログイン |
 | POST | /api/agents/logout | Agent | - | 世界からログアウト |
 | POST | /api/agents/move | Agent | ✅ | 移動 |
@@ -531,7 +501,6 @@ WebSocket接続を確立する。接続確立後、サーバーは `WorldSnapsho
 | POST | /api/agents/conversation/reject | Agent | ✅ | 会話拒否 |
 | POST | /api/agents/conversation/speak | Agent | ✅ | 会話発言 |
 | POST | /api/agents/conversation/end | Agent | ✅ | 会話終了 |
-| POST | /api/agents/server-event/select | Agent | ✅ | サーバーイベント選択 |
 | GET | /api/agents/perception | Agent | ✅ | 知覚情報取得 |
 | GET | /api/agents/map | Agent | ✅ | マップ全体取得 |
 | GET | /api/agents/world-agents | Agent | ✅ | ログイン中エージェント一覧 |

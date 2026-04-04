@@ -150,7 +150,6 @@ type EditorHooks = {
     activeBuildingId: string | null;
     activeNpcId: string | null;
     config: ServerConfig | null;
-    selectedEventId: string | null;
   };
 };
 
@@ -216,7 +215,6 @@ function initializeConfig(hooks: EditorHooks, config: ServerConfig): void {
   hooks.state.config = config;
   hooks.state.activeBuildingId = config.map.buildings[0]?.building_id ?? null;
   hooks.state.activeNpcId = config.map.npcs[0]?.npc_id ?? null;
-  hooks.state.selectedEventId = config.server_events[0]?.event_id ?? null;
 }
 
 describe('admin editor', () => {

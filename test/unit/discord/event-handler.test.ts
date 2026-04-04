@@ -10,12 +10,17 @@ class RecordingDiscordBot {
   readonly worldLogMessages: string[] = [];
   readonly threadMessages = new Map<string, string[]>();
   readonly archivedThreads: string[] = [];
+  sendAgentMessageOverride: ((channelId: string, content: string) => Promise<void>) | null = null;
   createWorldLogThreadOverride: ((content: string, threadName: string) => Promise<string>) | null = null;
   sendToThreadOverride: ((threadId: string, content: string) => Promise<void>) | null = null;
   archiveThreadOverride: ((threadId: string) => Promise<void>) | null = null;
   private threadCounter = 0;
 
   async sendAgentMessage(channelId: string, content: string): Promise<void> {
+    if (this.sendAgentMessageOverride) {
+      await this.sendAgentMessageOverride(channelId, content);
+      return;
+    }
     this.agentMessages.push({ channelId, content });
   }
 
@@ -719,7 +724,7 @@ describe('DiscordEventHandler', () => {
     bot.agentMessages.length = 0;
     bot.worldLogMessages.length = 0;
 
-    engine.fireServerEvent('sudden-rain');
+    engine.fireServerEvent('Dark clouds gather.');
 
     await vi.waitFor(() => {
       expect(bot.agentMessages).toHaveLength(2);
@@ -731,9 +736,445 @@ describe('DiscordEventHandler', () => {
     expect(bobMessage).toBeDefined();
     expectWorldContextHeader(aliceMessage!.content, 'Clockwork Alice');
     expectWorldContextHeader(bobMessage!.content, 'Clockwork Bob');
-    expect(aliceMessage!.content).toContain('【サーバーイベント】Sudden Rain');
-    expect(bobMessage!.content).toContain('【サーバーイベント】Sudden Rain');
+    expect(aliceMessage!.content).toContain('【サーバーイベント】');
+    expect(aliceMessage!.content).toContain('Dark clouds gather.');
+    expect(bobMessage!.content).toContain('【サーバーイベント】');
+    expect(bobMessage!.content).toContain('Dark clouds gather.');
     expect(aliceMessage!.content).not.toBe(bobMessage!.content);
+
+    handler.dispose();
+  });
+
+  it('clears active server events after info notifications are delivered', async () => {
+    const { engine } = createTestWorld();
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = registerAgent(engine, 'Alice', 'Clockwork Alice');
+    await engine.loginAgent(alice.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.worldLogMessages).toHaveLength(1);
+    });
+    bot.agentMessages.length = 0;
+
+    const infoEvents: Array<'map_info_requested' | 'world_agents_info_requested' | 'perception_requested' | 'available_actions_requested'> = [
+      'map_info_requested',
+      'world_agents_info_requested',
+      'perception_requested',
+      'available_actions_requested',
+    ];
+
+    for (const infoEvent of infoEvents) {
+      const fired = engine.fireServerEvent('Dark clouds gather.');
+
+      await vi.waitFor(() => {
+        expect(bot.agentMessages.some((message) => message.content.includes('【サーバーイベント】'))).toBe(true);
+      });
+      expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBe(fired.server_event_id);
+
+      bot.agentMessages.length = 0;
+      engine.emitEvent({ type: infoEvent, agent_id: alice.agent_id });
+
+      await vi.waitFor(() => {
+        expect(bot.agentMessages).toHaveLength(1);
+      });
+      expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
+
+      bot.agentMessages.length = 0;
+    }
+
+    handler.dispose();
+  });
+
+  it('clears delayed server events after the movement completion notification', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+
+    const { engine } = createTestWorld();
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = registerAgent(engine, 'Alice', 'Clockwork Alice');
+    await engine.loginAgent(alice.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.worldLogMessages).toHaveLength(1);
+    });
+    bot.agentMessages.length = 0;
+
+    engine.state.setNode(alice.agent_id, '3-1');
+    engine.move(alice.agent_id, { target_node_id: '3-4' });
+    const fired = engine.fireServerEvent('Dark clouds gather.');
+
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
+
+    vi.advanceTimersByTime(3000);
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(2);
+    });
+
+    expect(bot.agentMessages[0]?.content).toContain('【サーバーイベント】');
+    expect(bot.agentMessages[0]?.content).toContain('Dark clouds gather.');
+    expect(bot.agentMessages[1]?.content).toContain('3-4');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
+    expect(fired.server_event_id).toMatch(/^server-event-/);
+
+    handler.dispose();
+  });
+
+  it('serializes delayed server-event delivery before the arrival notification and keeps the window open until arrival is delivered', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+
+    const { engine } = createTestWorld();
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = registerAgent(engine, 'Alice', 'Clockwork Alice');
+    await engine.loginAgent(alice.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.worldLogMessages).toHaveLength(1);
+    });
+    bot.agentMessages.length = 0;
+
+    const delayedServerEventSend = createDeferred<void>();
+    const attemptedMessages: string[] = [];
+    bot.sendAgentMessageOverride = async (channelId, content) => {
+      attemptedMessages.push(content);
+      if (content.includes('【サーバーイベント】')) {
+        await delayedServerEventSend.promise;
+      }
+      bot.agentMessages.push({ channelId, content });
+    };
+
+    engine.state.setNode(alice.agent_id, '3-1');
+    engine.move(alice.agent_id, { target_node_id: '3-4' });
+    engine.fireServerEvent('Dark clouds gather.');
+
+    vi.advanceTimersByTime(3000);
+
+    await vi.waitFor(() => {
+      expect(attemptedMessages).toHaveLength(1);
+      expect(attemptedMessages[0]).toContain('【サーバーイベント】');
+    });
+    expect(bot.agentMessages).toHaveLength(0);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).not.toBeNull();
+
+    delayedServerEventSend.resolve();
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(2);
+    });
+
+    expect(bot.agentMessages[0]?.content).toContain('【サーバーイベント】');
+    expect(bot.agentMessages[1]?.content).toContain('3-4');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
+
+    handler.dispose();
+  });
+
+  it.each([
+    {
+      title: 'action completion',
+      prepare: (engine: WorldEngine, agentId: string) => {
+        engine.state.setNode(agentId, '1-1');
+        engine.executeAction(agentId, { action_id: 'greet-gatekeeper' });
+      },
+      complete: () => {
+        vi.advanceTimersByTime(1200);
+      },
+      expectedText: '「Greet the gatekeeper」が完了しました。',
+    },
+    {
+      title: 'wait completion',
+      prepare: (engine: WorldEngine, agentId: string) => {
+        engine.executeWait(agentId, { duration: 1 });
+      },
+      complete: () => {
+        vi.advanceTimersByTime(600000);
+      },
+      expectedText: '10分間待機しました。',
+    },
+    {
+      title: 'idle reminder',
+      prepare: () => {},
+      complete: () => {
+        vi.advanceTimersByTime(1000);
+      },
+      expectedText: '前回の行動から1秒間が経過しました。',
+      config: {
+        idle_reminder: {
+          interval_ms: 1000,
+        },
+      },
+    },
+  ])(
+    'keeps the server-event window open until the $title notification is delivered',
+    async ({ prepare, complete, expectedText, config }) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+
+    const { engine } = createTestWorld({ config });
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = registerAgent(engine, 'Alice', 'Clockwork Alice');
+    await engine.loginAgent(alice.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.worldLogMessages).toHaveLength(1);
+    });
+    bot.agentMessages.length = 0;
+
+    prepare(engine, alice.agent_id);
+    const fired = engine.fireServerEvent('Dark clouds gather.');
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(1);
+    });
+    bot.agentMessages.length = 0;
+
+    const delayedFollowUpSend = createDeferred<void>();
+    const attemptedMessages: string[] = [];
+    bot.sendAgentMessageOverride = async (channelId, content) => {
+      attemptedMessages.push(content);
+      if (content.includes(expectedText)) {
+        await delayedFollowUpSend.promise;
+      }
+      bot.agentMessages.push({ channelId, content });
+    };
+
+    complete();
+
+    await vi.waitFor(() => {
+      expect(attemptedMessages.some((message) => message.includes(expectedText))).toBe(true);
+    });
+    expect(bot.agentMessages).toHaveLength(0);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBe(fired.server_event_id);
+
+    delayedFollowUpSend.resolve();
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(1);
+    });
+    expect(bot.agentMessages[0]?.content).toContain(expectedText);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
+
+    handler.dispose();
+    },
+  );
+
+  it('keeps a conversation follow-up server-event window open until the prompt is delivered', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+
+    const { engine } = createTestWorld({
+      config: {
+        conversation: {
+          max_turns: 4,
+          interval_ms: 500,
+          accept_timeout_ms: 1000,
+          turn_timeout_ms: 1000,
+        },
+      },
+    });
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = registerAgent(engine, 'Alice', 'Clockwork Alice');
+    const bob = registerAgent(engine, 'Bob', 'Clockwork Bob');
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.worldLogMessages).toHaveLength(2);
+    });
+    bot.agentMessages.length = 0;
+
+    engine.state.setNode(alice.agent_id, '3-1');
+    engine.state.setNode(bob.agent_id, '3-2');
+    engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'こんにちは。',
+    });
+    engine.acceptConversation(bob.agent_id, {
+      message: 'やあ、Alice！',
+    });
+
+    await vi.waitFor(() => {
+      expect(bot.threadMessages.get('thread-1')).toEqual(['Alice: 「こんにちは。」', 'Bob: 「やあ、Alice！」']);
+    });
+
+    bot.agentMessages.length = 0;
+    engine.fireServerEvent('Dark clouds gather.');
+    await vi.waitFor(() => {
+      expect(bot.agentMessages.filter((message) => message.content.includes('【サーバーイベント】'))).toHaveLength(2);
+    });
+
+    bot.agentMessages.length = 0;
+    const delayedPromptSend = createDeferred<void>();
+    const attemptedMessages: string[] = [];
+    bot.sendAgentMessageOverride = async (channelId, content) => {
+      attemptedMessages.push(`${channelId}:${content}`);
+      if (channelId === 'channel-Alice' && content.includes('Bob: 「やあ、Alice！」')) {
+        await delayedPromptSend.promise;
+      }
+      bot.agentMessages.push({ channelId, content });
+    };
+
+    vi.advanceTimersByTime(500);
+
+    await vi.waitFor(() => {
+      expect(
+        attemptedMessages.some(
+          (message) => message.startsWith('channel-Alice:') && message.includes('Bob: 「やあ、Alice！」'),
+        ),
+      ).toBe(true);
+    });
+    expect(bot.agentMessages).toHaveLength(0);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).not.toBeNull();
+    expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_event_id).not.toBeNull();
+
+    delayedPromptSend.resolve();
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(1);
+    });
+
+    expect(bot.agentMessages[0]).toMatchObject({ channelId: 'channel-Alice' });
+    expect(bot.agentMessages[0]?.content).toContain('Bob: 「やあ、Alice！」');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
+    expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_event_id).not.toBeNull();
+
+    handler.dispose();
+  });
+
+  it.each([
+    ['initiator', 'Alice', 'channel-Alice', 'Bob'],
+    ['target', 'Bob', 'channel-Bob', 'Alice'],
+  ] as const)(
+    'notifies both agents when a pending conversation is interrupted by a server event via the %s',
+    async (_role, interrupterName, interrupterChannelId, counterpartName) => {
+      const { engine } = createTestWorld();
+      const bot = new RecordingDiscordBot();
+      const handler = new DiscordEventHandler(engine, bot as never);
+      handler.register();
+
+      const alice = registerAgent(engine, 'Alice', 'Clockwork Alice');
+      const bob = registerAgent(engine, 'Bob', 'Clockwork Bob');
+      await engine.loginAgent(alice.agent_id);
+      await engine.loginAgent(bob.agent_id);
+      await vi.waitFor(() => {
+        expect(bot.worldLogMessages).toHaveLength(2);
+      });
+      bot.agentMessages.length = 0;
+
+      engine.state.setNode(alice.agent_id, '3-1');
+      engine.state.setNode(bob.agent_id, '3-2');
+      engine.startConversation(alice.agent_id, {
+        target_agent_id: bob.agent_id,
+        message: 'こんにちは。',
+      });
+      await vi.waitFor(() => {
+        expect(bot.agentMessages).toHaveLength(1);
+      });
+
+      bot.agentMessages.length = 0;
+      engine.fireServerEvent('Dark clouds gather.');
+      await vi.waitFor(() => {
+        expect(bot.agentMessages.filter((message) => message.content.includes('【サーバーイベント】'))).toHaveLength(2);
+      });
+
+      bot.agentMessages.length = 0;
+      const interrupterId = interrupterName === 'Alice' ? alice.agent_id : bob.agent_id;
+      engine.executeWait(interrupterId, { duration: 1 });
+
+      await vi.waitFor(() => {
+        expect(bot.agentMessages).toHaveLength(2);
+      });
+
+      expect(bot.agentMessages.map((message) => message.channelId).sort()).toEqual(['channel-Alice', 'channel-Bob']);
+      expect(bot.agentMessages.every((message) => message.content.includes('サーバーイベントにより中断されました。'))).toBe(true);
+      expect(bot.agentMessages.every((message) => !message.content.includes('ログアウトしました。'))).toBe(true);
+      expect(bot.agentMessages.find((message) => message.channelId === interrupterChannelId)?.content).toContain(
+        `${counterpartName} との会話開始はサーバーイベントにより中断されました。`,
+      );
+      expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
+      expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_event_id).toBeNull();
+
+      handler.dispose();
+    },
+  );
+
+  it('sends the server-event closing prompt to the farewell speaker', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+
+    const { engine } = createTestWorld({
+      config: {
+        conversation: {
+          max_turns: 4,
+          interval_ms: 500,
+          accept_timeout_ms: 1000,
+          turn_timeout_ms: 1000,
+        },
+      },
+    });
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = registerAgent(engine, 'Alice', 'Clockwork Alice');
+    const bob = registerAgent(engine, 'Bob', 'Clockwork Bob');
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.worldLogMessages).toHaveLength(2);
+    });
+    bot.agentMessages.length = 0;
+
+    engine.state.setNode(alice.agent_id, '3-1');
+    engine.state.setNode(bob.agent_id, '3-2');
+    engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'こんにちは。',
+    });
+    engine.acceptConversation(bob.agent_id, {
+      message: 'やあ、Alice！',
+    });
+
+    await vi.waitFor(() => {
+      expect(bot.threadMessages.get('thread-1')).toEqual(['Alice: 「こんにちは。」', 'Bob: 「やあ、Alice！」']);
+    });
+
+    engine.fireServerEvent('Dark clouds gather.');
+    await vi.waitFor(() => {
+      expect(bot.agentMessages.filter((message) => message.content.includes('【サーバーイベント】'))).toHaveLength(2);
+    });
+
+    bot.agentMessages.length = 0;
+    engine.executeWait(bob.agent_id, { duration: 1 });
+
+    await vi.waitFor(() => {
+      expect(
+        bot.agentMessages.some(
+          (message) =>
+            message.channelId === 'channel-Alice'
+            && message.content.includes('サーバーイベントにより会話が終了します。'),
+        ),
+      ).toBe(true);
+    });
+
+    expect(
+      bot.agentMessages.some(
+        (message) =>
+          message.channelId === 'channel-Bob'
+          && message.content.includes('サーバーイベントにより会話が終了します。'),
+      ),
+    ).toBe(false);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
 
     handler.dispose();
   });

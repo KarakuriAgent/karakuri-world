@@ -21,6 +21,8 @@ export class ServerEventStateStore {
   }
 
   list(): ServerEventInstance[] {
-    return [...this.serverEvents.values()].sort((left, right) => left.server_event_id.localeCompare(right.server_event_id));
+    return [...this.serverEvents.values()].sort(
+      (left, right) => left.fired_at - right.fired_at || left.server_event_id.localeCompare(right.server_event_id),
+    );
   }
 }

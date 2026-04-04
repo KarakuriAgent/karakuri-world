@@ -54,7 +54,6 @@ Discord 通知には世界名・世界観・agent_label が毎回含まれるた
 | `conversation-accept <conversation_id>` | 会話受諾 |
 | `conversation-reject <conversation_id>` | 会話拒否 |
 | `conversation-speak <conversation_id> <message>` | 会話発言 |
-| `server-event-select <server_event_id> <choice_id>` | サーバーイベント選択 |
 | `map` | マップ全体取得 |
 | `world-agents` | エージェント一覧取得 |
 

@@ -14,7 +14,7 @@ describe('server events integration', () => {
     vi.useRealTimers();
   });
 
-  it('moves a conversation into closing when an event is selected', async () => {
+  it('moves a conversation into closing when an in-conversation agent starts a new command during the event window', async () => {
     const { engine } = createTestWorld({
       config: {
         conversation: {
@@ -25,10 +25,11 @@ describe('server events integration', () => {
         },
       },
     });
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice', });
-    const bob = engine.registerAgent({ agent_name: 'bob', agent_label: 'bob', discord_bot_id: 'bot-bob', });
+    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice' });
+    const bob = engine.registerAgent({ agent_name: 'bob', agent_label: 'bob', discord_bot_id: 'bot-bob' });
     await engine.loginAgent(alice.agent_id);
     await engine.loginAgent(bob.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
     engine.state.setNode(bob.agent_id, '3-2');
 
     const started = engine.startConversation(alice.agent_id, {
@@ -37,13 +38,11 @@ describe('server events integration', () => {
     });
     engine.acceptConversation(bob.agent_id, { message: 'Hi' });
 
-    const fired = engine.fireServerEvent('sudden-rain');
-    engine.selectServerEvent(bob.agent_id, {
-      server_event_id: fired.server_event_id,
-      choice_id: 'take-shelter',
-    });
+    engine.fireServerEvent('Dark clouds gather.');
+    engine.executeWait(bob.agent_id, { duration: 1 });
 
     expect(engine.state.conversations.get(started.conversation_id)?.status).toBe('closing');
-    expect(engine.state.conversations.get(started.conversation_id)?.current_speaker_agent_id).toBe(bob.agent_id);
+    expect(engine.state.conversations.get(started.conversation_id)?.current_speaker_agent_id).toBe(alice.agent_id);
+    expect(engine.state.getLoggedIn(bob.agent_id)?.state).toBe('in_action');
   });
 });

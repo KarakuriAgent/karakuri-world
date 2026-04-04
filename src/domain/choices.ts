@@ -4,7 +4,11 @@ import { manhattanDistance } from './map-utils.js';
 import { formatActionSourceLine, getAvailableActionSources } from './actions.js';
 import { getAgentCurrentNode } from './movement.js';
 
-export function buildChoicesText(engine: WorldEngine, agentId: string): string {
+export function buildChoicesText(
+  engine: WorldEngine,
+  agentId: string,
+  options: { forceShowActions?: boolean } = {},
+): string {
   const agent = engine.state.getLoggedIn(agentId);
   if (!agent) {
     throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
@@ -12,13 +16,14 @@ export function buildChoicesText(engine: WorldEngine, agentId: string): string {
 
   const now = Date.now();
   const currentNodeId = getAgentCurrentNode(engine, agent, now);
-  const canStartNewCommand = agent.state === 'idle' && agent.pending_conversation_id === null;
-  const actionLines = canStartNewCommand
+  const canStartInterruptibleCommand = options.forceShowActions || (agent.state === 'idle' && agent.pending_conversation_id === null);
+  const canStartConversation = agent.state === 'idle' && agent.pending_conversation_id === null;
+  const actionLines = canStartInterruptibleCommand
     ? getAvailableActionSources(engine, agentId).map(
         (source) => `- action: ${formatActionSourceLine(source)}`,
       )
     : [];
-  const conversationLines = canStartNewCommand
+  const conversationLines = canStartConversation
     ? engine.state
         .listLoggedIn()
         .filter((candidate) => candidate.agent_id !== agentId)
@@ -39,7 +44,7 @@ export function buildChoicesText(engine: WorldEngine, agentId: string): string {
         )
     : [];
 
-  const commandLines = canStartNewCommand
+  const commandLines = canStartInterruptibleCommand
     ? [
         ...actionLines,
         '- move: ノードIDを指定して移動する (target_node_id: ノードID)',

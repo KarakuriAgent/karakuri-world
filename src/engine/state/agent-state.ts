@@ -64,7 +64,9 @@ export class AgentStateStore {
       state: 'idle',
       discord_channel_id: params.discord_channel_id,
       pending_conversation_id: null,
+      current_conversation_id: null,
       pending_server_event_ids: [],
+      active_server_event_id: null,
       last_action_id: null,
     };
 
@@ -112,11 +114,16 @@ export class AgentStateStore {
     return loggedInAgent;
   }
 
+  setCurrentConversation(agentId: string, conversationId: string | null): LoggedInAgent {
+    const loggedInAgent = this.mustGetLoggedIn(agentId);
+    loggedInAgent.current_conversation_id = conversationId;
+    return loggedInAgent;
+  }
+
   addPendingServerEvent(agentId: string, serverEventId: string): LoggedInAgent {
     const loggedInAgent = this.mustGetLoggedIn(agentId);
     if (!loggedInAgent.pending_server_event_ids.includes(serverEventId)) {
       loggedInAgent.pending_server_event_ids.push(serverEventId);
-      loggedInAgent.pending_server_event_ids.sort();
     }
     return loggedInAgent;
   }
@@ -131,6 +138,16 @@ export class AgentStateStore {
     const loggedInAgent = this.mustGetLoggedIn(agentId);
     loggedInAgent.pending_server_event_ids = [];
     return loggedInAgent;
+  }
+
+  setActiveServerEvent(agentId: string, serverEventId: string | null): LoggedInAgent {
+    const loggedInAgent = this.mustGetLoggedIn(agentId);
+    loggedInAgent.active_server_event_id = serverEventId;
+    return loggedInAgent;
+  }
+
+  clearActiveServerEvent(agentId: string): LoggedInAgent {
+    return this.setActiveServerEvent(agentId, null);
   }
 
   setLastAction(agentId: string, actionId: string | null): LoggedInAgent {

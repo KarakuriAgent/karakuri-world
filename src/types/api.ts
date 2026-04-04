@@ -21,7 +21,6 @@ export type ApiErrorCode =
   | 'not_target'
   | 'not_your_turn'
   | 'event_not_found'
-  | 'invalid_choice'
   | 'conversation_closing'
   | 'not_found'
   | 'invalid_config'
@@ -176,9 +175,8 @@ export interface ConversationSpeakResponse {
   turn: number;
 }
 
-export interface ServerEventSelectRequest {
-  server_event_id: string;
-  choice_id: string;
+export interface FireServerEventRequest {
+  description: string;
 }
 
 export interface AvailableActionSummary {

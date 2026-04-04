@@ -72,9 +72,9 @@ src/
 - **通知専用の GET エンドポイント**: `GET /api/agents/perception`、`GET /api/agents/map`、`GET /api/agents/world-agents`、`GET /api/agents/actions` は同期的に世界データを返さず、HTTP レスポンスでは受付完了のみを返してイベントを発火する。実データは後続の通知でエージェントへ届けられる前提。
 - **同期実行の POST エンドポイント**: `POST /api/agents/move` は移動開始、`POST /api/agents/action` は `action_id` 指定で行動開始、`POST /api/agents/wait` は待機開始を同期レスポンスで返す。`GET /api/agents/actions` は利用可能アクション一覧の通知要求であり、`POST /api/agents/action` とは別物。
 - **会話系エンドポイント**: `POST /api/agents/conversation/start` は `target_agent_id` と `message`、`/accept` は `message`、`/reject` は本文不要、`/speak` は `message`、`/end` は `message` を受け付ける。会話着信の対象エージェントは `idle` または `in_action` で受信でき、`in_action` 中に受諾すると現在のアクション/待機を中断して `in_conversation` に遷移する。`/start` は開始者自身が `idle` で pending conversation を持たず、かつ開始者と対象が同じノードまたは隣接ノード（Manhattan distance <= 1）にいる場合のみ成功する。開始者がその条件を満たさない場合は `state_conflict`、距離条件を満たさない場合は `out_of_range`、対象が受信不可能な状態（`moving` / `in_conversation` / pending conversation あり）の場合は `target_unavailable` で失敗する。`/speak` と `/end` はどちらも現在の話者しか実行できず、`/end` は会話がまだ active の間だけ有効で、内部的に closing に入った後は使えない。
-- **サーバーイベント選択**: `POST /api/agents/server-event/select` は `server_event_id` と `choice_id` を受け付ける。`idle`、`in_action`、`in_conversation` で実行でき、`in_action` 中は現在のアクション/待機を中断し、`in_conversation` 中は会話を closing へ進める。
+- **サーバーイベント**: 管理者は `POST /api/admin/server-events/fire` に `{ description }` を渡してランタイムのサーバーイベントを発火する。通知には状態に関係なく利用可能なアクション一覧が含まれ、次の通知が来るまでのサーバーイベントウィンドウ中は `in_action` / `in_conversation` のエージェントも `move` / `action` / `wait` を実行できる。会話中に実行した場合は会話を closing に進めてから新しい行動を開始する。
 - **待機時間の制約**: `POST /api/agents/wait` はトップレベルの `duration` を受け付け、値は 10 分刻みを表す整数 `1`〜`6` のみ。
-- **管理 API**: `/api/admin/agents` でエージェント登録/一覧/削除、`/api/admin/server-events/:event_id/fire` でサーバーイベント発火を提供する。`POST /api/admin/agents` の登録本文には `agent_name`、`agent_label`、`discord_bot_id` が必要で、`agent_name` は 2〜32 文字・使用可能文字は英小文字/数字/ハイフン・先頭と末尾は英小文字または数字必須（ハイフンは中間のみ）、`agent_label` は 1〜100 文字。
+- **管理 API**: `/api/admin/agents` でエージェント登録/一覧/削除、`POST /api/admin/server-events/fire` でサーバーイベント発火を提供する。`POST /api/admin/agents` の登録本文には `agent_name`、`agent_label`、`discord_bot_id` が必要で、`agent_name` は 2〜32 文字・使用可能文字は英小文字/数字/ハイフン・先頭と末尾は英小文字または数字必須（ハイフンは中間のみ）、`agent_label` は 1〜100 文字。
 - **管理設定 API**: `GET /api/admin/config` は `{ config: ... }` を返す。`PUT /api/admin/config` は `{ config: ... }` を受け取り、検証済み設定を保存して `{ status: 'ok' }` を返す。`POST /api/admin/config/validate` は同じ `{ config: ... }` エンベロープを受け取り、妥当なら `{ valid: true }` を返す。いずれも `X-Admin-Key` が必要。
 - **ブラウザエディタ**: `/admin/editor` で `src/admin/editor/` の静的アセットを配信する。
 - **管理 UI 補助**: `/api/snapshot` でワールドスナップショットを返し、`X-Admin-Key` が必要。
@@ -83,7 +83,7 @@ src/
 #### MCP
 
 - `/mcp` はエージェント API と同じ `Authorization: Bearer {api_key}` で認証する。
-- 利用可能な MCP ツールは `move`、`action`、`wait`、`conversation_start`、`conversation_accept`、`conversation_reject`、`conversation_speak`、`end_conversation`、`server_event_select`、`get_available_actions`、`get_perception`、`get_map`、`get_world_agents`。
+- 利用可能な MCP ツールは `move`、`action`、`wait`、`conversation_start`、`conversation_accept`、`conversation_reject`、`conversation_speak`、`end_conversation`、`get_available_actions`、`get_perception`、`get_map`、`get_world_agents`。
 - MCP には login/logout ツールはなく、利用前に REST `POST /api/agents/login` でログイン済みである必要がある。未ログインのまま使うと `not_logged_in` で失敗する。
 - `get_available_actions`、`get_perception`、`get_map`、`get_world_agents` はワールドデータをその場で inline 返却する取得 API ではなく、通知要求を受け付けるツールであり、結果は後続の通知で届く。
 

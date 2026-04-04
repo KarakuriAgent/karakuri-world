@@ -49,7 +49,6 @@ export function collectValidationIssues(config: ServerConfig): ConfigValidationI
   const buildingNodeOwners = new Map<string, { buildingId: string; buildingIndex: number }>();
   const npcIds = new Map<string, number>();
   const npcNodeOwners = new Map<string, { npcId: string; npcIndex: number }>();
-  const serverEventIds = new Set<string>();
 
   checkNodeBounds(config, issues);
 
@@ -274,25 +273,6 @@ export function collectValidationIssues(config: ServerConfig): ConfigValidationI
       }
 
       actionOwners.set(action.action_id, `npc ${npc.npc_id}`);
-    });
-  });
-
-  config.server_events.forEach((serverEvent, eventIndex) => {
-    if (serverEventIds.has(serverEvent.event_id)) {
-      pushIssue(issues, `server_events[${eventIndex}].event_id`, `Duplicate server event id "${serverEvent.event_id}".`);
-    }
-    serverEventIds.add(serverEvent.event_id);
-
-    const choiceIds = new Set<string>();
-    serverEvent.choices.forEach((choice, choiceIndex) => {
-      if (choiceIds.has(choice.choice_id)) {
-        pushIssue(
-          issues,
-          `server_events[${eventIndex}].choices[${choiceIndex}].choice_id`,
-          `Duplicate choice id "${choice.choice_id}" in server event ${serverEvent.event_id}.`,
-        );
-      }
-      choiceIds.add(choice.choice_id);
     });
   });
 

@@ -295,6 +295,32 @@ describe('conversation domain', () => {
     );
   });
 
+  it('does not reset an agent to idle when endConversation fires after the agent has already moved to a new state via server event window', async () => {
+    const { engine, alice, bob } = await setupConversationWorld({ max_turns: 4 });
+    engine.state.setNode(alice.agent_id, '3-1');
+
+    const started = engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hi' });
+
+    // Fire server event and have bob interrupt into a wait
+    engine.fireServerEvent('Dark clouds gather.');
+    engine.executeWait(bob.agent_id, { duration: 1 });
+
+    // Bob is now in_action (waiting). The old conversation is closing.
+    expect(engine.state.getLoggedIn(bob.agent_id)?.state).toBe('in_action');
+
+    // Alice (farewell speaker) sends farewell, which triggers endConversation
+    engine.speak(alice.agent_id, { message: 'Goodbye' });
+    vi.advanceTimersByTime(500);
+
+    // Bob should still be in_action, NOT reset to idle
+    expect(engine.state.getLoggedIn(bob.agent_id)?.state).toBe('in_action');
+    expect(engine.state.conversations.get(started.conversation_id)).toBeNull();
+  });
+
   it('ends when a turn times out', async () => {
     const { engine, alice, bob } = await setupConversationWorld({ max_turns: 4 });
     const started = engine.startConversation(alice.agent_id, {

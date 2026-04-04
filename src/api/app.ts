@@ -12,7 +12,6 @@ import { registerAgentActionRoutes } from './routes/agent-actions.js';
 import { registerAgentConversationRoutes } from './routes/agent-conversation.js';
 import { registerAgentInfoRoutes } from './routes/agent-info.js';
 import { registerAgentLifecycleRoutes } from './routes/agent-lifecycle.js';
-import { registerAgentServerEventRoutes } from './routes/agent-server-event.js';
 import { registerUiRoutes } from './routes/ui.js';
 import { WebSocketManager } from './websocket.js';
 
@@ -43,7 +42,6 @@ export function createApp(engine: WorldEngine, options: AppOptions) {
   registerAgentActionRoutes(app, engine);
   registerAgentConversationRoutes(app, engine);
   registerAgentInfoRoutes(app, engine);
-  registerAgentServerEventRoutes(app, engine);
   registerUiRoutes(app, engine, { adminKey: options.adminKey });
 
   app.get('/health', (c) => c.json({ status: 'ok' }));

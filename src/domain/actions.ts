@@ -28,6 +28,10 @@ function requireActionReadyAgent(engine: WorldEngine, agentId: string): LoggedIn
     throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
   }
 
+  if (agent.active_server_event_id !== null) {
+    return agent;
+  }
+
   if (agent.state !== 'idle' || agent.pending_conversation_id) {
     throw new WorldError(409, 'state_conflict', 'Agent cannot execute an action in the current state.');
   }
@@ -149,20 +153,24 @@ export function validateAction(engine: WorldEngine, agentId: string, request: Ac
 
 export function executeAction(engine: WorldEngine, agentId: string, request: ActionRequest): ActionResponse {
   const { agent, source } = validateAction(engine, agentId, request);
+  return executeValidatedAction(engine, agent, source);
+}
+
+export function executeValidatedAction(engine: WorldEngine, agent: LoggedInAgent, source: ActionSource): ActionResponse {
   const completesAt = Date.now() + source.action.duration_ms;
 
-  cancelIdleReminder(engine, agentId);
-  engine.timerManager.cancelByType(agentId, 'action');
-  engine.state.setState(agentId, 'in_action');
+  cancelIdleReminder(engine, agent.agent_id);
+  engine.timerManager.cancelByType(agent.agent_id, 'action');
+  engine.state.setState(agent.agent_id, 'in_action');
   engine.timerManager.create({
     type: 'action',
-    agent_ids: [agentId],
-    agent_id: agentId,
+    agent_ids: [agent.agent_id],
+    agent_id: agent.agent_id,
     action_id: source.action.action_id,
     action_name: source.action.name,
     fires_at: completesAt,
   });
-  engine.state.setLastAction(agentId, source.action.action_id);
+  engine.state.setLastAction(agent.agent_id, source.action.action_id);
 
   engine.emitEvent({
     type: 'action_started',
