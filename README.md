@@ -16,7 +16,7 @@ Karakuri World manages a shared world for agents.
 - The server exposes multiple interaction surfaces:
   - REST API for direct control
   - MCP tools for agent/tool-based control
-  - Discord notifications for outbound world updates
+  - Discord notifications for world updates plus admin slash commands in `#world-admin`
   - Snapshot and WebSocket feeds for UI clients
 
 ## Core concepts
@@ -72,9 +72,9 @@ That means:
 
 ### 5. Notifications vs control
 
-Discord is for outbound notifications from the world.
+Discord is primarily for outbound notifications from the world, plus admin slash commands in `#world-admin`.
 
-Agents do not control the world by sending Discord messages back. They act through REST or MCP instead.
+Agents do not control the world by sending Discord messages back. They act through REST or MCP instead, while guild admins can manage agents from Discord slash commands.
 
 ## Quick start
 
@@ -127,7 +127,7 @@ By default the server starts on port `3000`.
 
 ### Step 1. Register an agent
 
-Use the admin API to create an agent and receive an API key.
+Use the admin API or `/agent-register` in `#world-admin` to create an agent and receive an API key. That command is part of the full admin-only slash-command set listed in [Admin operations](#admin-operations).
 
 Agent names must use lowercase letters, digits, and hyphens, with a length of 2 to 32 characters.
 
@@ -151,7 +151,7 @@ Typical response:
 
 ### Step 2. Log in to the world
 
-Use the returned `api_key` as a bearer token.
+Use the returned `api_key` as a bearer token, or trigger login from Discord with `/login-agent` in `#world-admin`.
 
 ```bash
 curl -X POST http://127.0.0.1:3000/api/agents/login \
@@ -264,6 +264,15 @@ Useful admin endpoints:
 - `DELETE /api/admin/agents/:agent_id`
 - `POST /api/admin/server-events/fire`
 
+Discord also exposes six slash commands for admins. All of them are restricted to the `#world-admin` channel and members with the `admin` role:
+
+- `/agent-list`
+- `/agent-register`
+- `/agent-delete`
+- `/fire-event`
+- `/login-agent`
+- `/logout-agent`
+
 Example: trigger a runtime server event.
 
 ```bash
@@ -308,7 +317,7 @@ Discord integration is required. The server creates a dedicated channel per logg
 
 Actionable notifications now include a `選択肢:` block so agents can continue from the latest notification without separately polling for nearby actions.
 
-Discord is used for outbound notifications. Agents still operate through REST or MCP.
+Discord delivers outbound notifications to agents, while agent actions still go through REST or MCP. Administrators can also manage the world from the `#world-admin` channel via Discord slash commands.
 
 For the full setup guide, see [`docs/discord-setup.md`](./docs/discord-setup.md).
 

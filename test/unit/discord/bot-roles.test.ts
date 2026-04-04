@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => {
   const staticChannels = {
     world_log_id: 'world-log',
     world_status_id: 'world-status',
+    world_admin_id: 'world-admin',
     agents_category_id: 'agents',
     admin_role_id: 'admin-role',
     human_role_id: 'human-role',
@@ -15,17 +16,24 @@ const mocks = vi.hoisted(() => {
   let guildMemberAddHandler: ((member: GuildMember) => void) | undefined;
 
   const ensureStaticChannels = vi.fn(async () => staticChannels);
+  const getAdminRoleId = vi.fn(() => staticChannels.admin_role_id);
+  const getWorldAdminChannelId = vi.fn(() => staticChannels.world_admin_id);
   const membersFetch = vi.fn(async () => new Map());
+  const commandsSet = vi.fn(async () => []);
   const login = vi.fn(async () => undefined);
   const isReady = vi.fn(() => true);
   const guildsFetch = vi.fn();
   const on = vi.fn();
+  const off = vi.fn();
   const destroy = vi.fn();
 
   const guild = {
     id: 'guild-1',
     members: {
       fetch: membersFetch,
+    },
+    commands: {
+      set: commandsSet,
     },
   };
 
@@ -36,6 +44,7 @@ const mocks = vi.hoisted(() => {
       fetch: guildsFetch,
     },
     on,
+    off,
     destroy,
     user: {
       id: 'world-bot',
@@ -48,6 +57,8 @@ const mocks = vi.hoisted(() => {
 
   class MockChannelManager {
     ensureStaticChannels = ensureStaticChannels;
+    getAdminRoleId = getAdminRoleId;
+    getWorldAdminChannelId = getWorldAdminChannelId;
     createAgentChannel = vi.fn();
     deleteAgentChannel = vi.fn();
     getTextChannel = vi.fn();
@@ -58,7 +69,10 @@ const mocks = vi.hoisted(() => {
   function reset(): void {
     guildMemberAddHandler = undefined;
     ensureStaticChannels.mockReset().mockResolvedValue(staticChannels);
+    getAdminRoleId.mockReset().mockReturnValue(staticChannels.admin_role_id);
+    getWorldAdminChannelId.mockReset().mockReturnValue(staticChannels.world_admin_id);
     membersFetch.mockReset().mockResolvedValue(new Map());
+    commandsSet.mockReset().mockResolvedValue([]);
     login.mockReset().mockResolvedValue(undefined);
     isReady.mockReset().mockReturnValue(true);
     guildsFetch.mockReset().mockResolvedValue(guild);
@@ -69,6 +83,7 @@ const mocks = vi.hoisted(() => {
 
       return client;
     });
+    off.mockReset().mockImplementation(() => client);
     destroy.mockReset();
     Client.mockClear();
     client.user.id = 'world-bot';
@@ -90,13 +105,17 @@ const mocks = vi.hoisted(() => {
     Client,
     MockChannelManager,
     client,
+    commandsSet,
     destroy,
     emitGuildMemberAdd,
     ensureStaticChannels,
+    getAdminRoleId,
+    getWorldAdminChannelId,
     guild,
     guildsFetch,
     login,
     membersFetch,
+    off,
     on,
     reset,
     setMembers,
@@ -369,5 +388,49 @@ describe('DiscordBot role sync', () => {
       `Failed to add Discord role ${mocks.staticChannels.human_role_id} for member human-1.`,
       expect.any(Error),
     );
+  });
+});
+
+describe('DiscordBot admin command helpers', () => {
+  beforeEach(() => {
+    mocks.reset();
+  });
+
+  it('registers and unregisters interaction handlers', async () => {
+    const bot = await DiscordBot.create({
+      token: 'test-token',
+      guildId: 'guild-1',
+    });
+    const handler = vi.fn();
+
+    const unsubscribe = bot.registerInteractionHandler(handler as never);
+    unsubscribe();
+
+    expect(mocks.on).toHaveBeenCalledWith('interactionCreate', handler);
+    expect(mocks.off).toHaveBeenCalledWith('interactionCreate', handler);
+  });
+
+  it('registers guild commands through the guild command manager', async () => {
+    const bot = await DiscordBot.create({
+      token: 'test-token',
+      guildId: 'guild-1',
+    });
+    const commands = [{ name: 'agent-list', description: 'list agents', type: 1 }];
+
+    await bot.registerGuildCommands(commands as never);
+
+    expect(mocks.commandsSet).toHaveBeenCalledWith(commands);
+  });
+
+  it('exposes admin role and world-admin channel ids from the channel manager', async () => {
+    const bot = await DiscordBot.create({
+      token: 'test-token',
+      guildId: 'guild-1',
+    });
+
+    expect(bot.getAdminRoleId()).toBe(mocks.staticChannels.admin_role_id);
+    expect(bot.getWorldAdminChannelId()).toBe(mocks.staticChannels.world_admin_id);
+    expect(mocks.getAdminRoleId).toHaveBeenCalledTimes(1);
+    expect(mocks.getWorldAdminChannelId).toHaveBeenCalledTimes(1);
   });
 });

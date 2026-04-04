@@ -5,6 +5,7 @@ import { getRequestListener } from '@hono/node-server';
 
 import { createApp } from './api/app.js';
 import { loadConfigFromFile } from './config/index.js';
+import { AdminCommandHandler } from './discord/admin-commands.js';
 import { DiscordBot } from './discord/bot.js';
 import { DiscordEventHandler } from './discord/event-handler.js';
 import { renderMapImage } from './discord/map-renderer.js';
@@ -83,6 +84,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
   let mcpServerManager: McpServerManager | null = null;
   let websocketManager: ReturnType<typeof createApp>['websocketManager'] | null = null;
   let discordEventHandler: DiscordEventHandler | null = null;
+  let adminCommandHandler: AdminCommandHandler | null = null;
   let statusBoard: StatusBoard | null = null;
 
   try {
@@ -90,6 +92,10 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
       initialRegistrations,
       onRegistrationChanged: (agents) => saveAgents(agentsFilePath, agents),
     });
+    const adminRoleId = discordBot.getAdminRoleId();
+    const worldAdminChannelId = discordBot.getWorldAdminChannelId();
+    adminCommandHandler = new AdminCommandHandler(engine, options.publicBaseUrl, adminRoleId, worldAdminChannelId);
+    await adminCommandHandler.register(discordBot);
     discordEventHandler = new DiscordEventHandler(engine, discordBot, options.timezone);
     const statusBoardChannel = await discordBot.getStatusBoardChannel();
     let mapImage: Buffer | null = null;
@@ -160,6 +166,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
       mcpServerManager: activeMcpServerManager,
       async stop() {
         await statusBoard?.dispose();
+        adminCommandHandler?.dispose();
         activeDiscordEventHandler.dispose();
         activeWebsocketManager.dispose();
         await activeMcpServerManager.close();
@@ -182,6 +189,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
         console.error('Failed to dispose status board after startup error.', disposeError);
       });
     }
+    adminCommandHandler?.dispose();
     discordEventHandler?.dispose();
     websocketManager?.dispose();
     if (mcpServerManager) {

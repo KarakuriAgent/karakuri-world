@@ -53,6 +53,9 @@ function createMockGuild(options?: {
   if (!omitChannels.has('world-log')) {
     channels.set('world-log', { id: 'world-log', name: 'world-log', type: ChannelType.GuildText, parentId: null });
   }
+  if (!omitChannels.has('world-admin')) {
+    channels.set('world-admin', { id: 'world-admin', name: 'world-admin', type: ChannelType.GuildText, parentId: null });
+  }
   if (!omitChannels.has('world-status')) {
     channels.set('world-status', { id: 'world-status', name: 'world-status', type: ChannelType.GuildText, parentId: null });
   }
@@ -177,6 +180,7 @@ describe('ChannelManager', () => {
     expect(result).toEqual({
       world_log_id: 'world-log',
       world_status_id: 'world-status',
+      world_admin_id: 'world-admin',
       agents_category_id: 'agents',
       admin_role_id: 'admin-role',
       human_role_id: 'human-role',
@@ -186,7 +190,7 @@ describe('ChannelManager', () => {
 
   it('auto-creates all missing resources', async () => {
     const { guild, createdChannelOptions, createdRoleOptions } = createMockGuild({
-      omitChannels: ['world-log', 'world-status', 'agents'],
+      omitChannels: ['world-log', 'world-admin', 'world-status', 'agents'],
       omitAdminRole: true,
       omitHumanRole: true,
       omitAgentRole: true,
@@ -198,16 +202,45 @@ describe('ChannelManager', () => {
     expect(createdRoleOptions).toHaveLength(3);
     expect(createdRoleOptions.map((options) => options.name)).toEqual(['admin', 'human', 'agent']);
 
-    expect(createdChannelOptions).toHaveLength(3);
-    expect(createdChannelOptions.map((options) => options.name)).toEqual(['agents', 'world-log', 'world-status']);
+    expect(createdChannelOptions).toHaveLength(4);
+    expect(createdChannelOptions.map((options) => options.name)).toEqual(['agents', 'world-log', 'world-admin', 'world-status']);
 
     expect(result).toEqual({
       world_log_id: 'created-channel-2',
-      world_status_id: 'created-channel-3',
+      world_status_id: 'created-channel-4',
+      world_admin_id: 'created-channel-3',
       agents_category_id: 'created-channel-1',
       admin_role_id: 'created-role-1',
       human_role_id: 'created-role-2',
       agent_role_id: 'created-role-3',
+    });
+  });
+
+  it('creates #world-admin with admin-only permission overwrites', async () => {
+    const { guild, createdChannelOptions } = createMockGuild({
+      omitChannels: ['world-admin'],
+    });
+    const manager = new ChannelManager(guild);
+
+    await manager.ensureStaticChannels();
+
+    const worldAdminCreate = createdChannelOptions.find((options) => options.name === 'world-admin');
+    expect(worldAdminCreate).toBeDefined();
+    expect(worldAdminCreate).toMatchObject({
+      name: 'world-admin',
+      type: ChannelType.GuildText,
+      permissionOverwrites: [
+        {
+          id: 'everyone',
+          type: OverwriteType.Role,
+          deny: PermissionFlagsBits.ViewChannel,
+        },
+        {
+          id: 'admin-role',
+          type: OverwriteType.Role,
+          allow: adminChannelAccess,
+        },
+      ],
     });
   });
 
@@ -311,6 +344,16 @@ describe('ChannelManager', () => {
         },
       ],
     });
+  });
+
+  it('returns cached admin resources via getters after initialization', async () => {
+    const { guild } = createMockGuild();
+    const manager = new ChannelManager(guild);
+
+    await manager.ensureStaticChannels();
+
+    expect(manager.getAdminRoleId()).toBe('admin-role');
+    expect(manager.getWorldAdminChannelId()).toBe('world-admin');
   });
 
   it('denies send, thread, and reaction permissions to the human role', async () => {

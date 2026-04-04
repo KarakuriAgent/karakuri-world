@@ -1,13 +1,13 @@
 import type { Hono } from 'hono';
 import { z } from 'zod';
 
+import { agentNamePattern } from '../../domain/agent-validation.js';
 import type { WorldEngine } from '../../engine/world-engine.js';
 import { WorldError } from '../../types/api.js';
 import type { ApiEnv } from '../context.js';
 import { adminAuth } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
 
-const agentNamePattern = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])$/;
 
 const registerAgentSchema = z.object({
   agent_name: z.string().min(2).max(32).regex(agentNamePattern),

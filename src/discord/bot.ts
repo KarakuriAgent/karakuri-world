@@ -1,6 +1,14 @@
 import { once } from 'node:events';
 
-import { AttachmentBuilder, Client, GatewayIntentBits, type Guild, type GuildMember } from 'discord.js';
+import {
+  AttachmentBuilder,
+  Client,
+  GatewayIntentBits,
+  type Guild,
+  type GuildMember,
+  type Interaction,
+  type RESTPostAPIChatInputApplicationCommandsJSONBody,
+} from 'discord.js';
 
 import type { DiscordRuntimeAdapter } from '../engine/world-engine.js';
 import { ChannelManager, type StaticChannels } from './channel-manager.js';
@@ -82,6 +90,8 @@ async function syncMemberRole(member: GuildMember, staticChannels: StaticChannel
     return;
   }
 
+  const isServerAdmin = member.permissions.has('Administrator') || member.id === member.guild.ownerId;
+  await ensureMemberRole(member, staticChannels.admin_role_id, isServerAdmin);
   await ensureMemberRole(member, staticChannels.human_role_id, true);
   await ensureMemberRole(member, staticChannels.agent_role_id, false);
 }
@@ -108,7 +118,6 @@ export class DiscordBot implements DiscordNotificationAdapter {
     const staticChannels = await channelManager.ensureStaticChannels();
     const worldBotUserId = requireWorldBotUserId(client);
 
-    // Register the listener before the initial fetch to avoid missing joins during startup.
     client.on('guildMemberAdd', (member) => {
       if (member.guild.id !== guild.id) {
         return;
@@ -125,6 +134,25 @@ export class DiscordBot implements DiscordNotificationAdapter {
     }
 
     return new DiscordBot(client, guild, channelManager);
+  }
+
+  registerInteractionHandler(handler: (interaction: Interaction) => void): () => void {
+    this.client.on('interactionCreate', handler);
+    return () => {
+      this.client.off('interactionCreate', handler);
+    };
+  }
+
+  async registerGuildCommands(commands: RESTPostAPIChatInputApplicationCommandsJSONBody[]): Promise<void> {
+    await this.guild.commands.set(commands);
+  }
+
+  getAdminRoleId(): string {
+    return this.channelManager.getAdminRoleId();
+  }
+
+  getWorldAdminChannelId(): string {
+    return this.channelManager.getWorldAdminChannelId();
   }
 
   async createAgentChannel(agentName: string, discordBotId: string): Promise<string> {
