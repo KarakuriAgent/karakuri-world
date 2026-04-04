@@ -56,11 +56,3 @@ Discord通知には以下を含める。
 
 `moving` 中に保留されていたイベントは、遅延 `server_event_fired` を同一エージェント向け通知キューに先に積み、その直後のエージェント向け通知（通常は `movement_completed`）も同じ順序で配信する。`active_server_event_id` はその後者の通知配信後にクリアする。
 
-## 5. ステータスボード
-
-ステータスボードに表示されるのは `pending_agent_ids` が残っているイベントのみ。表示形式は次の通り。
-
-```text
-アクティブなサーバーイベント:
-- {description} (応答待ち: {pending_agent_ids.length}名)
-```
