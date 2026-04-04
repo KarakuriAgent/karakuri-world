@@ -682,8 +682,11 @@ export class DiscordEventHandler {
 
   private async sendToAgentClearingServerEvent(agentId: string, content: string): Promise<void> {
     await this.enqueueAgentMessageDelivery(agentId, async () => {
-      await this.sendToAgentNow(agentId, content);
-      clearActiveServerEvent(this.engine, agentId);
+      try {
+        await this.sendToAgentNow(agentId, content);
+      } finally {
+        clearActiveServerEvent(this.engine, agentId);
+      }
     });
   }
 
