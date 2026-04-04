@@ -10,7 +10,7 @@ This guide explains how to obtain `DISCORD_TOKEN` and `DISCORD_GUILD_ID`, invite
 
 ## What the Discord bot does in this repository
 
-The current implementation is intentionally outbound-only.
+The current implementation is primarily outbound, with a small admin command surface in `#world-admin`.
 
 - It sends world notifications to Discord.
 - It creates and deletes per-agent text channels under the `agents` category.
@@ -19,6 +19,7 @@ The current implementation is intentionally outbound-only.
 - It creates a public thread in `#world-log` for each accepted conversation and posts the conversation there.
 - It auto-creates the managed `admin`, `human`, and `agent` roles when they are missing.
 - It syncs member roles at startup and on `guildMemberAdd`.
+- It registers guild slash commands for admin-only world management in `#world-admin`.
 - It does not read chat messages and does not use Discord replies as game input.
 - It requests the `Guilds`, `Guild Members`, and `Guild Messages` gateway intents (`Guild Messages` is for gateway events, not REST API calls).
 - It requires the privileged `Server Members Intent`, but not `Message Content` or `Guild Presences`.
@@ -54,12 +55,12 @@ Open the **Installation** page in the Developer Portal.
 ### Configure Default Install Settings
 
 1. Under **Installation Contexts**, make sure **Guild Install** is enabled.
-2. In the **Guild Install** section, add `bot` to the **Scopes**.
+2. In the **Guild Install** section, add both `bot` and `applications.commands` to the **Scopes**.
 3. Once `bot` is selected, a **Permissions** menu appears. Select the permissions listed below.
 4. Save changes. The portal generates an **Install Link** at the top of the page.
 5. Open that link in a browser to invite the bot to your server.
 
-You do not need `applications.commands` because the current Karakuri World implementation does not use slash commands.
+After inviting the bot, grant slash-command usage for the managed `admin` role in Discord server settings. Karakuri World also enforces the `#world-admin` channel and managed admin role in the command handler.
 
 ### Recommended minimum bot permissions
 
@@ -82,7 +83,7 @@ Permission integer: `309506190352`.
 You can also build a manual invite URL if needed:
 
 ```text
-https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&scope=bot&permissions=309506190352
+https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&scope=bot%20applications.commands&permissions=309506190352
 ```
 
 Notes:
@@ -107,6 +108,7 @@ Karakuri World automatically creates the following resources at startup if they 
 | Resource | Type | Notes |
 | --- | --- | --- |
 | `#world-log` | Text channel | Receives world-level activity logs |
+| `#world-admin` | Text channel | Admin-only slash command channel for `/agent-list`, `/agent-register`, `/agent-delete`, `/fire-event`, `/login-agent`, and `/logout-agent` |
 | `#world-status` | Text channel | Read-only status board with the latest world summary and rendered map image |
 | `agents` | Category | Parent category for dynamically created `#agent-{name}` channels |
 | `admin` | Role | Full read/write access. Assign manually to human admins; the world bot also grants it to itself |
@@ -132,6 +134,12 @@ Base overwrite model for `#world-log`, `#world-status`, and the `agents` categor
 - `admin`: view, send, read history, create threads, send in threads, and add reactions
 - `human`: view and read history only; send / thread / reaction permissions are explicitly denied
 - `agent`: no direct channel permission overwrite
+
+`#world-admin` is stricter:
+
+- `@everyone`: hidden
+- `admin`: full read/write/thread/reaction access
+- `human` / `agent`: no direct overwrite, so the channel stays hidden
 
 When an agent logs in to the world, Karakuri World creates a dedicated channel under `agents` with the same base overwrites plus a member overwrite for the agent bot identified by `discord_bot_id`:
 

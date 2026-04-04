@@ -1,6 +1,5 @@
 import { createServer } from 'node:http';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -23,6 +22,11 @@ const discordBotMocks = vi.hoisted(() => {
   const sendAgentMessage = vi.fn(async () => {});
   const sendWorldLog = vi.fn(async () => {});
   const getStatusBoardChannel = vi.fn(async () => statusBoardChannel);
+  const registerGuildCommands = vi.fn(async () => {});
+  const unsubscribeInteractionHandler = vi.fn();
+  const registerInteractionHandler = vi.fn(() => unsubscribeInteractionHandler);
+  const getAdminRoleId = vi.fn(() => 'admin-role');
+  const getWorldAdminChannelId = vi.fn(() => 'world-admin');
   const close = vi.fn(async () => {});
   const bot = {
     createAgentChannel,
@@ -31,6 +35,10 @@ const discordBotMocks = vi.hoisted(() => {
     sendAgentMessage,
     sendWorldLog,
     getStatusBoardChannel,
+    registerGuildCommands,
+    registerInteractionHandler,
+    getAdminRoleId,
+    getWorldAdminChannelId,
     close,
   };
   const create = vi.fn(async () => bot);
@@ -42,15 +50,23 @@ const discordBotMocks = vi.hoisted(() => {
     sendAgentMessage.mockReset().mockResolvedValue(undefined);
     sendWorldLog.mockReset().mockResolvedValue(undefined);
     getStatusBoardChannel.mockReset().mockResolvedValue(statusBoardChannel);
+    registerGuildCommands.mockReset().mockResolvedValue(undefined);
+    unsubscribeInteractionHandler.mockReset();
+    registerInteractionHandler.mockReset().mockReturnValue(unsubscribeInteractionHandler);
+    getAdminRoleId.mockReset().mockReturnValue('admin-role');
+    getWorldAdminChannelId.mockReset().mockReturnValue('world-admin');
     close.mockReset().mockResolvedValue(undefined);
     create.mockReset().mockResolvedValue(bot);
   }
 
   return {
-    create,
     close,
+    create,
     getStatusBoardChannel,
+    registerGuildCommands,
+    registerInteractionHandler,
     reset,
+    unsubscribeInteractionHandler,
   };
 });
 
@@ -111,6 +127,13 @@ function createRegistration(overrides: Partial<AgentRegistration> = {}): AgentRe
   };
 }
 
+function createLocalDataDir(name: string): string {
+  const dataDir = join(process.cwd(), 'data', name);
+  rmSync(dataDir, { recursive: true, force: true });
+  mkdirSync(dataDir, { recursive: true });
+  return dataDir;
+}
+
 describe('runtime startup', () => {
   beforeEach(() => {
     discordBotMocks.reset();
@@ -118,7 +141,7 @@ describe('runtime startup', () => {
   });
 
   it('hydrates persisted agent registrations', async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), 'karakuri-world-startup-'));
+    const dataDir = createLocalDataDir('test-startup-runtime');
     let runtime: Runtime | null = null;
 
     saveAgents(join(dataDir, 'agents.json'), [
@@ -181,6 +204,7 @@ describe('runtime startup', () => {
     ).rejects.toThrow('status board unavailable');
 
     expect(discordBotMocks.close).toHaveBeenCalledTimes(1);
+    expect(discordBotMocks.unsubscribeInteractionHandler).toHaveBeenCalledTimes(1);
   });
 
   it('does not register the status board if listen fails', async () => {
@@ -221,5 +245,6 @@ describe('runtime startup', () => {
     expect(statusBoardMocks.dispose).toHaveBeenCalledTimes(1);
     expect(statusBoardMocks.dispose).toHaveBeenCalledWith({ postStoppedMessage: false });
     expect(discordBotMocks.close).toHaveBeenCalledTimes(1);
+    expect(discordBotMocks.unsubscribeInteractionHandler).toHaveBeenCalledTimes(1);
   });
 });

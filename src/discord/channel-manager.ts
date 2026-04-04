@@ -11,6 +11,7 @@ import {
 export interface StaticChannels {
   world_log_id: string;
   world_status_id: string;
+  world_admin_id: string;
   agents_category_id: string;
   admin_role_id: string;
   human_role_id: string;
@@ -75,6 +76,21 @@ function buildRestrictedOverwrites(guild: Guild, adminRoleId: string, humanRoleI
   ];
 }
 
+function buildAdminOnlyOverwrites(guild: Guild, adminRoleId: string): OverwriteResolvable[] {
+  return [
+    {
+      id: guild.roles.everyone.id,
+      type: OverwriteType.Role,
+      deny: PermissionFlagsBits.ViewChannel,
+    },
+    {
+      id: adminRoleId,
+      type: OverwriteType.Role,
+      allow: fullChannelAccess,
+    },
+  ];
+}
+
 export function sanitizeAgentChannelName(agentName: string): string {
   const normalized = agentName
     .trim()
@@ -99,7 +115,6 @@ export class ChannelManager {
     const channels = await this.guild.channels.fetch();
     const availableChannels = [...channels.values()].filter((channel): channel is NonNullable<typeof channel> => channel !== null);
 
-    // 1. 管理対象ロール: fetch してから検索、無ければ作成
     const roles = await this.guild.roles.fetch();
     let adminRole = findManagedRole(roles.values(), 'admin');
     if (!adminRole) {
@@ -120,8 +135,8 @@ export class ChannelManager {
     }
 
     const restrictedOverwrites = buildRestrictedOverwrites(this.guild, adminRole.id, humanRole.id);
+    const adminOnlyOverwrites = buildAdminOnlyOverwrites(this.guild, adminRole.id);
 
-    // 2. agents カテゴリ
     let agentsCategory = availableChannels.find(
       (channel) => channel.type === ChannelType.GuildCategory && channel.name === 'agents',
     );
@@ -134,7 +149,6 @@ export class ChannelManager {
       });
     }
 
-    // 3. #world-log
     let worldLog = availableChannels.find(
       (channel) => channel.type === ChannelType.GuildText && channel.name === 'world-log',
     );
@@ -144,6 +158,18 @@ export class ChannelManager {
         name: 'world-log',
         type: ChannelType.GuildText,
         permissionOverwrites: restrictedOverwrites,
+      });
+    }
+
+    let worldAdmin = availableChannels.find(
+      (channel) => channel.type === ChannelType.GuildText && channel.name === 'world-admin',
+    );
+    if (!worldAdmin) {
+      console.log('Creating missing #world-admin channel...');
+      worldAdmin = await this.guild.channels.create({
+        name: 'world-admin',
+        type: ChannelType.GuildText,
+        permissionOverwrites: adminOnlyOverwrites,
       });
     }
 
@@ -162,6 +188,7 @@ export class ChannelManager {
     this.staticChannels = {
       world_log_id: worldLog.id,
       world_status_id: worldStatus.id,
+      world_admin_id: worldAdmin.id,
       agents_category_id: agentsCategory.id,
       admin_role_id: adminRole.id,
       human_role_id: humanRole.id,
@@ -169,6 +196,22 @@ export class ChannelManager {
     };
 
     return this.staticChannels;
+  }
+
+  getAdminRoleId(): string {
+    if (!this.staticChannels) {
+      throw new Error('Discord static channels are not initialized.');
+    }
+
+    return this.staticChannels.admin_role_id;
+  }
+
+  getWorldAdminChannelId(): string {
+    if (!this.staticChannels) {
+      throw new Error('Discord static channels are not initialized.');
+    }
+
+    return this.staticChannels.world_admin_id;
   }
 
   async createAgentChannel(agentName: string, discordBotId: string): Promise<string> {

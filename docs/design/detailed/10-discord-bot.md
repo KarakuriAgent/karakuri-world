@@ -2,12 +2,13 @@
 
 ## 1. アーキテクチャ制約
 
-### 1.1 送信専用
+### 1.1 主に送信用（管理コマンド受信あり）
 
-Discord Botは世界システムからDiscordへの一方向通知に使用する。
+Discord Botは主に世界システムからDiscordへの通知に使用し、加えて `#world-admin` で `admin` ロール限定の管理スラッシュコマンドを受け付ける。
 
-- メッセージの送信・ステータスボード更新用メッセージ削除・チャンネルの作成/削除のみを行う
-- メッセージの受信監視は行わない
+- メッセージ送信、ステータスボード更新用メッセージ削除、チャンネル作成 / 削除を行う
+- `#world-admin` で `admin` ロール限定の `/agent-list`、`/agent-register`、`/agent-delete`、`/fire-event`、`/login-agent`、`/logout-agent` を処理する
+- 通常のチャットメッセージ監視は行わない
 - エージェントBotがDiscordチャンネルに投稿するテキストは人間向け表示であり、世界システムはこれを読まない
 
 ### 1.2 World Engineからの呼び出し
@@ -81,6 +82,7 @@ OAuth2でBotを招待する際に付与する権限:
 ```
 karakuri-world/
 ├── #world-log
+├── #world-admin
 ├── #world-status
 └── agents/          (カテゴリ)
 ```
@@ -88,6 +90,7 @@ karakuri-world/
 | 名前 | 種別 | 用途 |
 |------|------|------|
 | `#world-log` | テキストチャンネル | 世界全体のイベントログ |
+| `#world-admin` | テキストチャンネル | `admin` ロール限定の `/agent-list`、`/agent-register`、`/agent-delete`、`/fire-event`、`/login-agent`、`/logout-agent` 窓口 |
 | `#world-status` | テキストチャンネル | 現在のワールド概要とマップ画像を常時表示するステータスボード |
 | `agents` | カテゴリ | エージェント専用チャンネルの親。動的チャンネルはこの配下に作成する |
 
@@ -102,6 +105,13 @@ Permission Overwriteの値の凡例: Allow / Deny / —（未設定）
 | `@everyone` | ロール | Deny | — | — | — | — | — |
 | `@admin` | ロール | Allow | Allow | Allow | Allow | Allow | Allow |
 | `@human` | ロール | Allow | Deny | Allow | Deny | Deny | Deny |
+
+#### #world-admin
+
+| 対象 | 種別 | View Channel | Send Messages | Read Message History | Create Threads | Send in Threads | Add Reactions |
+|------|------|-------------|---------------|---------------------|----------------|-----------------|---------------|
+| `@everyone` | ロール | Deny | — | — | — | — | — |
+| `@admin` | ロール | Allow | Allow | Allow | Allow | Allow | Allow |
 
 #### agents カテゴリ
 
@@ -132,8 +142,9 @@ Permission Overwriteの値の凡例: Allow / Deny / —（未設定）
 ### 4.4 セットアップ手順
 
 1. Discordサーバーを作成する
-2. World Botをセクション2.2の権限で招待し、Developer Portalで `Server Members Intent` を有効化する
-3. Karakuri Worldを起動する。不足しているロール・カテゴリ・チャンネルは自動作成される
+2. World Botをセクション2.2の権限で招待し、Developer Portalでは `Server Members Intent` を有効にする。招待URL / Guild Install の OAuth2 scope には `applications.commands` を含める
+3. Discordサーバー設定で `admin` ロールにスラッシュコマンド利用権限を付与する
+4. Karakuri Worldを起動する。不足しているロール・カテゴリ・チャンネルは自動作成される
 
 ## 5. 動的チャンネルの作成/削除
 

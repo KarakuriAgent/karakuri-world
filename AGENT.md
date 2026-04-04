@@ -4,7 +4,7 @@
 
 ## プロジェクト概要
 
-Karakuri World は、LLM エージェントがログインしてグリッドマップ上で移動・アクション・会話・サーバーイベント応答を行うマルチエージェント仮想世界サーバー。エージェント向け REST API に加えて、管理 API、ブラウザベースのエディタ（`/admin/editor`）、管理用スナップショット API（`/api/snapshot`）、MCP、Discord 通知、WebSocket を備える。
+Karakuri World は、LLM エージェントがログインしてグリッドマップ上で移動・アクション・会話・サーバーイベント応答を行うマルチエージェント仮想世界サーバー。エージェント向け REST API に加えて、管理 API、ブラウザベースのエディタ（`/admin/editor`）、管理用スナップショット API（`/api/snapshot`）、MCP、Discord 通知 / 管理スラッシュコマンド、WebSocket を備える。
 
 ## よく使うコマンド
 
@@ -52,7 +52,7 @@ src/
 ├── api/          # Hono ルーティング・ミドルウェア・管理/エージェント/UI API・WebSocket
 ├── engine/       # WorldEngine（状態管理・タイマー・EventBus）
 ├── domain/       # WorldEngine を受けて状態更新・タイマー登録・イベント発火まで行うワールド操作ロジック
-├── discord/      # Discord Bot・チャンネル管理・通知フォーマッティング・ステータスボード・マップレンダリング
+├── discord/      # Discord Bot・チャンネル管理・管理スラッシュコマンド・通知フォーマッティング・ステータスボード・マップレンダリング
 ├── mcp/          # MCP サーバー・ツール定義
 ├── config/       # YAML 読み込み・Zod スキーマバリデーション
 ├── storage/      # エージェント登録 + 再ログイン用状態（Discord チャンネル / 最終ノード）の JSON 永続化
@@ -74,7 +74,7 @@ src/
 - **会話系エンドポイント**: `POST /api/agents/conversation/start` は `target_agent_id` と `message`、`/accept` は `message`、`/reject` は本文不要、`/speak` は `message`、`/end` は `message` を受け付ける。会話着信の対象エージェントは `idle` または `in_action` で受信でき、`in_action` 中に受諾すると現在のアクション/待機を中断して `in_conversation` に遷移する。`/start` は開始者自身が `idle` で pending conversation を持たず、かつ開始者と対象が同じノードまたは隣接ノード（Manhattan distance <= 1）にいる場合のみ成功する。開始者がその条件を満たさない場合は `state_conflict`、距離条件を満たさない場合は `out_of_range`、対象が受信不可能な状態（`moving` / `in_conversation` / pending conversation あり）の場合は `target_unavailable` で失敗する。`/speak` と `/end` はどちらも現在の話者しか実行できず、`/end` は会話がまだ active の間だけ有効で、内部的に closing に入った後は使えない。
 - **サーバーイベント**: 管理者は `POST /api/admin/server-events/fire` に `{ description }` を渡してランタイムのサーバーイベントを発火する。通知には状態に関係なく利用可能なアクション一覧が含まれ、次の通知が来るまでのサーバーイベントウィンドウ中は `in_action` / `in_conversation` のエージェントも `move` / `action` / `wait` を実行できる。会話中に実行した場合は会話を closing に進めてから新しい行動を開始する。
 - **待機時間の制約**: `POST /api/agents/wait` はトップレベルの `duration` を受け付け、値は 10 分刻みを表す整数 `1`〜`6` のみ。
-- **管理 API**: `/api/admin/agents` でエージェント登録/一覧/削除、`POST /api/admin/server-events/fire` でサーバーイベント発火を提供する。`POST /api/admin/agents` の登録本文には `agent_name`、`agent_label`、`discord_bot_id` が必要で、`agent_name` は 2〜32 文字・使用可能文字は英小文字/数字/ハイフン・先頭と末尾は英小文字または数字必須（ハイフンは中間のみ）、`agent_label` は 1〜100 文字。
+- **管理 API**: `/api/admin/agents` でエージェント登録/一覧/削除、`POST /api/admin/server-events/fire` でサーバーイベント発火を提供する。Discord の `#world-admin` では `admin` ロール限定で `/agent-list`、`/agent-register`、`/agent-delete`、`/fire-event`、`/login-agent`、`/logout-agent` の 6 コマンドを提供する。`POST /api/admin/agents` の登録本文には `agent_name`、`agent_label`、`discord_bot_id` が必要で、`agent_name` は 2〜32 文字・使用可能文字は英小文字/数字/ハイフン・先頭と末尾は英小文字または数字必須（ハイフンは中間のみ）、`agent_label` は 1〜100 文字。
 - **管理設定 API**: `GET /api/admin/config` は `{ config: ... }` を返す。`PUT /api/admin/config` は `{ config: ... }` を受け取り、検証済み設定を保存して `{ status: 'ok' }` を返す。`POST /api/admin/config/validate` は同じ `{ config: ... }` エンベロープを受け取り、妥当なら `{ valid: true }` を返す。いずれも `X-Admin-Key` が必要。
 - **ブラウザエディタ**: `/admin/editor` で `src/admin/editor/` の静的アセットを配信する。
 - **管理 UI 補助**: `/api/snapshot` でワールドスナップショットを返し、`X-Admin-Key` が必要。

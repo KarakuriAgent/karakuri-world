@@ -3,10 +3,10 @@ import { dirname } from 'node:path';
 
 import { z } from 'zod';
 
+import { agentNamePattern } from '../domain/agent-validation.js';
 import type { AgentRegistration } from '../types/agent.js';
 import type { NodeId } from '../types/data-model.js';
 
-const agentNamePattern = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])$/;
 const apiKeyPattern = /^karakuri_[0-9a-f]+$/;
 
 export interface AgentsFileData {
