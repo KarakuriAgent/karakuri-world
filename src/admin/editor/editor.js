@@ -23,7 +23,6 @@ const state = {
   activeTool: 'normal',
   activeBuildingId: null,
   activeNpcId: null,
-  selectedEventId: null,
   validationIssues: [],
   cellSize: DEFAULT_CELL_SIZE,
   isPainting: false,
@@ -82,15 +81,6 @@ const elements = {
   spawnNodesInput: document.querySelector('#spawn-nodes-input'),
   idleReminderEnabledInput: document.querySelector('#idle-reminder-enabled-input'),
   idleReminderIntervalInput: document.querySelector('#idle-reminder-interval-input'),
-  serverEventSelect: document.querySelector('#server-event-select'),
-  addEventButton: document.querySelector('#add-event-button'),
-  deleteEventButton: document.querySelector('#delete-event-button'),
-  serverEventIdInput: document.querySelector('#server-event-id-input'),
-  serverEventNameInput: document.querySelector('#server-event-name-input'),
-  serverEventDescriptionInput: document.querySelector('#server-event-description-input'),
-  serverEventTimeoutInput: document.querySelector('#server-event-timeout-input'),
-  addEventChoiceButton: document.querySelector('#add-event-choice-button'),
-  serverEventChoicesList: document.querySelector('#server-event-choices-list'),
   validationResults: document.querySelector('#validation-results'),
 };
 
@@ -223,10 +213,6 @@ function getSelectedNpc() {
   return state.config?.map.npcs.find((npc) => npc.npc_id === state.activeNpcId) ?? null;
 }
 
-function getSelectedServerEvent() {
-  return state.config?.server_events.find((serverEvent) => serverEvent.event_id === state.selectedEventId) ?? null;
-}
-
 function pruneNodesToBounds() {
   const nextNodes = {};
   for (const [nodeId, nodeConfig] of Object.entries(state.config.map.nodes)) {
@@ -296,9 +282,6 @@ function syncDerivedCollections() {
   }
   if (state.activeNpcId && !getSelectedNpc()) {
     state.activeNpcId = state.config.map.npcs[0]?.npc_id ?? null;
-  }
-  if (state.selectedEventId && !getSelectedServerEvent()) {
-    state.selectedEventId = state.config.server_events[0]?.event_id ?? null;
   }
   if (state.selectedNodeId) {
     const { row, col } = parseNodeId(state.selectedNodeId);
@@ -669,40 +652,6 @@ function renderSettingsInspector() {
     : '';
 }
 
-function renderServerEventInspector() {
-  renderEntitySelect(
-    elements.serverEventSelect,
-    state.config.server_events.map((serverEvent) => serverEvent.event_id),
-    state.selectedEventId,
-    (eventId) => eventId,
-  );
-
-  const serverEvent = getSelectedServerEvent();
-  elements.serverEventIdInput.value = serverEvent?.event_id ?? '';
-  elements.serverEventNameInput.value = serverEvent?.name ?? '';
-  elements.serverEventDescriptionInput.value = serverEvent?.description ?? '';
-  elements.serverEventTimeoutInput.value = serverEvent?.timeout_ms ? String(serverEvent.timeout_ms) : '';
-
-  elements.serverEventChoicesList.innerHTML = '';
-  for (const [index, choice] of (serverEvent?.choices ?? []).entries()) {
-    const listItem = document.createElement('li');
-    listItem.innerHTML = `
-      <div class="item-row">
-        <div>
-          <strong>${choice.choice_id}</strong><br />
-          <span>${choice.label}</span><br />
-          <small>${choice.description}</small>
-        </div>
-        <div class="item-actions">
-          <button type="button" data-kind="event-choice" data-action="edit" data-index="${index}">編集</button>
-          <button type="button" data-kind="event-choice" data-action="delete" data-index="${index}">削除</button>
-        </div>
-      </div>
-    `;
-    elements.serverEventChoicesList.append(listItem);
-  }
-}
-
 function renderValidationResults() {
   elements.validationResults.innerHTML = '';
   for (const issue of state.validationIssues) {
@@ -726,7 +675,6 @@ function renderAll() {
   renderBuildingInspector();
   renderNpcInspector();
   renderSettingsInspector();
-  renderServerEventInspector();
   renderValidationResults();
 }
 
@@ -753,18 +701,6 @@ function createEmptyNpc() {
     description: '',
     node_id: '',
     actions: [],
-  };
-}
-
-function createEmptyServerEvent() {
-  const existingIds = new Set(state.config.server_events.map((serverEvent) => serverEvent.event_id));
-  const eventId = generateUniqueId('event', existingIds);
-  return {
-    event_id: eventId,
-    name: eventId,
-    description: '',
-    timeout_ms: 5000,
-    choices: [],
   };
 }
 
@@ -803,29 +739,6 @@ function promptForAction(initialAction = null) {
   };
 }
 
-function promptForChoice(initialChoice = null) {
-  const choiceId = prompt('選択肢ID', initialChoice?.choice_id ?? '');
-  if (choiceId === null) {
-    return null;
-  }
-
-  const label = prompt('ラベル', initialChoice?.label ?? '');
-  if (label === null) {
-    return null;
-  }
-
-  const description = prompt('説明', initialChoice?.description ?? '');
-  if (description === null) {
-    return null;
-  }
-
-  return {
-    choice_id: choiceId.trim(),
-    label: label.trim(),
-    description: description.trim(),
-  };
-}
-
 async function loadConfig() {
   setStatus('設定を読み込んでいます...');
   const response = await apiRequest('/api/admin/config');
@@ -833,7 +746,6 @@ async function loadConfig() {
   state.selectedNodeId = null;
   state.activeBuildingId = state.config.map.buildings[0]?.building_id ?? null;
   state.activeNpcId = state.config.map.npcs[0]?.npc_id ?? null;
-  state.selectedEventId = state.config.server_events[0]?.event_id ?? null;
   syncDerivedCollections();
   clearValidationIssues();
   renderAll();
@@ -962,10 +874,6 @@ function bindEvents() {
     state.activeNpcId = elements.npcSelect.value || null;
     renderAll();
   });
-  elements.serverEventSelect.addEventListener('change', () => {
-    state.selectedEventId = elements.serverEventSelect.value || null;
-    renderAll();
-  });
 
   elements.addBuildingButton.addEventListener('click', () => {
     const building = createEmptyBuilding();
@@ -1025,24 +933,6 @@ function bindEvents() {
     renderAll();
   });
 
-  elements.addEventButton.addEventListener('click', () => {
-    const serverEvent = createEmptyServerEvent();
-    state.config.server_events.push(serverEvent);
-    state.selectedEventId = serverEvent.event_id;
-    renderAll();
-  });
-  elements.deleteEventButton.addEventListener('click', () => {
-    const serverEvent = getSelectedServerEvent();
-    if (!serverEvent || !confirm(`${serverEvent.event_id} を削除しますか？`)) {
-      return;
-    }
-
-    state.config.server_events = state.config.server_events.filter(
-      (candidate) => candidate.event_id !== serverEvent.event_id,
-    );
-    syncDerivedCollections();
-    renderAll();
-  });
 
   elements.addBuildingActionButton.addEventListener('click', () => {
     const building = getSelectedBuilding();
@@ -1071,20 +961,6 @@ function bindEvents() {
 
     npc.actions.push(action);
     renderNpcInspector();
-  });
-  elements.addEventChoiceButton.addEventListener('click', () => {
-    const serverEvent = getSelectedServerEvent();
-    if (!serverEvent) {
-      return;
-    }
-
-    const choice = promptForChoice();
-    if (!choice) {
-      return;
-    }
-
-    serverEvent.choices.push(choice);
-    renderServerEventInspector();
   });
 
   elements.buildingActionsList.addEventListener('click', (event) => {
@@ -1135,29 +1011,6 @@ function bindEvents() {
     renderNpcInspector();
   });
 
-  elements.serverEventChoicesList.addEventListener('click', (event) => {
-    const target = event.target.closest('button[data-kind="event-choice"]');
-    if (!target) {
-      return;
-    }
-
-    const serverEvent = getSelectedServerEvent();
-    if (!serverEvent) {
-      return;
-    }
-
-    const index = Number.parseInt(target.dataset.index ?? '', 10);
-    if (target.dataset.action === 'delete') {
-      serverEvent.choices.splice(index, 1);
-    } else {
-      const nextChoice = promptForChoice(serverEvent.choices[index]);
-      if (!nextChoice) {
-        return;
-      }
-      serverEvent.choices[index] = nextChoice;
-    }
-    renderServerEventInspector();
-  });
 
   elements.nodeTypeSelect.addEventListener('change', () => {
     if (!state.selectedNodeId) {
@@ -1307,38 +1160,6 @@ function bindEvents() {
     state.config.idle_reminder.interval_ms = Number.parseInt(elements.idleReminderIntervalInput.value, 10) || 0;
   });
 
-  elements.serverEventIdInput.addEventListener('input', () => {
-    const serverEvent = getSelectedServerEvent();
-    if (!serverEvent) {
-      return;
-    }
-
-    const previousId = serverEvent.event_id;
-    const nextId = elements.serverEventIdInput.value.trim();
-    serverEvent.event_id = nextId;
-    if (state.selectedEventId === previousId) {
-      state.selectedEventId = nextId;
-    }
-    renderServerEventInspector();
-  });
-  elements.serverEventNameInput.addEventListener('input', () => {
-    const serverEvent = getSelectedServerEvent();
-    if (serverEvent) {
-      serverEvent.name = elements.serverEventNameInput.value;
-    }
-  });
-  elements.serverEventDescriptionInput.addEventListener('input', () => {
-    const serverEvent = getSelectedServerEvent();
-    if (serverEvent) {
-      serverEvent.description = elements.serverEventDescriptionInput.value;
-    }
-  });
-  elements.serverEventTimeoutInput.addEventListener('input', () => {
-    const serverEvent = getSelectedServerEvent();
-    if (serverEvent) {
-      serverEvent.timeout_ms = Number.parseInt(elements.serverEventTimeoutInput.value, 10) || 0;
-    }
-  });
 }
 
 bindEvents();

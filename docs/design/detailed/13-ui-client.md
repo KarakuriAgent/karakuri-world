@@ -158,11 +158,9 @@ WorldState
 │   ├── closing_reason?
 │   └── messages: { speaker, text }[]  # 表示用バッファ（初回発言含む、UIローカル管理）
 └── server_events: { ServerEventId → ServerEventData }
-    ├── event_id              # 定義ID（テーマのエフェクトマッピング用）
-    ├── name, description
-    ├── choices
-    ├── delivered_agent_ids   # 現在応答待ち中で、すでに通知済みのエージェント
-    └── pending_agent_ids     # 現在応答待ち中で、遅延通知待ちのエージェント
+    ├── description
+    ├── delivered_agent_ids
+    └── pending_agent_ids
 ```
 
 スナップショットに含まれない情報（会話メッセージ履歴、アクション詳細等）はUIがイベント受信時にローカルで管理する。再接続時にはこれらの情報はクリアされる（セクション3.2参照）。
@@ -176,7 +174,7 @@ WorldState
 1. マップ（`MapConfig` 全体）・ワールドメタデータを設定
 2. エージェント状態を `AgentSnapshot[]` から構築
 3. 会話状態を `ConversationSnapshot[]` から構築
-4. サーバーイベント状態を `ServerEventSnapshot[]` から構築（エフェクトマッピング用に `event_id` をキャッシュ）
+4. サーバーイベント状態を `ServerEventSnapshot[]` から構築
 5. プレゼンテーション層に全再描画を通知
 6. `moving` 状態のエージェントについて、`movement.path` と `movement.arrives_at` から移動アニメーションを再構築（セクション5.4参照）
 
@@ -210,9 +208,7 @@ WorldState
 | `conversation_message` | 会話にメッセージを追加、`current_turn` と `current_speaker_agent_id` を更新（turn 2 以降。初回発言は `conversation_requested` で処理済み） |
 | `conversation_closing` | 会話のstatus → closing、`current_speaker_agent_id` と `closing_reason` を更新 |
 | `conversation_ended` | 会話を削除、両エージェントのstate → idle |
-| `server_event_fired` | サーバーイベントを記録（`event_id_ref`, `choices` をキャッシュ） |
-| `server_event_expired` | サーバーイベントの `delivered_agent_ids` / `pending_agent_ids` を更新し、`fully_expired` なら削除 |
-| `server_event_selected` | エージェントの選択を記録。`source_state` が `in_action` の場合はエージェントのstate → idle |
+| `server_event_fired` | 説明文ベースのランタイムサーバーイベントを追加または更新。`description`・`delivered_agent_ids`・`pending_agent_ids` を同期し、`pending_agent_ids` が空になったものはスナップショットから消える |
 
 ## 4. マップ描画
 
@@ -392,13 +388,13 @@ arrives_at: number  # 到着予定時刻（Unix timestamp ms）
 
 | 要素 | 説明 |
 |------|------|
-| バナー | 画面上部にイベント名・説明を表示 |
-| エフェクト | テーマ定義のエフェクトがあれば再生 |
+| バナー | 画面上部にイベント説明を表示 |
+| エフェクト | テーマ定義の共通サーバーイベントエフェクトがあれば再生 |
 | 表示時間 | 数秒後にフェードアウト |
 
-### 7.2 選択表示
+### 7.2 状態補助表示
 
-`server_event_selected` 受信時、エージェントが選択した行動をエージェントスプライト付近にテキスト表示する。
+サーバーイベントは `server_event_fired` の説明文をUI側で演出表示する。必要なら `pending_agent_ids` と `delivered_agent_ids` を使って、まだ応答待ちの人数や遅延配信中かどうかを補助表示してよい。UIがイベント固有の選択肢や定義IDを保持する必要はない。
 
 ## 8. UIパネル
 
@@ -455,7 +451,7 @@ themes/
     ├── sprites/
     │   └── agent.png
     └── effects/
-        └── rain.tscn       # パーティクル等
+        └── server_event.tscn # パーティクル等
 ```
 
 ### 9.2 テーマ定義ファイル
@@ -479,7 +475,7 @@ themes/
     "text_color": "#000000"
   },
   "effects": {
-    "sudden-rain": "effects/rain.tscn"
+    "server_event": "effects/server_event.tscn"
   }
 }
 ```
@@ -498,11 +494,11 @@ UIのテーマ選択ドロップダウンで切り替える。
 
 ### 9.4 エフェクトとサーバーイベントの対応
 
-テーマの `effects` フィールドで、サーバーイベントの定義ID（`ServerEventConfig.event_id`）に対応するエフェクトシーンを定義できる。`server_event_fired` 受信時、定義IDに一致するエフェクトがあれば再生する。
+テーマの `effects` フィールドで、説明文ベースのサーバーイベント共通エフェクト（例: `server_event`）を定義できる。`server_event_fired` 受信時はその共通エフェクトを再生し、バナー本文には `description` を表示する。
 
 対応するエフェクトがない場合はバナー表示のみ（セクション7.1）。
 
-`ServerEventFiredEvent` には定義ID（`event_id_ref`）と選択肢一覧（`choices`）が含まれる（03-world-engine.md セクション2.2参照）。UIは `event_id_ref` でテーマのエフェクトマッピングを引く。`ServerEventSelectedEvent` には `choice_label` が含まれるため、選択表示にはそのまま使用できる。
+`ServerEventFiredEvent` に含まれるサーバーイベント情報は `server_event_id`・`description`・`delivered_agent_ids`・`pending_agent_ids`・`delayed` である。UIはイベント定義IDや選択肢一覧を前提にせず、必要なら `pending_agent_ids` を使って影響中の人数を表示する。
 
 ## 10. 入力操作
 

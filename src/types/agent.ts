@@ -21,6 +21,8 @@ export interface LoggedInAgent {
   state: AgentState;
   discord_channel_id: string;
   pending_conversation_id: string | null;
+  current_conversation_id: string | null;
   pending_server_event_ids: string[];
+  active_server_event_id: string | null;
   last_action_id: string | null;
 }

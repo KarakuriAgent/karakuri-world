@@ -76,26 +76,6 @@ export function createTestConfig(overrides: Partial<ServerConfig> = {}): ServerC
       nodes: ['3-1', '3-2'],
     },
     map: createTestMapConfig(),
-    server_events: [
-      {
-        event_id: 'sudden-rain',
-        name: 'Sudden Rain',
-        description: 'Dark clouds gather and rain starts to pour.',
-        timeout_ms: 5000,
-        choices: [
-          {
-            choice_id: 'take-shelter',
-            label: 'Take shelter',
-            description: 'Rush toward the nearest roof.',
-          },
-          {
-            choice_id: 'observe-rain',
-            label: 'Observe the rain',
-            description: 'Stay put and study the weather.',
-          },
-        ],
-      },
-    ],
   };
 
   const config = structuredClone(base);
@@ -108,6 +88,6 @@ export function createTestConfig(overrides: Partial<ServerConfig> = {}): ServerC
     perception: { ...config.perception, ...overrides.perception },
     spawn: { ...config.spawn, ...overrides.spawn },
     map: overrides.map ?? config.map,
-    server_events: overrides.server_events ?? config.server_events,
+    idle_reminder: overrides.idle_reminder === undefined ? config.idle_reminder : overrides.idle_reminder,
   };
 }

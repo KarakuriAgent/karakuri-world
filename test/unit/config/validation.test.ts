@@ -60,30 +60,6 @@ describe('config validation', () => {
     }
   });
 
-  it('rejects duplicated server event ids', () => {
-    const baseConfig = createTestConfig();
-    const invalidConfig = createTestConfig({
-      server_events: [
-        ...baseConfig.server_events,
-        {
-          event_id: 'sudden-rain',
-          name: 'Another rain',
-          description: 'Duplicate id should fail.',
-          timeout_ms: 5000,
-          choices: [
-            {
-              choice_id: 'wait',
-              label: 'Wait',
-              description: 'Do nothing.',
-            },
-          ],
-        },
-      ],
-    });
-
-    expect(() => parseConfig(invalidConfig)).toThrowError(ConfigValidationError);
-  });
-
   it('rejects duplicated building ids', () => {
     const baseConfig = createTestConfig();
     const invalidConfig = createTestConfig({

@@ -30,8 +30,6 @@ const STATUS_TRIGGERING_EVENTS = new Set<EventType>([
   'conversation_rejected',
   'conversation_ended',
   'server_event_fired',
-  'server_event_expired',
-  'server_event_selected',
 ]);
 
 export class StatusBoard {
@@ -146,6 +144,10 @@ export class StatusBoard {
     }
 
     if (immediate) {
+      if (this.debounceTimer) {
+        clearTimeout(this.debounceTimer);
+        this.debounceTimer = null;
+      }
       this.startRefresh();
       return;
     }
@@ -248,7 +250,6 @@ export class StatusBoard {
       case 'wait':
       case 'conversation_interval':
       case 'conversation_turn':
-      case 'server_event_timeout':
         // +1ms: refresh after the timer fires so the snapshot reflects the completed state.
         return timer.fires_at + 1;
       case 'conversation_accept':
@@ -324,14 +325,20 @@ export class StatusBoard {
     }
 
     const sentMessageIds: string[] = [];
-    for (const [index, message] of messages.entries()) {
-      let sentMessage: StatusBoardMessage;
-      if (index === 0 && attachMapImage && this.options.mapImage) {
-        sentMessage = await this.channel.sendMessageWithImage(message, this.options.mapImage, 'world-map.png');
-      } else {
-        sentMessage = await this.channel.sendMessage(message);
+    try {
+      for (const [index, message] of messages.entries()) {
+        let sentMessage: StatusBoardMessage;
+        if (index === 0 && attachMapImage && this.options.mapImage) {
+          sentMessage = await this.channel.sendMessageWithImage(message, this.options.mapImage, 'world-map.png');
+        } else {
+          sentMessage = await this.channel.sendMessage(message);
+        }
+        sentMessageIds.push(sentMessage.id);
       }
-      sentMessageIds.push(sentMessage.id);
+    } catch (error) {
+      this.lastMessageIds = sentMessageIds;
+      this.lastMessages = [];
+      throw error;
     }
 
     return sentMessageIds;

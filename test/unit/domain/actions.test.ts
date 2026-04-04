@@ -206,20 +206,16 @@ describe('actions domain', () => {
     expect(getAvailableActionIds(engine, alice.agent_id)).toEqual([]);
   });
 
-  it('keeps the cooldown when a server event interrupts an action', async () => {
+  it('keeps the cooldown when a server event window interrupts an action', async () => {
     const { engine } = createTestWorld();
     const alice = await createLoggedInAgent(engine);
     engine.state.setNode(alice.agent_id, '1-1');
 
     engine.executeAction(alice.agent_id, { action_id: 'greet-gatekeeper' });
+    engine.fireServerEvent('Dark clouds gather.');
+    engine.executeWait(alice.agent_id, { duration: 1 });
 
-    const fired = engine.fireServerEvent('sudden-rain');
-    engine.selectServerEvent(alice.agent_id, {
-      server_event_id: fired.server_event_id,
-      choice_id: 'take-shelter',
-    });
-
-    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('idle');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('in_action');
     expect(engine.state.getLoggedIn(alice.agent_id)?.last_action_id).toBe('greet-gatekeeper');
     expect(getAvailableActionIds(engine, alice.agent_id)).toEqual([]);
   });

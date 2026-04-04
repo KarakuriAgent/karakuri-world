@@ -131,7 +131,7 @@ WebSocketから受信するイベントと、UIでの表現:
 | `conversation_message` | 吹き出しにメッセージ表示 |
 | `conversation_ended` | 会話表示を解除 |
 | `server_event_fired` | 画面全体への演出表示 |
-| `server_event_selected` | エージェントの選択を表示 |
+| `server_event_fired` | サーバーイベント演出と説明文を表示 |
 
 ## 4. 画面構成
 

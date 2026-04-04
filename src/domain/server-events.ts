@@ -1,60 +1,26 @@
 import { randomUUID } from 'node:crypto';
 
 import type { WorldEngine } from '../engine/world-engine.js';
-import type { FireServerEventResponse, OkResponse, ServerEventSelectRequest } from '../types/api.js';
-import { WorldError } from '../types/api.js';
+import type { FireServerEventResponse } from '../types/api.js';
 import type { ServerEventInstance } from '../types/server-event.js';
-import type { ServerEventTimeoutTimer } from '../types/timer.js';
 import { cancelActiveAction } from './actions.js';
-import { beginClosingConversation, findConversationByAgent } from './conversation.js';
-import { startIdleReminder } from './idle-reminder.js';
+import { beginClosingConversation, cancelPendingConversationForServerEvent, findConversationByAgent } from './conversation.js';
 import { cancelActiveWait } from './wait.js';
 
-function createTimeoutTimer(engine: WorldEngine, agentId: string, serverEvent: ServerEventInstance): void {
-  engine.timerManager.create({
-    type: 'server_event_timeout',
-    agent_ids: [agentId],
-    agent_id: agentId,
-    server_event_id: serverEvent.server_event_id,
-    event_id: serverEvent.event_id,
-    fires_at: Date.now() + serverEvent.timeout_ms,
-  });
-}
-
 function maybeCleanupServerEvent(engine: WorldEngine, serverEventId: string): boolean {
-  const hasPending = engine.state
-    .listLoggedIn()
-    .some((agent) => agent.pending_server_event_ids.includes(serverEventId));
-  const hasTimeout = engine.timerManager
-    .list()
-    .some((timer) => timer.type === 'server_event_timeout' && timer.server_event_id === serverEventId);
-
-  if (!hasPending && !hasTimeout) {
-    engine.state.serverEvents.delete(serverEventId);
-    return true;
+  const serverEvent = engine.state.serverEvents.get(serverEventId);
+  if (!serverEvent || serverEvent.pending_agent_ids.length > 0) {
+    return false;
   }
 
-  return false;
+  engine.state.serverEvents.delete(serverEventId);
+  return true;
 }
 
-function removeAwaitingAgent(serverEvent: ServerEventInstance, agentId: string): void {
-  serverEvent.pending_agent_ids = serverEvent.pending_agent_ids.filter((id) => id !== agentId);
-  serverEvent.delivered_agent_ids = serverEvent.delivered_agent_ids.filter((id) => id !== agentId);
-}
-
-export function fireServerEvent(engine: WorldEngine, eventId: string): FireServerEventResponse {
-  const configEvent = engine.config.server_events.find((serverEvent) => serverEvent.event_id === eventId);
-  if (!configEvent) {
-    throw new WorldError(404, 'event_not_found', `Unknown server event: ${eventId}`);
-  }
-
+export function fireServerEvent(engine: WorldEngine, description: string): FireServerEventResponse {
   const serverEvent: ServerEventInstance = {
     server_event_id: `server-event-${randomUUID()}`,
-    event_id: configEvent.event_id,
-    name: configEvent.name,
-    description: configEvent.description,
-    choices: structuredClone(configEvent.choices),
-    timeout_ms: configEvent.timeout_ms,
+    description,
     fired_at: Date.now(),
     delivered_agent_ids: [],
     pending_agent_ids: [],
@@ -67,7 +33,7 @@ export function fireServerEvent(engine: WorldEngine, eventId: string): FireServe
       continue;
     }
 
-    createTimeoutTimer(engine, agent.agent_id, serverEvent);
+    engine.state.setActiveServerEvent(agent.agent_id, serverEvent.server_event_id);
     serverEvent.delivered_agent_ids.push(agent.agent_id);
   }
 
@@ -75,14 +41,12 @@ export function fireServerEvent(engine: WorldEngine, eventId: string): FireServe
   engine.emitEvent({
     type: 'server_event_fired',
     server_event_id: serverEvent.server_event_id,
-    event_id_ref: serverEvent.event_id,
-    name: serverEvent.name,
     description: serverEvent.description,
-    choices: serverEvent.choices,
     delivered_agent_ids: [...serverEvent.delivered_agent_ids],
     pending_agent_ids: [...serverEvent.pending_agent_ids],
     delayed: false,
   });
+  maybeCleanupServerEvent(engine, serverEvent.server_event_id);
 
   return { server_event_id: serverEvent.server_event_id };
 }
@@ -106,107 +70,70 @@ export function handlePendingServerEvents(engine: WorldEngine, agentId: string):
       serverEvent.delivered_agent_ids.push(agentId);
       serverEvent.delivered_agent_ids.sort();
     }
-    createTimeoutTimer(engine, agentId, serverEvent);
+    engine.state.setActiveServerEvent(agentId, serverEventId);
     deliveredServerEventIds.push(serverEventId);
 
     engine.emitEvent({
       type: 'server_event_fired',
       server_event_id: serverEvent.server_event_id,
-      event_id_ref: serverEvent.event_id,
-      name: serverEvent.name,
       description: serverEvent.description,
-      choices: serverEvent.choices,
       delivered_agent_ids: [agentId],
       pending_agent_ids: [],
       delayed: true,
     });
+
+    maybeCleanupServerEvent(engine, serverEventId);
   }
 
-  return deliveredServerEventIds.sort();
+  return deliveredServerEventIds;
 }
 
-export function selectServerEvent(engine: WorldEngine, agentId: string, request: ServerEventSelectRequest): OkResponse {
+export function clearActiveServerEvent(engine: WorldEngine, agentId: string): void {
   const agent = engine.state.getLoggedIn(agentId);
-  if (!agent) {
-    throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
-  }
-
-  const sourceState = agent.state;
-  if (sourceState !== 'idle' && sourceState !== 'in_action' && sourceState !== 'in_conversation') {
-    throw new WorldError(409, 'state_conflict', 'Agent cannot select a server event right now.');
-  }
-
-  const conversation = sourceState === 'in_conversation' ? findConversationByAgent(engine, agentId, ['active', 'closing']) : null;
-  if (conversation?.status === 'closing') {
-    throw new WorldError(400, 'conversation_closing', 'Conversation is already in closing state.');
-  }
-
-  const serverEvent = engine.state.serverEvents.get(request.server_event_id);
-  if (!serverEvent) {
-    throw new WorldError(400, 'event_not_found', `Server event not found: ${request.server_event_id}`);
-  }
-
-  const choice = serverEvent.choices.find((candidate) => candidate.choice_id === request.choice_id);
-  if (!choice) {
-    throw new WorldError(400, 'invalid_choice', `Invalid server event choice: ${request.choice_id}`);
-  }
-
-  const timeoutTimer = engine.timerManager.find(
-    (timer): timer is ServerEventTimeoutTimer =>
-      timer.type === 'server_event_timeout' &&
-      timer.agent_id === agentId &&
-      timer.server_event_id === request.server_event_id,
-  );
-  if (!timeoutTimer) {
-    throw new WorldError(400, 'event_not_found', `Server event not found: ${request.server_event_id}`);
-  }
-
-  engine.timerManager.cancel(timeoutTimer.timer_id);
-  removeAwaitingAgent(serverEvent, agentId);
-  if (sourceState === 'in_action') {
-    cancelActiveAction(engine, agentId);
-    cancelActiveWait(engine, agentId);
-    startIdleReminder(engine, agentId);
-  } else if (sourceState === 'in_conversation' && conversation) {
-    beginClosingConversation(engine, conversation.conversation_id, agentId, 'server_event');
-  }
-
-  engine.emitEvent({
-    type: 'server_event_selected',
-    server_event_id: serverEvent.server_event_id,
-    event_id_ref: serverEvent.event_id,
-    name: serverEvent.name,
-    agent_id: agentId,
-    choice_id: choice.choice_id,
-    choice_label: choice.label,
-    source_state: sourceState,
-  });
-
-  maybeCleanupServerEvent(engine, serverEvent.server_event_id);
-  return { status: 'ok' };
-}
-
-export function handleServerEventTimeout(engine: WorldEngine, timer: ServerEventTimeoutTimer): void {
-  const serverEvent = engine.state.serverEvents.get(timer.server_event_id);
-  if (!serverEvent) {
+  if (!agent || agent.active_server_event_id === null) {
     return;
   }
 
-  removeAwaitingAgent(serverEvent, timer.agent_id);
-  const fullyExpired = maybeCleanupServerEvent(engine, timer.server_event_id);
-  engine.emitEvent({
-    type: 'server_event_expired',
-    server_event_id: serverEvent.server_event_id,
-    event_id_ref: serverEvent.event_id,
-    name: serverEvent.name,
-    agent_id: timer.agent_id,
-    delivered_agent_ids: [...serverEvent.delivered_agent_ids],
-    pending_agent_ids: [...serverEvent.pending_agent_ids],
-    fully_expired: fullyExpired,
-  });
+  engine.state.clearActiveServerEvent(agentId);
+}
+
+export function handleServerEventInterruption(engine: WorldEngine, agentId: string): void {
+  const agent = engine.state.getLoggedIn(agentId);
+  if (!agent || agent.active_server_event_id === null) {
+    return;
+  }
+
+  if (agent.pending_conversation_id) {
+    cancelPendingConversationForServerEvent(engine, agentId);
+  }
+
+  const refreshedAgent = engine.state.getLoggedIn(agentId);
+  if (!refreshedAgent) {
+    return;
+  }
+
+  if (refreshedAgent.state === 'in_action') {
+    cancelActiveAction(engine, agentId);
+    cancelActiveWait(engine, agentId);
+  } else if (refreshedAgent.state === 'in_conversation') {
+    const conversation = findConversationByAgent(engine, agentId, ['active', 'closing']);
+    if (conversation && conversation.status !== 'closing') {
+      if (refreshedAgent.pending_conversation_id === conversation.conversation_id) {
+        engine.state.setPendingConversation(agentId, null);
+      }
+      const partnerId = conversation.initiator_agent_id === agentId
+        ? conversation.target_agent_id
+        : conversation.initiator_agent_id;
+      beginClosingConversation(engine, conversation.conversation_id, partnerId, 'server_event');
+    }
+  }
+
+  engine.state.setState(agentId, 'idle');
+  clearActiveServerEvent(engine, agentId);
 }
 
 export function cleanupServerEventsForAgent(engine: WorldEngine, agentId: string): void {
+  clearActiveServerEvent(engine, agentId);
   for (const serverEvent of engine.state.serverEvents.list()) {
     serverEvent.pending_agent_ids = serverEvent.pending_agent_ids.filter((id) => id !== agentId);
     serverEvent.delivered_agent_ids = serverEvent.delivered_agent_ids.filter((id) => id !== agentId);

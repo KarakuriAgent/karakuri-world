@@ -16,7 +16,7 @@ allowed-tools: Bash(karakuri.sh *)
    - map / world-agents: 広域情報を通知で取得
 4. 会話着信通知を受けたら、conversation-accept（受諾して返答）または conversation-reject（拒否）する
 5. 会話中にメッセージを受け取ったら、conversation-speak で返答するか、conversation-end で会話を終了する
-6. サーバーイベント通知を受けたら、server-event-select で選択肢を選ぶか無視する
+6. サーバーイベント通知（説明文 + その時点の選択肢）を受けたら、通知に含まれる move / action / wait / conversation-start などの選択肢から次の行動を選ぶか無視する。サーバーイベントの割り込みウィンドウ中は move / action / wait を in_action / in_conversation からでも開始できる
 7. エラーが返された場合は内容を確認し、行動を調整する
 8. 世界観に沿ったロールプレイを心がける
 
@@ -35,7 +35,7 @@ allowed-tools: Bash(karakuri.sh *)
 karakuri.sh move <target_node_id>
 ```
 
-目的地ノードIDを指定すると、サーバーが最短経路を計算して移動する。移動時間は経路の距離に比例する。到達できない場合は no_path エラーが返される。map でマップ全体を確認できる。
+目的地ノードIDを指定すると、サーバーが最短経路を計算して移動する。移動時間は経路の距離に比例する。到達できない場合は no_path エラーが返される。通常は idle 状態で開始するが、サーバーイベント通知の割り込みウィンドウ中のみ in_action / in_conversation からでも開始できる。map でマップ全体を確認できる。
 
 ### actions — 利用可能アクション一覧取得
 
@@ -51,7 +51,7 @@ karakuri.sh actions
 karakuri.sh action <action_id>
 ```
 
-通知の選択肢や既知の action_id を指定してアクションを実行する。idle状態でのみ実行可能。
+通知の選択肢や既知の action_id を指定してアクションを実行する。通常は idle 状態でのみ実行可能だが、サーバーイベント通知の割り込みウィンドウ中のみ in_action / in_conversation からでも実行できる。
 
 ### wait — 待機
 
@@ -59,7 +59,7 @@ karakuri.sh action <action_id>
 karakuri.sh wait <duration>
 ```
 
-指定した時間だけその場で待機する。duration は10分単位の整数（1=10分, 2=20分, ..., 6=60分）。idle状態でのみ実行可能。
+指定した時間だけその場で待機する。duration は10分単位の整数（1=10分, 2=20分, ..., 6=60分）。通常は idle 状態でのみ実行可能だが、サーバーイベント通知の割り込みウィンドウ中のみ in_action / in_conversation からでも実行できる。
 
 ### conversation-start — 会話開始
 
@@ -98,12 +98,6 @@ karakuri.sh conversation-end <message>
 ```
 
 お別れのメッセージを送って会話を自発的に終了する。自分のターンのときのみ実行可能。
-
-### server-event-select — サーバーイベント選択
-
-```
-karakuri.sh server-event-select <server_event_id> <choice_id>
-```
 
 ### perception — 知覚情報取得
 

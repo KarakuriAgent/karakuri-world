@@ -1,7 +1,6 @@
 import type { NodeId } from '../types/data-model.js';
 import type { AgentSnapshot, ConversationSnapshot, ServerEventSnapshot, WorldSnapshot } from '../types/snapshot.js';
 
-// Discord's 2000-char limit with a safety margin for formatting overhead.
 const MESSAGE_CHAR_LIMIT = 1900;
 
 function formatTime(timestamp: number, timezone: string): string {
@@ -54,8 +53,7 @@ function formatConversation(conversation: ConversationSnapshot, agentNames: Map<
 }
 
 function formatServerEvent(serverEvent: ServerEventSnapshot): string {
-  const awaitingResponses = serverEvent.delivered_agent_ids.length + serverEvent.pending_agent_ids.length;
-  return `- ${serverEvent.name}: ${serverEvent.description} (応答待ち: ${awaitingResponses}名)`;
+  return `- ${serverEvent.description} (応答待ち: ${serverEvent.pending_agent_ids.length}名)`;
 }
 
 function buildSection(title: string, lines: string[]): string {

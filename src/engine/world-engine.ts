@@ -1,9 +1,10 @@
 import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 
 import {
-  executeAction as executeActionRequest,
+  executeValidatedAction,
   getAvailableActions as getAvailableActionsForAgent,
   handleActionCompleted,
+  validateAction,
 } from '../domain/actions.js';
 import {
   acceptConversation as acceptConversationRequest,
@@ -21,12 +22,21 @@ import { handleIdleReminderFired, startIdleReminder } from '../domain/idle-remin
 import { getNodeConfig, isNodeWithinBounds, isPassable } from '../domain/map-utils.js';
 import {
   cleanupServerEventsForAgent,
-  fireServerEvent as fireConfiguredServerEvent,
-  handleServerEventTimeout,
-  selectServerEvent as selectRuntimeServerEvent,
+  fireServerEvent as fireRuntimeServerEvent,
+  handleServerEventInterruption,
 } from '../domain/server-events.js';
-import { executeMove, getAgentCurrentNode, getMovementTimer, handleMovementCompleted } from '../domain/movement.js';
-import { executeWait as executeWaitRequest, handleWaitCompleted } from '../domain/wait.js';
+import {
+  executeValidatedMove,
+  getAgentCurrentNode,
+  getMovementTimer,
+  handleMovementCompleted,
+  validateMove,
+} from '../domain/movement.js';
+import {
+  executeValidatedWait,
+  handleWaitCompleted,
+  validateWait,
+} from '../domain/wait.js';
 import { getPerceptionData } from '../domain/perception.js';
 import { WorldError } from '../types/api.js';
 import type {
@@ -40,6 +50,7 @@ import type {
   ConversationSpeakResponse,
   ConversationStartRequest,
   ConversationStartResponse,
+  FireServerEventRequest,
   FireServerEventResponse,
   LoginResponse,
   LogoutResponse,
@@ -47,7 +58,6 @@ import type {
   MoveResponse,
   OkResponse,
   PerceptionResponse,
-  ServerEventSelectRequest,
   WaitRequest,
   WaitResponse,
   WorldAgentsResponse,
@@ -107,9 +117,6 @@ export class WorldEngine {
     });
     this.timerManager.onFire('conversation_turn', (timer) => {
       handleTurnTimeout(this, timer);
-    });
-    this.timerManager.onFire('server_event_timeout', (timer) => {
-      handleServerEventTimeout(this, timer);
     });
     this.timerManager.onFire('idle_reminder', (timer) => {
       handleIdleReminderFired(this, timer);
@@ -294,15 +301,21 @@ export class WorldEngine {
   }
 
   move(_agentId: string, _request: MoveRequest): MoveResponse {
-    return executeMove(this, _agentId, _request);
+    const { agent, to_node_id, path } = validateMove(this, _agentId, _request);
+    handleServerEventInterruption(this, _agentId);
+    return executeValidatedMove(this, agent, to_node_id, path);
   }
 
   executeAction(_agentId: string, _request: ActionRequest): ActionResponse {
-    return executeActionRequest(this, _agentId, _request);
+    const { agent, source } = validateAction(this, _agentId, _request);
+    handleServerEventInterruption(this, _agentId);
+    return executeValidatedAction(this, agent, source);
   }
 
   executeWait(_agentId: string, _request: WaitRequest): WaitResponse {
-    return executeWaitRequest(this, _agentId, _request);
+    const { agent, duration_ms } = validateWait(this, _agentId, _request);
+    handleServerEventInterruption(this, _agentId);
+    return executeValidatedWait(this, agent, duration_ms);
   }
 
   startConversation(_agentId: string, _request: ConversationStartRequest): ConversationStartResponse {
@@ -325,12 +338,9 @@ export class WorldEngine {
     return endConversationByAgent(this, _agentId, _request);
   }
 
-  selectServerEvent(_agentId: string, _request: ServerEventSelectRequest): OkResponse {
-    return selectRuntimeServerEvent(this, _agentId, _request);
-  }
-
-  fireServerEvent(_eventId: string): FireServerEventResponse {
-    return fireConfiguredServerEvent(this, _eventId);
+  fireServerEvent(request: FireServerEventRequest | string): FireServerEventResponse {
+    const description = typeof request === 'string' ? request : request.description;
+    return fireRuntimeServerEvent(this, description);
   }
 
   getAvailableActions(_agentId: string): AvailableActionsResponse {
@@ -420,10 +430,7 @@ export class WorldEngine {
       })),
       server_events: this.state.serverEvents.list().map((serverEvent) => ({
         server_event_id: serverEvent.server_event_id,
-        event_id: serverEvent.event_id,
-        name: serverEvent.name,
         description: serverEvent.description,
-        choices: serverEvent.choices,
         delivered_agent_ids: serverEvent.delivered_agent_ids,
         pending_agent_ids: serverEvent.pending_agent_ids,
       })),

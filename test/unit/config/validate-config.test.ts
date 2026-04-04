@@ -15,13 +15,15 @@ describe('validateConfig', () => {
 
   it('normalizes Zod issues with bracket notation paths', () => {
     const invalidConfig = createTestConfig() as unknown as {
-      server_events: Array<{
-        choices: Array<{
-          label: unknown;
+      map: {
+        buildings: Array<{
+          actions: Array<{
+            description: unknown;
+          }>;
         }>;
-      }>;
+      };
     };
-    invalidConfig.server_events[0].choices[0].label = 123;
+    invalidConfig.map.buildings[0].actions[0].description = 123;
 
     const result = validateConfig(invalidConfig);
 
@@ -30,7 +32,7 @@ describe('validateConfig', () => {
       expect(result.issues).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            path: 'server_events[0].choices[0].label',
+            path: 'map.buildings[0].actions[0].description',
           }),
         ]),
       );

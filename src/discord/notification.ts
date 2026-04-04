@@ -2,7 +2,6 @@ import { buildPerceptionText } from '../domain/perception.js';
 import type { AgentState } from '../types/agent.js';
 import type { PerceptionResponse } from '../types/api.js';
 import type { ConversationClosureReason, ConversationRejectionReason } from '../types/conversation.js';
-import type { ServerEventChoiceConfig } from '../types/server-event.js';
 
 export interface WorldContext {
   worldName: string;
@@ -13,10 +12,6 @@ export interface WorldContext {
 export function formatActionPrompt(skillName: string, choicesText?: string): string {
   const prompt = `${skillName} スキルで次の行動を選択してください。`;
   return choicesText ? `${choicesText}\n\n${prompt}` : prompt;
-}
-
-function formatPromptInstruction(instruction: string, skillName: string, identifierLine: string): string {
-  return [instruction, formatActionPrompt(skillName), identifierLine].join('\n');
 }
 
 function joinSections(...sections: Array<string | undefined>): string {
@@ -34,6 +29,8 @@ function formatReasonMessage(targetName: string, reason: ConversationRejectionRe
       return `${targetName} が応答しませんでした。`;
     case 'target_logged_out':
       return `${targetName} が世界からログアウトしました。`;
+    case 'server_event':
+      return `${targetName} との会話開始はサーバーイベントにより中断されました。`;
   }
 }
 
@@ -56,10 +53,6 @@ function formatClosureReason(reason: Exclude<ConversationClosureReason, 'partner
     case 'ended_by_agent':
       return 'エージェントにより終了しました';
   }
-}
-
-function formatChoiceLines(choices: ServerEventChoiceConfig[]): string {
-  return choices.map((choice) => `  ${choice.choice_id}: ${choice.label} - ${choice.description}`).join('\n');
 }
 
 function formatWorldContextHeader(ctx: WorldContext): string {
@@ -190,7 +183,7 @@ export function formatConversationClosingPromptMessage(
   return joinSections(
     formatWorldContextHeader(ctx),
     `${speakerName}: 「${message}」`,
-    `これが最後のメッセージです。`,
+    'これが最後のメッセージです。',
     formatActionPrompt(skillName, choices),
   );
 }
@@ -201,7 +194,6 @@ export function formatConversationDeliveredClosingMessage(speakerName: string, m
 
 export function formatConversationServerEventClosingPromptMessage(
   ctx: WorldContext,
-  eventName: string,
   skillName: string,
 ): string {
   const choices = [
@@ -210,7 +202,7 @@ export function formatConversationServerEventClosingPromptMessage(
   ].join('\n');
   return joinSections(
     formatWorldContextHeader(ctx),
-    `サーバーイベント「${eventName}」の選択により会話を終了します。`,
+    'サーバーイベントにより会話が終了します。',
     formatActionPrompt(skillName, choices),
   );
 }
@@ -247,33 +239,16 @@ export function formatConversationForcedEndedMessage(
 
 export function formatServerEventMessage(
   ctx: WorldContext,
-  eventName: string,
   description: string,
-  choices: ServerEventChoiceConfig[],
-  serverEventId: string,
-  skillName: string,
-): string {
-  return joinSections(
-    formatWorldContextHeader(ctx),
-    `【サーバーイベント】${eventName}\n${description}`,
-    `選択肢:\n${formatChoiceLines(choices)}`,
-    formatPromptInstruction('選択するか、無視してください。', skillName, `server_event_id: ${serverEventId}`),
-  );
-}
-
-export function formatServerEventSelectedMessage(
-  ctx: WorldContext,
-  eventName: string,
-  choiceLabel: string,
-  perceptionText: string,
   skillName: string,
   choicesText?: string,
 ): string {
   return joinSections(
     formatWorldContextHeader(ctx),
-    `サーバーイベント「${eventName}」で「${choiceLabel}」を選択しました。\n実行中の操作はキャンセルされました。`,
-    perceptionText,
-    formatActionPrompt(skillName, choicesText),
+    `【サーバーイベント】\n${description}`,
+    choicesText,
+    '現在の行動をキャンセルして選択するか、この通知を無視してください。',
+    `${skillName} スキルで行動を選択してください。`,
   );
 }
 
@@ -397,6 +372,6 @@ export function formatIdleReminderMessage(
   );
 }
 
-export function formatWorldLogServerEvent(eventName: string, description: string): string {
-  return `【サーバーイベント】${eventName}: ${description}`;
+export function formatWorldLogServerEvent(description: string): string {
+  return `【サーバーイベント】${description}`;
 }

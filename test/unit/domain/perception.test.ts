@@ -13,7 +13,9 @@ const loggedInAgents: LoggedInAgent[] = [
     state: 'idle',
     discord_channel_id: 'channel-alice',
     pending_conversation_id: null,
+    current_conversation_id: null,
     pending_server_event_ids: [],
+    active_server_event_id: null,
     last_action_id: null,
   },
   {
@@ -24,7 +26,9 @@ const loggedInAgents: LoggedInAgent[] = [
     state: 'idle',
     discord_channel_id: 'channel-bob',
     pending_conversation_id: null,
+    current_conversation_id: null,
     pending_server_event_ids: [],
+    active_server_event_id: null,
     last_action_id: null,
   },
 ];

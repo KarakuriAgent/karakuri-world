@@ -228,8 +228,8 @@ type AgentState = "idle" | "moving" | "in_action" | "in_conversation";
 |------|------|
 | idle | 待機中。移動・アクション・待機・会話開始が可能 |
 | moving | 移動中。移動タイマー発火で idle に戻る。割り込み不可 |
-| in_action | アクションまたは待機の実行中。会話着信の受諾、サーバーイベント選択で割り込み可 |
-| in_conversation | 会話中。サーバーイベント選択で割り込み可 |
+| in_action | アクションまたは待機の実行中。会話着信の受諾、サーバーイベントウィンドウでのmove/action/wait実行で割り込み可 |
+| in_conversation | 会話中。サーバーイベントウィンドウでのmove/action/wait実行で割り込み可 |
 
 ### 4.2 状態遷移表
 
@@ -246,17 +246,17 @@ type AgentState = "idle" | "moving" | "in_action" | "in_conversation";
 | moving | 移動タイマー発火 | idle | |
 | in_action | アクション/待機タイマー発火 | idle | |
 | in_action | 会話受諾 | in_conversation | アクション/待機タイマーをキャンセル |
-| in_action | サーバーイベント選択 | idle | アクション/待機タイマーをキャンセル |
+| in_action | サーバーイベントウィンドウでのmove/action/wait実行 | idle → 新コマンドの状態 | アクション/待機タイマーをキャンセル後、新コマンド実行 |
 | in_conversation | `ConversationConfig.max_turns` 到達 | idle | 終了あいさつ生成後 |
 | in_conversation | 会話相手logout | idle | 強制終了 |
-| in_conversation | サーバーイベント選択 | idle | 終了あいさつ生成後 |
-| in_conversation | 会話相手がサーバーイベント選択 | idle | 相手の終了あいさつ後に会話終了 |
+| in_conversation | サーバーイベントウィンドウでのmove/action/wait実行 | idle → 新コマンドの状態 | 会話をclosingに移行し、パートナーが終了あいさつ担当。割り込みエージェントは即座に新コマンド実行 |
+| in_conversation | 会話相手がサーバーイベントウィンドウで割り込み | idle | 相手の終了あいさつ後に会話終了 |
 | idle | logout | (未ログイン) | |
 | moving | logout | (未ログイン) | 移動タイマーをキャンセル |
 | in_action | logout | (未ログイン) | アクションタイマーをキャンセル |
 | in_conversation | logout | (未ログイン) | 会話を強制終了、相手に通知 |
 | idle (受諾待ち) | logout | (未ログイン) | 発信リクエストをキャンセル、相手への着信通知を取り消し |
-| idle | サーバーイベント選択 | idle | 状態遷移なし。処理の詳細は 07-server-events.md |
+| idle | サーバーイベントウィンドウでのmove/action/wait実行 | moving / in_action | 通常のコマンド実行と同じ。ウィンドウはクリアされる |
 
 ### 4.3 会話着信時の挙動
 
@@ -295,14 +295,14 @@ type AgentState = "idle" | "moving" | "in_action" | "in_conversation";
 | 会話受諾 | ✅ | ❌ | ✅ | ❌ |
 | 会話拒否 | ✅ | ✅ | ✅ | ✅ |
 | 会話発言 | ❌ | ❌ | ❌ | ✅ |
-| サーバーイベント選択 | ✅ | ❌ | ✅ | ✅ ※1 |
+| move/action/wait（サーバーイベントウィンドウ中） | ✅ | ❌ | ✅ | ✅ ※1 |
 | logout | ✅ | ✅ | ✅ | ✅ |
 
 - `idle` で受諾待ち中（4.4 参照）は、移動・アクション実行・会話開始を受け付けない
 - 会話拒否は状態を変更しないため、すべての状態から実行可能。バリデーションはリクエスト元に pending 状態の会話が存在し、対象側であることの確認のみ（06-conversation.md セクション3.1参照）
 - moving中のサーバーイベントは移動完了後に遅延通知される（詳細は 07-server-events.md）
-- `idle` でのサーバーイベント選択は状態遷移を伴わない（選択結果の処理は 07-server-events.md で定義）
-- ※1 会話が `closing` 状態（終了あいさつフェーズ）の場合は選択不可（07-server-events.md セクション4.2参照）
+- サーバーイベントウィンドウ中のmove/action/waitは、現在の行動をキャンセル（in_conversationの場合はclosingに移行）してから新コマンドを実行する（詳細は 07-server-events.md）
+- ※1 会話が `closing` 状態（終了あいさつフェーズ）の場合、割り込みは実行されるが `beginClosingConversation` の再呼び出しはスキップされる（07-server-events.md セクション4参照）
 
 ### 5.2 バリデーション
 

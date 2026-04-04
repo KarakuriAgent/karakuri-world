@@ -29,6 +29,8 @@ describe('admin editor routes', () => {
     const index = await requestText(app, '/admin/editor');
     expect(index.response.status).toBe(200);
     expect(index.text).toContain('Karakuri World Map Editor');
+    expect(index.text).not.toContain('サーバーイベント');
+    expect(index.text).not.toContain('server-event-select');
 
     const script = await requestText(app, '/admin/editor/editor.js');
     expect(script.response.status).toBe(200);

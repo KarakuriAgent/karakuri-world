@@ -12,24 +12,6 @@ export const actionConfigSchema = z
   })
   .strict();
 
-export const serverEventChoiceConfigSchema = z
-  .object({
-    choice_id: z.string().min(1),
-    label: z.string().min(1),
-    description: z.string().min(1),
-  })
-  .strict();
-
-export const serverEventConfigSchema = z
-  .object({
-    event_id: z.string().min(1),
-    name: z.string().min(1),
-    description: z.string().min(1),
-    choices: z.array(serverEventChoiceConfigSchema).min(1),
-    timeout_ms: z.number().int().min(1),
-  })
-  .strict();
-
 export const nodeConfigSchema = z
   .object({
     type: z.enum(['normal', 'wall', 'door', 'building_interior', 'npc']),
@@ -110,7 +92,6 @@ export const serverConfigSchema = z
       })
       .strict(),
     map: mapConfigSchema,
-    server_events: z.array(serverEventConfigSchema),
     idle_reminder: idleReminderConfigSchema.optional(),
   })
   .strict();
