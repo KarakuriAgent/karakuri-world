@@ -389,6 +389,12 @@ export class DiscordEventHandler {
           choicesText,
         ),
       );
+    } else {
+      console.warn(`[handleActionRejected] perceptionText unavailable for agent ${agentId}, sending minimal rejection`);
+      await this.sendToAgentClearingServerEvent(
+        agentId,
+        `「${actionName}」を実行できませんでした。${rejectionReason}`,
+      );
     }
 
     await this.bot.sendWorldLog(formatWorldLogActionRejected(agentName, actionName, rejectionReason));

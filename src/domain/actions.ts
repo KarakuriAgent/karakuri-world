@@ -139,7 +139,6 @@ export function getAvailableActionSources(engine: WorldEngine, agentId: string):
   );
 
   return sources
-    .filter((source) => hasRequiredItems(agent.items, source.action.required_items))
     .filter((source) => source.action.action_id !== agent.last_action_id)
     .sort((left, right) => left.action.action_id.localeCompare(right.action.action_id));
 }

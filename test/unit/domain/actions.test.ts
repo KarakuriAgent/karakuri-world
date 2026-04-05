@@ -287,8 +287,10 @@ describe('actions domain', () => {
     const events: Array<{ type: string }> = [];
     engine.eventBus.onAny((event) => events.push(event));
 
-    expect(() => engine.executeAction(alice.agent_id, { action_id: 'offer-flower' })).toThrow(WorldError);
+    const response = engine.executeAction(alice.agent_id, { action_id: 'offer-flower' });
+    expect(response.ok).toBe(true);
     expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('idle');
+    expect(events.some((e) => e.type === 'action_rejected')).toBe(true);
   });
 
   it('deducts cost_money on action start and grants reward_money on completion', async () => {
@@ -379,7 +381,7 @@ describe('actions domain', () => {
     ]);
   });
 
-  it('filters out actions whose required_items the agent does not hold', async () => {
+  it('shows actions with required_items even when the agent does not hold them', async () => {
     const { engine } = createTestWorld({
       config: {
         items: [{ item_id: 'key', name: '鍵', description: '鍵', stackable: false }],
@@ -407,9 +409,6 @@ describe('actions domain', () => {
     const alice = await createLoggedInAgent(engine);
     engine.state.setNode(alice.agent_id, '2-4');
 
-    expect(getAvailableActionIds(engine, alice.agent_id)).not.toContain('unlock-door');
-
-    engine.state.setItems(alice.agent_id, [{ item_id: 'key', quantity: 1 }]);
     expect(getAvailableActionIds(engine, alice.agent_id)).toContain('unlock-door');
   });
 

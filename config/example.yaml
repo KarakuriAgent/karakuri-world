@@ -1065,10 +1065,6 @@ map:
           description: 気になる本を手に取ってぱらぱらとめくる。
           duration_ms: 3600000
           result_description: しばらく読みふけってしまった。
-          cost_money: 200
-          reward_items:
-            - item_id: book
-              quantity: 1
       hours:
         open: '09:00'
         close: '20:00'
@@ -1392,13 +1388,21 @@ map:
       door_nodes:
         - 15-15
       actions:
+        - action_id: buy-movie-ticket
+          name: 映画チケットを買う
+          description: 受付でチケットを購入する。
+          duration_ms: 600000
+          result_description: チケットを手に入れた。今日はどんな映画をやっているだろう。
+          cost_money: 1800
+          reward_items:
+            - item_id: movie-ticket
+              quantity: 1
         - action_id: watch-movie
           name: 映画を観る
           description: 薄暗いスクリーンルームの座席に座り、上映中の映画を観る。
           duration_ms: 3600000
           result_description: 映画を観終わった。心に残る作品だった。
-          cost_money: 1800
-          reward_items:
+          required_items:
             - item_id: movie-ticket
               quantity: 1
         - action_id: buy-popcorn
@@ -1610,10 +1614,6 @@ items:
     description: 梅おにぎり
     stackable: true
     max_stack: 5
-  - item_id: book
-    name: 本
-    description: 読みかけの本
-    stackable: false
   - item_id: flower-bouquet
     name: 花束
     description: 色とりどりの花束

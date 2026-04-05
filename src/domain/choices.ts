@@ -44,16 +44,9 @@ export function buildChoicesText(
         )
     : [];
 
-  const itemNames = canStartInterruptibleCommand
-    ? agent.items
-        .filter((item) => item.quantity > 0)
-        .map((item) => {
-          const config = (engine.config.items ?? []).find((c) => c.item_id === item.item_id);
-          return `${config?.name ?? item.item_id}×${item.quantity}`;
-        })
-    : [];
-  const useItemLine = itemNames.length > 0
-    ? [`- use-item: アイテムを使用する (item_id: アイテムID) [所持: ${itemNames.join(', ')}]`]
+  const hasItems = canStartInterruptibleCommand && agent.items.some((item) => item.quantity > 0);
+  const useItemLine = hasItems
+    ? ['- use-item: アイテムを使用する (item_id: アイテムID)']
     : [];
 
   const commandLines = canStartInterruptibleCommand

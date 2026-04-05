@@ -119,7 +119,7 @@ export function buildPerceptionText(data: PerceptionData): string {
     .map((node) => `${node.node_id}${node.label ? `(${node.label})` : ''}`)
     .join(', ');
 
-  const itemsText = data.items.length > 0 ? data.items.map((item) => `${item.name} ×${item.quantity}`).join(', ') : 'なし';
+  const itemsText = data.items.length > 0 ? data.items.map((item) => `${item.name} (${item.item_id}) ×${item.quantity}`).join(', ') : 'なし';
   const weatherText = data.weather ? `天気: ${data.weather.condition} ${data.weather.temperature_celsius}℃` : undefined;
 
   return [
