@@ -17,6 +17,7 @@ function createRegistration(overrides: Partial<AgentRegistration> = {}): AgentRe
     api_key: 'karakuri_deadbeef',
     discord_bot_id: discordBotId,
     created_at: 1,
+    items: [],
     ...overrides,
   };
 }
@@ -147,6 +148,35 @@ describe('agent storage', () => {
     const persisted = JSON.parse(readFileSync(filePath, 'utf8'));
     expect(persisted.version).toBe(CURRENT_VERSION);
     expect(persisted.agents[0].agent_label).toBe('alice');
+  });
+
+  it('migrates v2 data to v3 automatically', () => {
+    const filePath = createTempPath('agents.json');
+
+    writeFileSync(
+      filePath,
+      JSON.stringify({
+        version: 2,
+        agents: [
+          {
+            agent_id: 'agent-1',
+            agent_name: 'alice',
+            agent_label: 'alice',
+            api_key: 'karakuri_deadbeef',
+            discord_bot_id: 'bot-alice',
+            created_at: 1,
+          },
+        ],
+      }),
+      'utf8',
+    );
+
+    const loaded = loadAgents(filePath);
+    expect(loaded[0].items).toEqual([]);
+
+    const persisted = JSON.parse(readFileSync(filePath, 'utf8'));
+    expect(persisted.version).toBe(CURRENT_VERSION);
+    expect(persisted.agents[0].items).toEqual([]);
   });
 
   it('writes sorted JSON without leaving a tmp file behind', () => {

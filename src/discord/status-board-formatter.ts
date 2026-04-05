@@ -35,6 +35,9 @@ function formatAgentStatus(agent: AgentSnapshot, snapshot: WorldSnapshot): strin
       if (agent.current_activity?.type === 'wait') {
         return `- **${agent.agent_name}** - ${location} - 待機中`;
       }
+      if (agent.current_activity?.type === 'item_use') {
+        return `- **${agent.agent_name}** - ${location} - アイテム使用中:「${agent.current_activity.item_name}」`;
+      }
       return `- **${agent.agent_name}** - ${location} - 行動中`;
     case 'in_conversation':
       return `- **${agent.agent_name}** - ${location} - 会話中`;
@@ -123,7 +126,10 @@ function splitSectionsIntoMessages(sections: string[]): string[] {
 }
 
 export function formatStatusBoard(snapshot: WorldSnapshot, timezone: string): string[] {
-  const header = [`# ${snapshot.world.name}`, snapshot.world.description].filter(Boolean).join('\n');
+  const weatherLine = snapshot.weather
+    ? `天気: ${snapshot.weather.condition} ${snapshot.weather.temperature_celsius}℃`
+    : undefined;
+  const header = [`# ${snapshot.world.name}`, snapshot.world.description, weatherLine].filter(Boolean).join('\n');
 
   const agents = [...snapshot.agents].sort((left, right) => left.agent_name.localeCompare(right.agent_name));
   const agentLines = agents.length > 0

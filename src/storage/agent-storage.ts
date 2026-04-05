@@ -8,13 +8,18 @@ import type { AgentRegistration } from '../types/agent.js';
 import type { NodeId } from '../types/data-model.js';
 
 const apiKeyPattern = /^karakuri_[0-9a-f]+$/;
+const nodeIdPattern = /^\d+-\d+$/;
+const itemSchema = z.object({
+  item_id: z.string().min(1),
+  quantity: z.number().int().min(1),
+});
 
 export interface AgentsFileData {
   version: number;
   agents: AgentRegistration[];
 }
 
-export const CURRENT_VERSION = 2;
+export const CURRENT_VERSION = 3;
 
 const agentRegistrationSchemaV1 = z.object({
   agent_id: z.string().min(1),
@@ -24,12 +29,15 @@ const agentRegistrationSchemaV1 = z.object({
   created_at: z.number().int().nonnegative(),
 });
 
-const nodeIdPattern = /^\d+-\d+$/;
-
-const agentRegistrationSchema = agentRegistrationSchemaV1.extend({
+const agentRegistrationSchemaV2 = agentRegistrationSchemaV1.extend({
   agent_label: z.string().min(1).max(100),
   discord_channel_id: z.string().min(1).optional(),
   last_node_id: z.string().regex(nodeIdPattern).optional().transform((v) => v as NodeId | undefined),
+});
+
+const agentRegistrationSchema = agentRegistrationSchemaV2.extend({
+  money: z.number().int().min(0).optional(),
+  items: z.array(itemSchema).optional(),
 });
 
 const agentsFileSchema = z.object({
@@ -74,6 +82,21 @@ function validateAgentsFileData(value: unknown): AgentsFileData {
       agents: v1.agents.map((agent) => ({
         ...agent,
         agent_label: agent.agent_name,
+        money: 0,
+        items: [],
+      })),
+    });
+  }
+
+  if (raw.version === 2) {
+    const v2 = z.object({ version: z.literal(2), agents: z.array(agentRegistrationSchemaV2) }).parse(value);
+    return validateAgentsFileData({
+      ...v2,
+      version: CURRENT_VERSION,
+      agents: v2.agents.map((agent) => ({
+        ...agent,
+        money: 0,
+        items: [],
       })),
     });
   }
@@ -90,7 +113,7 @@ function validateAgentsFileData(value: unknown): AgentsFileData {
 
   return {
     version: CURRENT_VERSION,
-    agents: sortRegistrations(parsed.agents),
+    agents: sortRegistrations(parsed.agents.map((agent) => ({ ...agent, items: [...(agent.items ?? [])] }))),
   };
 }
 

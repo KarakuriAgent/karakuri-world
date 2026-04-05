@@ -1,10 +1,12 @@
-import type { AgentRegistration, AgentState, LoggedInAgent } from '../../types/agent.js';
+import type { AgentItem, AgentRegistration, AgentState, LoggedInAgent } from '../../types/agent.js';
 import type { NodeId } from '../../types/data-model.js';
 
 export interface LoginAgentParams {
   agent_id: string;
   node_id: NodeId;
   discord_channel_id: string;
+  money: number;
+  items: AgentItem[];
 }
 
 export class AgentStateStore {
@@ -68,6 +70,8 @@ export class AgentStateStore {
       pending_server_event_ids: [],
       active_server_event_id: null,
       last_action_id: null,
+      money: params.money,
+      items: [...params.items],
     };
 
     this.loggedInAgents.set(registration.agent_id, loggedInAgent);
@@ -153,6 +157,24 @@ export class AgentStateStore {
   setLastAction(agentId: string, actionId: string | null): LoggedInAgent {
     const loggedInAgent = this.mustGetLoggedIn(agentId);
     loggedInAgent.last_action_id = actionId;
+    return loggedInAgent;
+  }
+
+  setMoney(agentId: string, money: number): LoggedInAgent {
+    const loggedInAgent = this.mustGetLoggedIn(agentId);
+    loggedInAgent.money = money;
+    return loggedInAgent;
+  }
+
+  addMoney(agentId: string, delta: number): LoggedInAgent {
+    const loggedInAgent = this.mustGetLoggedIn(agentId);
+    loggedInAgent.money = Math.max(0, loggedInAgent.money + delta);
+    return loggedInAgent;
+  }
+
+  setItems(agentId: string, items: AgentItem[]): LoggedInAgent {
+    const loggedInAgent = this.mustGetLoggedIn(agentId);
+    loggedInAgent.items = [...items];
     return loggedInAgent;
   }
 

@@ -12,6 +12,7 @@ import type { ConversationIntervalTimer, IdleReminderTimer } from '../types/time
 import { WorldLogThreadCreationError, type DiscordNotificationAdapter } from './bot.js';
 import {
   formatActionCompletedMessage,
+  formatActionRejectedMessage,
   formatAvailableActionsInfoMessage,
   formatAgentLoggedInMessage,
   formatAgentLoggedOutMessage,
@@ -25,6 +26,7 @@ import {
   formatConversationRequestedMessage,
   formatConversationServerEventClosingPromptMessage,
   formatIdleReminderMessage,
+  formatItemUseCompletedMessage,
   formatMapInfoMessage,
   formatMovementCompletedMessage,
   formatPerceptionInfoMessage,
@@ -32,9 +34,12 @@ import {
   formatWaitCompletedMessage,
   formatWorldAgentsInfoMessage,
   formatWorldLogAction,
+  formatWorldLogActionRejected,
   formatWorldLogActionStarted,
   formatWorldLogConversationMessage,
   formatWorldLogConversationEnded,
+  formatWorldLogItemUseCompleted,
+  formatWorldLogItemUseStarted,
   formatWorldLogMovementStarted,
   formatWorldLogWaitStarted,
   formatWorldLogConversationStarted,
@@ -67,7 +72,6 @@ export class DiscordEventHandler {
   constructor(
     private readonly engine: WorldEngine,
     private readonly bot: DiscordNotificationAdapter,
-    private readonly timezone: string = 'Asia/Tokyo',
   ) {
     this.skillName = this.engine.config.world.skill_name;
   }
@@ -80,16 +84,19 @@ export class DiscordEventHandler {
     const disposeEventSubscription = this.engine.eventBus.onAny((event) => {
       void this.handleEvent(event).catch((error) => {
         console.error('Failed to dispatch Discord notification.', error);
+        this.reportError(`Discord 通知の配信に失敗しました (event: ${event.type})`, error);
       });
     });
     const disposeConversationIntervalSubscription = this.engine.timerManager.onFire('conversation_interval', (timer) => {
       void this.handleConversationInterval(timer).catch((error) => {
         console.error('Failed to dispatch Discord notification.', error);
+        this.reportError('会話インターバル通知の配信に失敗しました', error);
       });
     });
     const disposeIdleReminderSubscription = this.engine.timerManager.onFire('idle_reminder', (timer) => {
       void this.handleIdleReminder(timer).catch((error) => {
         console.error('Failed to dispatch Discord notification.', error);
+        this.reportError('アイドルリマインダー通知の配信に失敗しました', error);
       });
     });
     this.unsubscribe = () => {
@@ -122,13 +129,22 @@ export class DiscordEventHandler {
         await this.handleMovementCompleted(event.agent_id, event.agent_name, event.node_id);
         return;
       case 'action_completed':
-        await this.handleActionCompleted(event.agent_id, event.agent_name, event.action_name, event.result_description);
+        await this.handleActionCompleted(event);
+        return;
+      case 'action_rejected':
+        await this.handleActionRejected(event.agent_id, event.agent_name, event.action_name, event.rejection_reason);
         return;
       case 'wait_completed':
         await this.handleWaitCompleted(event.agent_id, event.agent_name, event.duration_ms);
         return;
       case 'wait_started':
         await this.handleWaitStarted(event.agent_name, event.duration_ms, event.completes_at);
+        return;
+      case 'item_use_started':
+        await this.handleItemUseStarted(event.agent_name, event.item_name, event.completes_at);
+        return;
+      case 'item_use_completed':
+        await this.handleItemUseCompleted(event.agent_id, event.agent_name, event.item_name);
         return;
       case 'conversation_requested':
         await this.handleConversationRequested(
@@ -285,7 +301,7 @@ export class DiscordEventHandler {
 
   private async handleMovementStarted(agentName: string, toNodeId: NodeId, arrivesAt: number): Promise<void> {
     const label = this.engine.getMap().nodes[toNodeId]?.label;
-    await this.bot.sendWorldLog(formatWorldLogMovementStarted(agentName, toNodeId, arrivesAt, this.timezone, label));
+    await this.bot.sendWorldLog(formatWorldLogMovementStarted(agentName, toNodeId, arrivesAt, this.engine.config.timezone, label));
   }
 
   private async handleMovementCompleted(agentId: string, agentName: string, toNodeId: NodeId): Promise<void> {
@@ -309,24 +325,40 @@ export class DiscordEventHandler {
   }
 
   private async handleActionStarted(agentName: string, actionName: string, completesAt: number): Promise<void> {
-    await this.bot.sendWorldLog(formatWorldLogActionStarted(agentName, actionName, completesAt, this.timezone));
+    await this.bot.sendWorldLog(formatWorldLogActionStarted(agentName, actionName, completesAt, this.engine.config.timezone));
   }
 
-  private async handleActionCompleted(
-    agentId: string,
-    agentName: string,
-    actionName: string,
-    resultDescription: string,
-  ): Promise<void> {
-    const perceptionText = this.getPerceptionText(agentId);
+  private buildActionEffectText(event: Extract<WorldEvent, { type: 'action_completed' }>): string {
+    const itemNames = new Map((this.engine.config.items ?? []).map((item) => [item.item_id, item.name]));
+    const lines: string[] = [];
+    if (event.money_balance !== undefined) {
+      if (event.cost_money !== undefined && event.cost_money > 0) {
+        lines.push(`💰 -${event.cost_money.toLocaleString('ja-JP')}円 → 残高: ${event.money_balance.toLocaleString('ja-JP')}円`);
+      }
+      if (event.reward_money !== undefined && event.reward_money > 0) {
+        lines.push(`💰 +${event.reward_money.toLocaleString('ja-JP')}円 → 残高: ${event.money_balance.toLocaleString('ja-JP')}円`);
+      }
+    }
+    event.items_granted?.forEach((item) => {
+      lines.push(`📦 ${itemNames.get(item.item_id) ?? item.item_id} ×${item.quantity} を入手`);
+    });
+    event.items_dropped?.forEach((item) => {
+      lines.push(`📦 ${itemNames.get(item.item_id) ?? item.item_id} ×${item.quantity} を入手できませんでした（インベントリ満杯）`);
+    });
+    return lines.join('\n');
+  }
+
+  private async handleActionCompleted(event: Extract<WorldEvent, { type: 'action_completed' }>): Promise<void> {
+    const perceptionText = this.getPerceptionText(event.agent_id);
     if (perceptionText) {
-      const choicesText = this.getChoicesText(agentId);
+      const choicesText = this.getChoicesText(event.agent_id);
       await this.sendToAgentClearingServerEvent(
-        agentId,
+        event.agent_id,
         formatActionCompletedMessage(
-          this.getWorldContext(agentId),
-          actionName,
-          resultDescription,
+          this.getWorldContext(event.agent_id),
+          event.action_name,
+          event.result_description,
+          this.buildActionEffectText(event) || undefined,
           perceptionText,
           this.skillName,
           choicesText,
@@ -334,11 +366,36 @@ export class DiscordEventHandler {
       );
     }
 
-    await this.bot.sendWorldLog(formatWorldLogAction(agentName, actionName));
+    await this.bot.sendWorldLog(formatWorldLogAction(event.agent_name, event.action_name));
+  }
+
+  private async handleActionRejected(
+    agentId: string,
+    agentName: string,
+    actionName: string,
+    rejectionReason: string,
+  ): Promise<void> {
+    const perceptionText = this.getPerceptionText(agentId);
+    if (perceptionText) {
+      const choicesText = this.getChoicesText(agentId);
+      await this.sendToAgentClearingServerEvent(
+        agentId,
+        formatActionRejectedMessage(
+          this.getWorldContext(agentId),
+          actionName,
+          rejectionReason,
+          perceptionText,
+          this.skillName,
+          choicesText,
+        ),
+      );
+    }
+
+    await this.bot.sendWorldLog(formatWorldLogActionRejected(agentName, actionName, rejectionReason));
   }
 
   private async handleWaitStarted(agentName: string, durationMs: number, completesAt: number): Promise<void> {
-    await this.bot.sendWorldLog(formatWorldLogWaitStarted(agentName, durationMs, completesAt, this.timezone));
+    await this.bot.sendWorldLog(formatWorldLogWaitStarted(agentName, durationMs, completesAt, this.engine.config.timezone));
   }
 
   private async handleWaitCompleted(agentId: string, agentName: string, durationMs: number): Promise<void> {
@@ -352,6 +409,23 @@ export class DiscordEventHandler {
     }
 
     await this.bot.sendWorldLog(formatWorldLogWait(agentName, durationMs));
+  }
+
+  private async handleItemUseStarted(agentName: string, itemName: string, completesAt: number): Promise<void> {
+    await this.bot.sendWorldLog(formatWorldLogItemUseStarted(agentName, itemName, completesAt, this.engine.config.timezone));
+  }
+
+  private async handleItemUseCompleted(agentId: string, agentName: string, itemName: string): Promise<void> {
+    const perceptionText = this.getPerceptionText(agentId);
+    if (perceptionText) {
+      const choicesText = this.getChoicesText(agentId);
+      await this.sendToAgentClearingServerEvent(
+        agentId,
+        formatItemUseCompletedMessage(this.getWorldContext(agentId), itemName, perceptionText, this.skillName, choicesText),
+      );
+    }
+
+    await this.bot.sendWorldLog(formatWorldLogItemUseCompleted(agentName, itemName));
   }
 
   private async handleConversationRequested(
@@ -647,7 +721,7 @@ export class DiscordEventHandler {
     }
 
     const lines = getAvailableActionSources(this.engine, agentId).map(
-      (source) => `- action: ${formatActionSourceLine(source)}`,
+      (source) => `- action: ${formatActionSourceLine(source, this.engine.config.items ?? [])}`,
     );
     const actionsText = lines.length > 0 ? `実行可能なアクション:\n${lines.join('\n')}` : '実行可能なアクションはありません。';
     const choicesText = this.getChoicesText(agentId);
@@ -760,5 +834,12 @@ export class DiscordEventHandler {
     }
 
     return partners;
+  }
+
+  private reportError(message: string, error: unknown): void {
+    const detail = error instanceof Error ? error.message : String(error);
+    void this.bot.sendErrorReport(`${message}\n\`\`\`\n${detail}\n\`\`\``).catch((reportError) => {
+      console.error('Failed to send error report to Discord.', reportError);
+    });
   }
 }

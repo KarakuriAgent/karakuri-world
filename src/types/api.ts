@@ -1,4 +1,4 @@
-import type { AgentState } from './agent.js';
+import type { AgentItem, AgentState } from './agent.js';
 import type { NodeId, NodeType, ServerConfig } from './data-model.js';
 import type { ConfigValidationIssue } from '../config/validation.js';
 import type { WorldSnapshot } from './snapshot.js';
@@ -118,10 +118,8 @@ export interface ActionRequest {
   action_id: string;
 }
 
-export interface ActionResponse {
-  action_id: string;
-  action_name: string;
-  completes_at: number;
+export interface UseItemRequest {
+  item_id: string;
 }
 
 export interface WaitRequest {
@@ -184,6 +182,9 @@ export interface AvailableActionSummary {
   name: string;
   description: string;
   duration_ms: number;
+  cost_money?: number;
+  reward_money?: number;
+  required_items?: AgentItem[];
   source: {
     type: 'building' | 'npc';
     id: string;
@@ -202,7 +203,22 @@ export interface PerceptionNode {
   distance: number;
 }
 
+export interface PerceptionItem {
+  item_id: string;
+  name: string;
+  quantity: number;
+}
+
+export interface PerceptionWeather {
+  condition: string;
+  temperature_celsius: number;
+}
+
 export interface PerceptionResponse {
+  world_time: string;
+  weather?: PerceptionWeather;
+  money: number;
+  items: PerceptionItem[];
   current_node: {
     node_id: NodeId;
     type: NodeType;

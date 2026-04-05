@@ -60,6 +60,7 @@ export function createTestConfig(overrides: Partial<ServerConfig> = {}): ServerC
       description: 'A compact map used by automated tests.',
       skill_name: 'test-skill',
     },
+    timezone: 'Asia/Tokyo',
     movement: {
       duration_ms: 1000,
     },
@@ -88,6 +89,9 @@ export function createTestConfig(overrides: Partial<ServerConfig> = {}): ServerC
     perception: { ...config.perception, ...overrides.perception },
     spawn: { ...config.spawn, ...overrides.spawn },
     map: overrides.map ?? config.map,
+    economy: overrides.economy ?? config.economy,
+    weather: overrides.weather ?? config.weather,
+    items: overrides.items ?? config.items,
     idle_reminder: overrides.idle_reminder === undefined ? config.idle_reminder : overrides.idle_reminder,
   };
 }

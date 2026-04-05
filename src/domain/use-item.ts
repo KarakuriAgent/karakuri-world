@@ -1,0 +1,115 @@
+import type { WorldEngine } from '../engine/world-engine.js';
+import type { NotificationAcceptedResponse, UseItemRequest } from '../types/api.js';
+import { WorldError, createNotificationAcceptedResponse } from '../types/api.js';
+import type { ItemUseTimer } from '../types/timer.js';
+import { cancelIdleReminder, startIdleReminder } from './idle-reminder.js';
+import { consumeItems } from './inventory.js';
+
+const DEFAULT_ITEM_USE_DURATION_MS = 600000;
+
+function getItemUseDurationMs(engine: WorldEngine): number {
+  return engine.config.economy?.item_use_duration_ms ?? DEFAULT_ITEM_USE_DURATION_MS;
+}
+
+export interface ValidatedUseItem {
+  agent_id: string;
+  agent_name: string;
+  item_id: string;
+  item_name: string;
+}
+
+export function validateUseItem(
+  engine: WorldEngine,
+  agentId: string,
+  request: UseItemRequest,
+): ValidatedUseItem {
+  const agent = engine.state.getLoggedIn(agentId);
+  if (!agent) {
+    throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
+  }
+
+  if (agent.active_server_event_id === null && (agent.state !== 'idle' || agent.pending_conversation_id)) {
+    throw new WorldError(409, 'state_conflict', 'Agent cannot use items in the current state.');
+  }
+
+  const held = agent.items.find((item) => item.item_id === request.item_id && item.quantity > 0);
+  if (!held) {
+    throw new WorldError(400, 'invalid_request', `Agent does not have item: ${request.item_id}`);
+  }
+
+  const itemConfig = (engine.config.items ?? []).find((item) => item.item_id === request.item_id);
+  const itemName = itemConfig?.name ?? request.item_id;
+
+  return { agent_id: agentId, agent_name: agent.agent_name, item_id: request.item_id, item_name: itemName };
+}
+
+export function executeValidatedUseItem(
+  engine: WorldEngine,
+  validated: ValidatedUseItem,
+): NotificationAcceptedResponse {
+  const durationMs = getItemUseDurationMs(engine);
+  const completesAt = Date.now() + durationMs;
+
+  cancelIdleReminder(engine, validated.agent_id);
+  engine.timerManager.cancelByType(validated.agent_id, 'item_use');
+  engine.state.setState(validated.agent_id, 'in_action');
+  engine.timerManager.create({
+    type: 'item_use',
+    agent_ids: [validated.agent_id],
+    agent_id: validated.agent_id,
+    item_id: validated.item_id,
+    item_name: validated.item_name,
+    fires_at: completesAt,
+  });
+
+  engine.emitEvent({
+    type: 'item_use_started',
+    agent_id: validated.agent_id,
+    agent_name: validated.agent_name,
+    item_id: validated.item_id,
+    item_name: validated.item_name,
+    completes_at: completesAt,
+  });
+
+  return createNotificationAcceptedResponse();
+}
+
+export function cancelActiveItemUse(engine: WorldEngine, agentId: string): ItemUseTimer | null {
+  const timer = engine.timerManager.find(
+    (candidate): candidate is ItemUseTimer => candidate.type === 'item_use' && candidate.agent_id === agentId,
+  );
+  if (!timer) {
+    return null;
+  }
+
+  engine.timerManager.cancel(timer.timer_id);
+  const agent = engine.state.getLoggedIn(agentId);
+  if (agent && agent.state === 'in_action') {
+    engine.state.setState(agentId, 'idle');
+  }
+
+  return timer;
+}
+
+export function handleItemUseCompleted(engine: WorldEngine, timer: ItemUseTimer): void {
+  const agent = engine.state.getLoggedIn(timer.agent_id);
+  if (!agent || agent.state !== 'in_action') {
+    return;
+  }
+
+  engine.state.setItems(
+    timer.agent_id,
+    consumeItems(agent.items, [{ item_id: timer.item_id, quantity: 1 }]),
+  );
+  engine.persistLoggedInAgentState(timer.agent_id);
+
+  engine.state.setState(timer.agent_id, 'idle');
+  startIdleReminder(engine, timer.agent_id);
+  engine.emitEvent({
+    type: 'item_use_completed',
+    agent_id: agent.agent_id,
+    agent_name: agent.agent_name,
+    item_id: timer.item_id,
+    item_name: timer.item_name,
+  });
+}

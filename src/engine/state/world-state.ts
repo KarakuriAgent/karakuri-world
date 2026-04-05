@@ -1,4 +1,4 @@
-import type { AgentRegistration, AgentState, LoggedInAgent } from '../../types/agent.js';
+import type { AgentItem, AgentRegistration, AgentState, LoggedInAgent } from '../../types/agent.js';
 import type { NodeId } from '../../types/data-model.js';
 import { AgentStateStore, type LoginAgentParams } from './agent-state.js';
 import { ConversationStateStore } from './conversation-state.js';
@@ -91,5 +91,17 @@ export class WorldState {
 
   setLastAction(agentId: string, actionId: string | null): LoggedInAgent {
     return this.agents.setLastAction(agentId, actionId);
+  }
+
+  setMoney(agentId: string, money: number): LoggedInAgent {
+    return this.agents.setMoney(agentId, money);
+  }
+
+  addMoney(agentId: string, delta: number): LoggedInAgent {
+    return this.agents.addMoney(agentId, delta);
+  }
+
+  setItems(agentId: string, items: AgentItem[]): LoggedInAgent {
+    return this.agents.setItems(agentId, items);
   }
 }

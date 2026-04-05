@@ -5,6 +5,7 @@ import type { FireServerEventResponse } from '../types/api.js';
 import type { ServerEventInstance } from '../types/server-event.js';
 import { cancelActiveAction } from './actions.js';
 import { beginClosingConversation, cancelPendingConversationForServerEvent, findConversationByAgent } from './conversation.js';
+import { cancelActiveItemUse } from './use-item.js';
 import { cancelActiveWait } from './wait.js';
 
 function maybeCleanupServerEvent(engine: WorldEngine, serverEventId: string): boolean {
@@ -115,6 +116,7 @@ export function handleServerEventInterruption(engine: WorldEngine, agentId: stri
   if (refreshedAgent.state === 'in_action') {
     cancelActiveAction(engine, agentId);
     cancelActiveWait(engine, agentId);
+    cancelActiveItemUse(engine, agentId);
   } else if (refreshedAgent.state === 'in_conversation') {
     const conversation = findConversationByAgent(engine, agentId, ['active', 'closing']);
     if (conversation && conversation.status !== 'closing') {

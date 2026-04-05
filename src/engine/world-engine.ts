@@ -32,16 +32,13 @@ import {
   handleMovementCompleted,
   validateMove,
 } from '../domain/movement.js';
-import {
-  executeValidatedWait,
-  handleWaitCompleted,
-  validateWait,
-} from '../domain/wait.js';
 import { getPerceptionData } from '../domain/perception.js';
+import { executeValidatedUseItem, handleItemUseCompleted, validateUseItem } from '../domain/use-item.js';
+import { executeValidatedWait, handleWaitCompleted, validateWait } from '../domain/wait.js';
+import type { WeatherService, WeatherState } from '../domain/weather.js';
 import { WorldError } from '../types/api.js';
 import type {
   ActionRequest,
-  ActionResponse,
   AdminAgentSummary,
   AvailableActionsResponse,
   ConversationAcceptRequest,
@@ -56,8 +53,10 @@ import type {
   LogoutResponse,
   MoveRequest,
   MoveResponse,
+  NotificationAcceptedResponse,
   OkResponse,
   PerceptionResponse,
+  UseItemRequest,
   WaitRequest,
   WaitResponse,
   WorldAgentsResponse,
@@ -65,11 +64,11 @@ import type {
 import type { AgentRegistration, AgentState } from '../types/agent.js';
 import type { MapConfig, NodeId, ServerConfig } from '../types/data-model.js';
 import type { WorldEvent } from '../types/event.js';
-import type { ActionTimer, WaitTimer } from '../types/timer.js';
 import type { WorldSnapshot } from '../types/snapshot.js';
+import type { ActionTimer, ItemUseTimer, WaitTimer } from '../types/timer.js';
 import { EventBus } from './event-bus.js';
-import { TimerManager } from './timer-manager.js';
 import { WorldState } from './state/world-state.js';
+import { TimerManager } from './timer-manager.js';
 
 type EmittableWorldEvent<T extends WorldEvent = WorldEvent> = T extends WorldEvent
   ? Omit<T, 'event_id' | 'occurred_at'>
@@ -84,6 +83,8 @@ export interface DiscordRuntimeAdapter {
 export interface WorldEngineOptions {
   initialRegistrations?: AgentRegistration[];
   onRegistrationChanged?: (agents: AgentRegistration[]) => void;
+  weatherService?: WeatherService;
+  onError?: (message: string) => void;
 }
 
 export class WorldEngine {
@@ -91,7 +92,9 @@ export class WorldEngine {
   readonly eventBus = new EventBus();
   readonly state: WorldState;
   private readonly onRegistrationChanged?: (agents: AgentRegistration[]) => void;
+  private readonly onError?: (message: string) => void;
   private readonly loggingInAgentIds = new Set<string>();
+  private readonly weatherService: WeatherService | null;
 
   constructor(
     readonly config: ServerConfig,
@@ -100,6 +103,8 @@ export class WorldEngine {
   ) {
     this.state = new WorldState(options.initialRegistrations);
     this.onRegistrationChanged = options.onRegistrationChanged;
+    this.onError = options.onError;
+    this.weatherService = options.weatherService ?? null;
     this.timerManager.onFire('movement', (timer) => {
       handleMovementCompleted(this, timer);
     });
@@ -108,6 +113,9 @@ export class WorldEngine {
     });
     this.timerManager.onFire('wait', (timer) => {
       handleWaitCompleted(this, timer);
+    });
+    this.timerManager.onFire('item_use', (timer) => {
+      handleItemUseCompleted(this, timer as ItemUseTimer);
     });
     this.timerManager.onFire('conversation_accept', (timer) => {
       handleAcceptTimeout(this, timer);
@@ -136,6 +144,8 @@ export class WorldEngine {
       api_key: `karakuri_${randomBytes(16).toString('hex')}`,
       discord_bot_id: input.discord_bot_id,
       created_at: Date.now(),
+      money: this.config.economy?.initial_money ?? 0,
+      items: [],
     };
 
     this.persistRegistrations([...this.state.list(), registration]);
@@ -156,7 +166,6 @@ export class WorldEngine {
       return false;
     }
 
-    // Persist-then-mutate: remove registration first, then clean up Discord channel.
     this.persistRegistrations(this.state.list().filter((agent) => agent.agent_id !== agentId));
     this.state.delete(agentId);
 
@@ -165,6 +174,7 @@ export class WorldEngine {
         await this.discordBot.deleteAgentChannel(registration.discord_channel_id);
       } catch (error) {
         console.error('Failed to delete persisted agent channel.', error);
+        this.onError?.(`エージェントチャンネルの削除に失敗しました (channel: ${registration.discord_channel_id}): ${error instanceof Error ? error.message : String(error)}`);
       }
     }
 
@@ -229,6 +239,8 @@ export class WorldEngine {
         agent_id: agentId,
         node_id: spawnNodeId,
         discord_channel_id: channelId,
+        money: agent.money ?? this.config.economy?.initial_money ?? 0,
+        items: [...(agent.items ?? [])],
       });
 
       startIdleReminder(this, agentId);
@@ -264,19 +276,25 @@ export class WorldEngine {
     const leftNodeId = getAgentCurrentNode(this, loggedInAgent);
     const { cancelledState, cancelledActionName } = this.describeCancelledActivity(loggedInAgent.state, agentId);
 
-    // Persist channel ID and position before tearing down runtime state.
-    // This follows the same persist-then-mutate pattern as registerAgent/deleteAgent.
     const registration = this.state.getById(agentId);
     if (registration) {
       this.persistRegistrations(
         this.state.list().map((agent) =>
           agent.agent_id === agentId
-            ? { ...agent, discord_channel_id: loggedInAgent.discord_channel_id, last_node_id: leftNodeId }
+            ? {
+                ...agent,
+                discord_channel_id: loggedInAgent.discord_channel_id,
+                last_node_id: leftNodeId,
+                money: loggedInAgent.money,
+                items: [...loggedInAgent.items],
+              }
             : agent,
         ),
       );
       registration.discord_channel_id = loggedInAgent.discord_channel_id;
       registration.last_node_id = leftNodeId;
+      registration.money = loggedInAgent.money;
+      registration.items = [...loggedInAgent.items];
     }
 
     cancelPendingConversation(this, agentId);
@@ -300,42 +318,60 @@ export class WorldEngine {
     return { status: 'ok' };
   }
 
-  move(_agentId: string, _request: MoveRequest): MoveResponse {
-    const { agent, to_node_id, path } = validateMove(this, _agentId, _request);
-    handleServerEventInterruption(this, _agentId);
+  move(agentId: string, request: MoveRequest): MoveResponse {
+    const { agent, to_node_id, path } = validateMove(this, agentId, request);
+    handleServerEventInterruption(this, agentId);
     return executeValidatedMove(this, agent, to_node_id, path);
   }
 
-  executeAction(_agentId: string, _request: ActionRequest): ActionResponse {
-    const { agent, source } = validateAction(this, _agentId, _request);
-    handleServerEventInterruption(this, _agentId);
-    return executeValidatedAction(this, agent, source);
+  executeAction(agentId: string, request: ActionRequest): NotificationAcceptedResponse {
+    const result = validateAction(this, agentId, request);
+    if (result.rejected) {
+      this.emitEvent({
+        type: 'action_rejected',
+        agent_id: result.agent.agent_id,
+        agent_name: result.agent.agent_name,
+        action_id: result.source.action.action_id,
+        action_name: result.source.action.name,
+        rejection_reason: result.rejection_reason,
+      });
+      return { ok: true, message: '正常に受け付けました。結果が通知されるまで待機してください。' };
+    }
+
+    handleServerEventInterruption(this, agentId);
+    return executeValidatedAction(this, result.agent, result.source);
   }
 
-  executeWait(_agentId: string, _request: WaitRequest): WaitResponse {
-    const { agent, duration_ms } = validateWait(this, _agentId, _request);
-    handleServerEventInterruption(this, _agentId);
+  executeWait(agentId: string, request: WaitRequest): WaitResponse {
+    const { agent, duration_ms } = validateWait(this, agentId, request);
+    handleServerEventInterruption(this, agentId);
     return executeValidatedWait(this, agent, duration_ms);
   }
 
-  startConversation(_agentId: string, _request: ConversationStartRequest): ConversationStartResponse {
-    return startConversationRequest(this, _agentId, _request);
+  useItem(agentId: string, request: UseItemRequest): NotificationAcceptedResponse {
+    const validated = validateUseItem(this, agentId, request);
+    handleServerEventInterruption(this, agentId);
+    return executeValidatedUseItem(this, validated);
   }
 
-  acceptConversation(_agentId: string, _request: ConversationAcceptRequest): OkResponse {
-    return acceptConversationRequest(this, _agentId, _request);
+  startConversation(agentId: string, request: ConversationStartRequest): ConversationStartResponse {
+    return startConversationRequest(this, agentId, request);
   }
 
-  rejectConversation(_agentId: string): OkResponse {
-    return rejectConversationRequest(this, _agentId);
+  acceptConversation(agentId: string, request: ConversationAcceptRequest): OkResponse {
+    return acceptConversationRequest(this, agentId, request);
   }
 
-  speak(_agentId: string, _request: ConversationSpeakRequest): ConversationSpeakResponse {
-    return speakInConversation(this, _agentId, _request);
+  rejectConversation(agentId: string): OkResponse {
+    return rejectConversationRequest(this, agentId);
   }
 
-  endConversation(_agentId: string, _request: ConversationEndRequest): ConversationSpeakResponse {
-    return endConversationByAgent(this, _agentId, _request);
+  speak(agentId: string, request: ConversationSpeakRequest): ConversationSpeakResponse {
+    return speakInConversation(this, agentId, request);
+  }
+
+  endConversation(agentId: string, request: ConversationEndRequest): ConversationSpeakResponse {
+    return endConversationByAgent(this, agentId, request);
   }
 
   fireServerEvent(request: FireServerEventRequest | string): FireServerEventResponse {
@@ -343,8 +379,8 @@ export class WorldEngine {
     return fireRuntimeServerEvent(this, description);
   }
 
-  getAvailableActions(_agentId: string): AvailableActionsResponse {
-    return getAvailableActionsForAgent(this, _agentId);
+  getAvailableActions(agentId: string): AvailableActionsResponse {
+    return getAvailableActionsForAgent(this, agentId);
   }
 
   getPerception(agentId: string): PerceptionResponse {
@@ -353,6 +389,14 @@ export class WorldEngine {
 
   getMap(): MapConfig {
     return this.config.map;
+  }
+
+  reportError(message: string): void {
+    this.onError?.(message);
+  }
+
+  getWeatherState(): WeatherState | null {
+    return this.weatherService?.getState() ?? null;
   }
 
   getWorldAgents(): WorldAgentsResponse {
@@ -369,10 +413,19 @@ export class WorldEngine {
 
   getSnapshot(): WorldSnapshot {
     const now = Date.now();
+    const weather = this.getWeatherState();
 
     return {
       world: this.config.world,
       map: this.config.map,
+      ...(weather
+        ? {
+            weather: {
+              condition: weather.condition_text,
+              temperature_celsius: weather.temperature_celsius,
+            },
+          }
+        : {}),
       agents: this.state.listLoggedIn().map((agent) => {
         const movementTimer = agent.state === 'moving' ? getMovementTimer(this, agent.agent_id) : null;
         const actionTimer = this.timerManager.find(
@@ -381,6 +434,9 @@ export class WorldEngine {
         const waitTimer = this.timerManager.find(
           (timer): timer is WaitTimer => timer.type === 'wait' && timer.agent_id === agent.agent_id,
         );
+        const itemUseTimer = this.timerManager.find(
+          (timer): timer is ItemUseTimer => timer.type === 'item_use' && timer.agent_id === agent.agent_id,
+        );
 
         return {
           agent_id: agent.agent_id,
@@ -388,6 +444,8 @@ export class WorldEngine {
           node_id: getAgentCurrentNode(this, agent, now),
           state: agent.state,
           discord_channel_id: agent.discord_channel_id,
+          money: agent.money,
+          items: [...agent.items],
           ...(movementTimer
             ? {
                 movement: {
@@ -415,7 +473,16 @@ export class WorldEngine {
                     completes_at: waitTimer.fires_at,
                   },
                 }
-              : {}),
+              : itemUseTimer
+                ? {
+                    current_activity: {
+                      type: 'item_use' as const,
+                      item_id: itemUseTimer.item_id,
+                      item_name: itemUseTimer.item_name,
+                      completes_at: itemUseTimer.fires_at,
+                    },
+                  }
+                : {}),
         };
       }),
       conversations: this.state.conversations.list().map((conversation) => ({
@@ -438,14 +505,43 @@ export class WorldEngine {
     };
   }
 
+  persistLoggedInAgentState(agentId: string): void {
+    const registration = this.state.getById(agentId);
+    const loggedInAgent = this.state.getLoggedIn(agentId);
+    if (!registration || !loggedInAgent) {
+      return;
+    }
+
+    const nextRegistrations = this.state.list().map((agent) =>
+      agent.agent_id === agentId
+        ? {
+            ...agent,
+            discord_channel_id: loggedInAgent.discord_channel_id,
+            last_node_id: getAgentCurrentNode(this, loggedInAgent),
+            money: loggedInAgent.money,
+            items: [...loggedInAgent.items],
+          }
+        : agent,
+    );
+    this.persistRegistrations(nextRegistrations);
+    registration.discord_channel_id = loggedInAgent.discord_channel_id;
+    registration.last_node_id = getAgentCurrentNode(this, loggedInAgent);
+    registration.money = loggedInAgent.money;
+    registration.items = [...loggedInAgent.items];
+  }
+
   private describeCancelledActivity(
     state: AgentState,
     agentId: string,
   ): { cancelledState: AgentState; cancelledActionName?: string } {
     if (state === 'in_action') {
-      const actionTimer = this.timerManager.find((t): t is ActionTimer => t.type === 'action' && (t as ActionTimer).agent_id === agentId);
+      const actionTimer = this.timerManager.find((t): t is ActionTimer => t.type === 'action' && t.agent_id === agentId);
       if (actionTimer) {
         return { cancelledState: 'in_action', cancelledActionName: actionTimer.action_name };
+      }
+      const itemUseTimer = this.timerManager.find((t): t is ItemUseTimer => t.type === 'item_use' && t.agent_id === agentId);
+      if (itemUseTimer) {
+        return { cancelledState: 'in_action', cancelledActionName: itemUseTimer.item_name };
       }
       return { cancelledState: 'in_action' };
     }

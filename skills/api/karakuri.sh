@@ -18,6 +18,7 @@ Commands:
   perception                                     Request refreshed perception via notification
   actions                                        Request available actions via notification
   action <action_id>                             Execute an action
+  use-item <item_id>                             Use an item from inventory
   wait <duration>                                 Wait (1-6, in 10-minute units)
   conversation-start <target_agent_id> <message> Start a conversation
   conversation-accept <message>                  Accept a conversation and reply
@@ -98,6 +99,10 @@ case "${command}" in
   action)
     [ $# -lt 1 ] && { echo "Usage: karakuri.sh action <action_id>" >&2; exit 1; }
     do_post "/agents/action" "$(json_obj action_id "$1")"
+    ;;
+  use-item)
+    [ $# -lt 1 ] && { echo "Usage: karakuri.sh use-item <item_id>" >&2; exit 1; }
+    do_post "/agents/use-item" "$(json_obj item_id "$1")"
     ;;
   wait)
     [ $# -lt 1 ] && { echo "Usage: karakuri.sh wait <duration>" >&2; exit 1; }

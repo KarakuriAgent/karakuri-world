@@ -42,7 +42,7 @@ describe('discord notifications', () => {
     const messages = [
       formatAgentLoggedInMessage(worldContext, '現在地: 2-2', skillName, choicesText),
       formatMovementCompletedMessage(worldContext, '2-3', '広場', '現在地: 2-3', skillName, choicesText),
-      formatActionCompletedMessage(worldContext, '調べる', '古い歯車を見つけました。', '現在地: 2-2', skillName, choicesText),
+      formatActionCompletedMessage(worldContext, '調べる', '古い歯車を見つけました。', undefined, '現在地: 2-2', skillName, choicesText),
       formatWaitCompletedMessage(worldContext, 1000, '現在地: 2-2', skillName, choicesText),
       formatConversationRequestedMessage(worldContext, 'Bob', 'こんにちは。', skillName),
       formatConversationRejectedMessage(worldContext, 'Bob', 'rejected', '現在地: 2-2', skillName, choicesText),
@@ -70,6 +70,7 @@ describe('discord notifications', () => {
       worldContext,
       '調べる',
       '古い歯車を見つけました。',
+      undefined,
       '現在地: 2-2',
       'karakuri-world',
       '選択肢:\n- move: ノードIDを指定して移動する',

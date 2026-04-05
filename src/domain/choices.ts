@@ -20,7 +20,7 @@ export function buildChoicesText(
   const canStartConversation = agent.state === 'idle' && agent.pending_conversation_id === null;
   const actionLines = canStartInterruptibleCommand
     ? getAvailableActionSources(engine, agentId).map(
-        (source) => `- action: ${formatActionSourceLine(source)}`,
+        (source) => `- action: ${formatActionSourceLine(source, engine.config.items ?? [])}`,
       )
     : [];
   const conversationLines = canStartConversation
@@ -44,9 +44,22 @@ export function buildChoicesText(
         )
     : [];
 
+  const itemNames = canStartInterruptibleCommand
+    ? agent.items
+        .filter((item) => item.quantity > 0)
+        .map((item) => {
+          const config = (engine.config.items ?? []).find((c) => c.item_id === item.item_id);
+          return `${config?.name ?? item.item_id}×${item.quantity}`;
+        })
+    : [];
+  const useItemLine = itemNames.length > 0
+    ? [`- use-item: アイテムを使用する (item_id: アイテムID) [所持: ${itemNames.join(', ')}]`]
+    : [];
+
   const commandLines = canStartInterruptibleCommand
     ? [
         ...actionLines,
+        ...useItemLine,
         '- move: ノードIDを指定して移動する (target_node_id: ノードID)',
         '- wait: その場で待機する (duration: 1〜6、10分単位)',
         ...conversationLines,

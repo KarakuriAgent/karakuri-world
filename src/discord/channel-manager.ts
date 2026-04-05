@@ -262,6 +262,16 @@ export class ChannelManager {
     return channel;
   }
 
+  async getWorldAdminChannel(): Promise<TextChannel> {
+    const staticChannels = await this.ensureStaticChannels();
+    const channel = await this.getTextChannel(staticChannels.world_admin_id);
+    if (!channel) {
+      throw new Error('Discord guild is missing #world-admin.');
+    }
+
+    return channel;
+  }
+
   async getWorldStatusChannel(): Promise<TextChannel> {
     const staticChannels = await this.ensureStaticChannels();
     const channel = await this.getTextChannel(staticChannels.world_status_id);

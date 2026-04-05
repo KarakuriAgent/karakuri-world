@@ -22,6 +22,7 @@ export interface DiscordBotOptions {
 export interface DiscordNotificationAdapter extends DiscordRuntimeAdapter {
   sendAgentMessage(channelId: string, content: string): Promise<void>;
   sendWorldLog(content: string): Promise<void>;
+  sendErrorReport(message: string): Promise<void>;
   createWorldLogThread(content: string, threadName: string): Promise<string>;
   sendToThread(threadId: string, content: string): Promise<void>;
   archiveThread(threadId: string): Promise<void>;
@@ -179,6 +180,12 @@ export class DiscordBot implements DiscordNotificationAdapter {
   async sendWorldLog(content: string): Promise<void> {
     const channel = await this.channelManager.getWorldLogChannel();
     await channel.send(content);
+  }
+
+  async sendErrorReport(message: string): Promise<void> {
+    const channel = await this.channelManager.getWorldAdminChannel();
+    const timestamp = new Date().toISOString();
+    await channel.send(`⚠️ **エラー報告** (${timestamp})\n${message}`);
   }
 
   async getStatusBoardChannel(): Promise<StatusBoardChannel> {

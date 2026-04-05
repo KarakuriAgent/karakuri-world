@@ -84,4 +84,48 @@ describe('validateConfig', () => {
       );
     }
   });
+
+  it('rejects action item references that are missing from the item master', () => {
+    const base = createTestConfig({
+      items: [{ item_id: 'bread', name: 'パン', description: '焼きたて', stackable: true }],
+    });
+    const invalidConfig = {
+      ...base,
+      map: {
+        ...base.map,
+        buildings: base.map.buildings.map((building, index) =>
+          index === 0
+            ? {
+                ...building,
+                actions: [
+                  ...building.actions,
+                  {
+                    action_id: 'use-missing',
+                    name: 'Use missing',
+                    description: 'Uses a missing item.',
+                    duration_ms: 300,
+                    result_description: 'Done.',
+                    required_items: [{ item_id: 'missing-item', quantity: 1 }],
+                  },
+                ],
+              }
+            : building,
+        ),
+      },
+    };
+
+    const result = validateConfig(invalidConfig);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.issues).toEqual(
+        expect.arrayContaining([
+          {
+            path: 'map.buildings[0].actions[1].required_items[0].item_id',
+            message: 'Unknown item id "missing-item".',
+          },
+        ]),
+      );
+    }
+  });
 });

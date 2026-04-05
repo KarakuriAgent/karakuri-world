@@ -28,6 +28,7 @@ describe('MCP tools', () => {
     expect(definitions.map((definition) => definition.name)).toEqual([
       'move',
       'action',
+      'use_item',
       'wait',
       'conversation_start',
       'conversation_accept',
