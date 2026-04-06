@@ -2,6 +2,7 @@ import { buildPerceptionText } from '../domain/perception.js';
 import type { AgentState } from '../types/agent.js';
 import type { PerceptionResponse } from '../types/api.js';
 import type { ConversationClosureReason, ConversationRejectionReason } from '../types/conversation.js';
+import type { ItemType } from '../types/data-model.js';
 
 export interface WorldContext {
   worldName: string;
@@ -87,7 +88,6 @@ export function formatMovementCompletedMessage(
 export function formatActionCompletedMessage(
   ctx: WorldContext,
   actionName: string,
-  resultDescription: string,
   effectText: string | undefined,
   perceptionText: string,
   skillName: string,
@@ -96,7 +96,6 @@ export function formatActionCompletedMessage(
   return joinSections(
     formatWorldContextHeader(ctx),
     `「${actionName}」が完了しました。`,
-    resultDescription,
     effectText,
     perceptionText,
     formatActionPrompt(skillName, choicesText),
@@ -131,16 +130,48 @@ export function formatWaitCompletedMessage(
   return joinSections(formatWorldContextHeader(ctx), durationText, perceptionText, formatActionPrompt(skillName, choicesText));
 }
 
+function formatItemUseVerb(itemType: ItemType): string {
+  switch (itemType) {
+    case 'food':
+      return '食べました';
+    case 'drink':
+      return '飲みました';
+    case 'general':
+    case 'venue':
+      return '使用しました';
+  }
+}
+
 export function formatItemUseCompletedMessage(
   ctx: WorldContext,
   itemName: string,
+  itemType: ItemType,
   perceptionText: string,
   skillName: string,
   choicesText?: string,
 ): string {
   return joinSections(
     formatWorldContextHeader(ctx),
-    `「${itemName}」を使用しました。`,
+    `「${itemName}」を${formatItemUseVerb(itemType)}。`,
+    perceptionText,
+    formatActionPrompt(skillName, choicesText),
+  );
+}
+
+export function formatItemUseVenueRejectedMessage(
+  ctx: WorldContext,
+  itemName: string,
+  venueHints: string[],
+  perceptionText: string,
+  skillName: string,
+  choicesText?: string,
+): string {
+  const hintsText = venueHints.length > 0
+    ? `${venueHints.join('、')} で利用できます。`
+    : '';
+  return joinSections(
+    formatWorldContextHeader(ctx),
+    `ここでは「${itemName}」を利用できません。${hintsText}`,
     perceptionText,
     formatActionPrompt(skillName, choicesText),
   );
@@ -392,6 +423,10 @@ export function formatWorldLogItemUseStarted(agentName: string, itemName: string
 
 export function formatWorldLogItemUseCompleted(agentName: string, itemName: string): string {
   return `${agentName} が「${itemName}」を使用しました`;
+}
+
+export function formatWorldLogItemUseVenueRejected(agentName: string, itemName: string): string {
+  return `${agentName} が「${itemName}」を使おうとしたが、ここでは利用できなかった`;
 }
 
 export function formatWorldLogConversationStarted(initiatorName: string, targetName: string): string {

@@ -1,6 +1,7 @@
 import type { WorldEngine } from '../engine/world-engine.js';
 import type { NotificationAcceptedResponse, UseItemRequest } from '../types/api.js';
 import { WorldError, createNotificationAcceptedResponse } from '../types/api.js';
+import type { ItemType } from '../types/data-model.js';
 import type { ItemUseTimer } from '../types/timer.js';
 import { cancelIdleReminder, startIdleReminder } from './idle-reminder.js';
 import { consumeItems } from './inventory.js';
@@ -16,6 +17,29 @@ export interface ValidatedUseItem {
   agent_name: string;
   item_id: string;
   item_name: string;
+  item_type: ItemType;
+}
+
+function resolveVenueHints(engine: WorldEngine, itemId: string): string[] {
+  const hints: string[] = [];
+  for (const building of engine.config.map.buildings) {
+    for (const action of building.actions) {
+      if (action.required_items?.some((item) => item.item_id === itemId)) {
+        const doors = building.door_nodes.join(', ');
+        hints.push(`${building.name}(入口: ${doors})`);
+        break;
+      }
+    }
+  }
+  for (const npc of engine.config.map.npcs) {
+    for (const action of npc.actions) {
+      if (action.required_items?.some((item) => item.item_id === itemId)) {
+        hints.push(`${npc.name}(${npc.node_id})`);
+        break;
+      }
+    }
+  }
+  return hints;
 }
 
 export function validateUseItem(
@@ -38,15 +62,32 @@ export function validateUseItem(
   }
 
   const itemConfig = (engine.config.items ?? []).find((item) => item.item_id === request.item_id);
+  if (!itemConfig) {
+    console.warn(`[validateUseItem] Item config not found for "${request.item_id}", defaulting to type "general"`);
+  }
   const itemName = itemConfig?.name ?? request.item_id;
+  const itemType: ItemType = itemConfig?.type ?? 'general';
 
-  return { agent_id: agentId, agent_name: agent.agent_name, item_id: request.item_id, item_name: itemName };
+  return { agent_id: agentId, agent_name: agent.agent_name, item_id: request.item_id, item_name: itemName, item_type: itemType };
 }
 
 export function executeValidatedUseItem(
   engine: WorldEngine,
   validated: ValidatedUseItem,
 ): NotificationAcceptedResponse {
+  if (validated.item_type === 'venue') {
+    const venueHints = resolveVenueHints(engine, validated.item_id);
+    engine.emitEvent({
+      type: 'item_use_venue_rejected',
+      agent_id: validated.agent_id,
+      agent_name: validated.agent_name,
+      item_id: validated.item_id,
+      item_name: validated.item_name,
+      venue_hints: venueHints,
+    });
+    return createNotificationAcceptedResponse();
+  }
+
   const durationMs = getItemUseDurationMs(engine);
   const completesAt = Date.now() + durationMs;
 
@@ -59,6 +100,7 @@ export function executeValidatedUseItem(
     agent_id: validated.agent_id,
     item_id: validated.item_id,
     item_name: validated.item_name,
+    item_type: validated.item_type,
     fires_at: completesAt,
   });
 
@@ -111,5 +153,6 @@ export function handleItemUseCompleted(engine: WorldEngine, timer: ItemUseTimer)
     agent_name: agent.agent_name,
     item_id: timer.item_id,
     item_name: timer.item_name,
+    item_type: timer.item_type,
   });
 }

@@ -1,4 +1,4 @@
-import type { NodeId } from './data-model.js';
+import type { ItemType, NodeId } from './data-model.js';
 
 export type TimerType =
   | 'movement'
@@ -44,6 +44,7 @@ export interface ItemUseTimer extends TimerBase {
   agent_id: string;
   item_id: string;
   item_name: string;
+  item_type: ItemType;
 }
 
 export interface ConversationAcceptTimer extends TimerBase {

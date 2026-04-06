@@ -42,7 +42,7 @@ describe('discord notifications', () => {
     const messages = [
       formatAgentLoggedInMessage(worldContext, '現在地: 2-2', skillName, choicesText),
       formatMovementCompletedMessage(worldContext, '2-3', '広場', '現在地: 2-3', skillName, choicesText),
-      formatActionCompletedMessage(worldContext, '調べる', '古い歯車を見つけました。', undefined, '現在地: 2-2', skillName, choicesText),
+      formatActionCompletedMessage(worldContext, '調べる', undefined, '現在地: 2-2', skillName, choicesText),
       formatWaitCompletedMessage(worldContext, 1000, '現在地: 2-2', skillName, choicesText),
       formatConversationRequestedMessage(worldContext, 'Bob', 'こんにちは。', skillName),
       formatConversationRejectedMessage(worldContext, 'Bob', 'rejected', '現在地: 2-2', skillName, choicesText),
@@ -69,7 +69,6 @@ describe('discord notifications', () => {
     const message = formatActionCompletedMessage(
       worldContext,
       '調べる',
-      '古い歯車を見つけました。',
       undefined,
       '現在地: 2-2',
       'karakuri-world',
@@ -78,7 +77,6 @@ describe('discord notifications', () => {
 
     expectWorldContextHeader(message);
     expect(message).toContain('「調べる」が完了しました。');
-    expect(message).toContain('古い歯車を見つけました。');
     expect(message).toContain('選択肢:');
     expect(message).toContain('karakuri-world スキルで次の行動を選択してください。');
   });

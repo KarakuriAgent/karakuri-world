@@ -31,7 +31,6 @@ export interface ActionConfig {
   name: string;
   description: string;
   duration_ms: number;
-  result_description: string;
   hours?: Hours;
   cost_money?: number;
   reward_money?: number;
@@ -112,10 +111,13 @@ export interface EconomyConfig {
   item_use_duration_ms?: number;
 }
 
+export type ItemType = 'general' | 'food' | 'drink' | 'venue';
+
 export interface ItemConfig {
   item_id: string;
   name: string;
   description: string;
+  type: ItemType;
   stackable: boolean;
   max_stack?: number;
 }

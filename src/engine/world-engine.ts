@@ -350,6 +350,9 @@ export class WorldEngine {
 
   useItem(agentId: string, request: UseItemRequest): NotificationAcceptedResponse {
     const validated = validateUseItem(this, agentId, request);
+    if (validated.item_type === 'venue') {
+      return executeValidatedUseItem(this, validated);
+    }
     handleServerEventInterruption(this, agentId);
     return executeValidatedUseItem(this, validated);
   }

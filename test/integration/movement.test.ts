@@ -41,7 +41,6 @@ function createActionOnPathMap(): MapConfig {
             name: 'Ask the courier',
             description: 'Ask the courier for the latest news.',
             duration_ms: 900,
-            result_description: 'The courier shares the latest town gossip.',
           },
         ],
       },

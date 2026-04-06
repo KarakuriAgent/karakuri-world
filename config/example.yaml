@@ -876,13 +876,14 @@ map:
           name: お参りする
           description: 賽銭を入れて二礼二拍手一礼。
           duration_ms: 1200000
-          result_description: 静かに手を合わせた。清々しい気持ちになった。
         - action_id: draw-omikuji
           name: おみくじを引く
           description: おみくじ箱を振って一本引く。
           duration_ms: 900000
-          result_description: おみくじを引いた。今日の運勢が気になる。
           cost_money: 100
+          reward_items:
+            - item_id: omikuji
+              quantity: 1
     - building_id: building-house-a
       name: 住宅A
       description: 瓦屋根の小さな一軒家。庭に洗濯物が干してある。
@@ -903,12 +904,10 @@ map:
           name: 休憩する
           description: 居間で少し休む。
           duration_ms: 1200000
-          result_description: 静かな部屋でひと休みした。
         - action_id: sleep-house-a
           name: 寝る
           description: 布団を敷いて眠る。
           duration_ms: 28800000
-          result_description: ぐっすり眠った。体力が回復した。
     - building_id: building-house-b
       name: 住宅B
       description: 古い木造の家。玄関先に鉢植えが並んでいる。
@@ -929,12 +928,10 @@ map:
           name: 休憩する
           description: 居間で少し休む。
           duration_ms: 1200000
-          result_description: 静かな部屋でひと休みした。
         - action_id: sleep-house-b
           name: 寝る
           description: 布団を敷いて眠る。
           duration_ms: 28800000
-          result_description: ぐっすり眠った。体力が回復した。
     - building_id: building-school
       name: 学校
       description: 二階建ての小さな学校。校庭には桜の木が植えられ、チャイムの音が時折聞こえる。
@@ -967,12 +964,10 @@ map:
           name: 勉強する
           description: 教室の机に座って勉強する。
           duration_ms: 3600000
-          result_description: 集中して勉強した。少し賢くなった気がする。
         - action_id: use-gym
           name: 体育館で運動する
           description: 体育館でストレッチや軽い運動をする。
           duration_ms: 3600000
-          result_description: いい汗をかいた。体がすっきりした。
       hours:
         open: '08:00'
         close: '18:00'
@@ -996,12 +991,10 @@ map:
           name: 休憩する
           description: 居間で少し休む。
           duration_ms: 1200000
-          result_description: 静かな部屋でひと休みした。
         - action_id: sleep-house-c
           name: 寝る
           description: 布団を敷いて眠る。
           duration_ms: 28800000
-          result_description: ぐっすり眠った。体力が回復した。
     - building_id: building-bakery
       name: パン屋「小麦の風」
       description: 焼きたてパンの香ばしい香りが漂う小さなパン屋。
@@ -1022,7 +1015,6 @@ map:
           name: パンを買う
           description: 焼きたてのパンを選んで買う。
           duration_ms: 900000
-          result_description: 温かいパンを手に入れた。いい香りがする。
           cost_money: 300
           reward_items:
             - item_id: bread
@@ -1031,7 +1023,6 @@ map:
           name: パン屋で働く
           description: パン屋の品出しを手伝う。
           duration_ms: 3600000
-          result_description: パン屋の仕事を終えて達成感を覚えた。
           reward_money: 1500
           hours:
             open: '07:00'
@@ -1059,12 +1050,18 @@ map:
           name: 本を探す
           description: 棚を眺めながら気になる本を探す。
           duration_ms: 1200000
-          result_description: 面白そうな本を見つけた。
+        - action_id: buy-book
+          name: 本を買う
+          description: 気になった本をレジに持っていく。
+          duration_ms: 900000
+          cost_money: 600
+          reward_items:
+            - item_id: book
+              quantity: 1
         - action_id: read-book
           name: 立ち読みする
           description: 気になる本を手に取ってぱらぱらとめくる。
           duration_ms: 3600000
-          result_description: しばらく読みふけってしまった。
       hours:
         open: '09:00'
         close: '20:00'
@@ -1088,13 +1085,11 @@ map:
           name: コーヒーを飲む
           description: マスターが淹れたコーヒーをゆっくり味わう。
           duration_ms: 3600000
-          result_description: 深い味わいのコーヒーを楽しんだ。心が落ち着いた。
           cost_money: 450
         - action_id: eat-napolitan
           name: ナポリタンを食べる
           description: 喫茶店名物の昔ながらのナポリタンを注文する。
           duration_ms: 3600000
-          result_description: 懐かしい味のナポリタンを堪能した。
           cost_money: 850
       hours:
         open: '08:00'
@@ -1119,16 +1114,26 @@ map:
           name: おにぎりを買う
           description: 棚からおにぎりを選んで買う。
           duration_ms: 900000
-          result_description: おにぎりを買った。小腹が満たされた。
           cost_money: 200
           reward_items:
             - item_id: onigiri
               quantity: 1
-        - action_id: buy-drink
-          name: 飲み物を買う
-          description: 冷蔵ケースから好きな飲み物を選ぶ。
+        - action_id: buy-tea
+          name: お茶を買う
+          description: 冷蔵ケースからお茶を取る。
           duration_ms: 600000
-          result_description: 冷たい飲み物を手に入れた。
+          cost_money: 150
+          reward_items:
+            - item_id: tea
+              quantity: 1
+        - action_id: buy-cola
+          name: コーラを買う
+          description: 冷蔵ケースからコーラを取る。
+          duration_ms: 600000
+          cost_money: 150
+          reward_items:
+            - item_id: cola
+              quantity: 1
     - building_id: building-ramen
       name: ラーメン屋「一番星」
       description: 湯気の立つ暖簾をくぐると、豚骨スープの香りが広がる。
@@ -1149,13 +1154,11 @@ map:
           name: ラーメンを食べる
           description: カウンターに座って熱々のラーメンをすする。
           duration_ms: 3600000
-          result_description: 美味しいラーメンを食べた。体が温まった。
           cost_money: 900
         - action_id: work-ramen
           name: ラーメン屋で働く
           description: 皿洗いや仕込みを手伝う。
           duration_ms: 3600000
-          result_description: 忙しい時間帯を乗り切り、しっかり稼いだ。
           reward_money: 1200
           hours:
             open: '11:00'
@@ -1183,7 +1186,6 @@ map:
           name: 花を買う
           description: 季節の花束を選んで買う。
           duration_ms: 900000
-          result_description: きれいな花束を手に入れた。
           cost_money: 500
           reward_items:
             - item_id: flower-bouquet
@@ -1211,7 +1213,6 @@ map:
           name: お風呂に入る
           description: 番台で料金を払い、ゆっくり湯船に浸かる。
           duration_ms: 3600000
-          result_description: 温かいお湯で体がぽかぽかになった。極楽極楽。
     - building_id: building-koban
       name: 交番
       description: 町の安全を守る小さな交番。掲示板には迷い猫のチラシが貼ってある。
@@ -1232,7 +1233,6 @@ map:
           name: 掲示板を見る
           description: 交番の掲示板に貼られたお知らせを確認する。
           duration_ms: 600000
-          result_description: 町のお知らせや注意喚起を確認した。
     - building_id: building-barber
       name: 床屋
       description: 赤・青・白のサインポールが回る昔ながらの床屋。
@@ -1253,7 +1253,6 @@ map:
           name: 髪を切る
           description: 椅子に座って散髪してもらう。
           duration_ms: 3600000
-          result_description: さっぱりした髪型になった。気分も爽快。
     - building_id: building-community
       name: 公民館
       description: 町の集会やイベントに使われる公民館。玄関には今月の予定表が貼られている。
@@ -1280,12 +1279,10 @@ map:
           name: 予定表を確認する
           description: 玄関の予定表で今月のイベントを確認する。
           duration_ms: 600000
-          result_description: 今月の町内イベントの予定を確認した。
         - action_id: use-library
           name: 図書室で本を読む
           description: 公民館の図書室で静かに本を読む。
           duration_ms: 3600000
-          result_description: 静かな図書室でゆっくり読書を楽しんだ。
     - building_id: building-sakaya
       name: 酒屋
       description: 地酒や焼酎が並ぶ老舗の酒屋。店主のおすすめが壁に貼ってある。
@@ -1306,8 +1303,10 @@ map:
           name: お酒を買う
           description: 棚から地酒を一本選ぶ。
           duration_ms: 900000
-          result_description: 店主おすすめの地酒を手に入れた。
           cost_money: 1200
+          reward_items:
+            - item_id: sake
+              quantity: 1
     - building_id: building-house-d
       name: 住宅D
       description: 生垣に囲まれた平屋の家。郵便受けに新聞が刺さっている。
@@ -1328,12 +1327,10 @@ map:
           name: 休憩する
           description: 居間で少し休む。
           duration_ms: 1200000
-          result_description: 静かな部屋でひと休みした。
         - action_id: sleep-house-d
           name: 寝る
           description: 布団を敷いて眠る。
           duration_ms: 28800000
-          result_description: ぐっすり眠った。体力が回復した。
     - building_id: building-house-e
       name: 住宅E
       description: 白い壁の家。窓辺に猫がいるのが見える。
@@ -1354,12 +1351,10 @@ map:
           name: 休憩する
           description: 居間で少し休む。
           duration_ms: 1200000
-          result_description: 静かな部屋でひと休みした。
         - action_id: sleep-house-e
           name: 寝る
           description: 布団を敷いて眠る。
           duration_ms: 28800000
-          result_description: ぐっすり眠った。体力が回復した。
     - building_id: building-cinema
       name: 映画館「星空座」
       description: 昔ながらの小さな映画館。レトロな看板とポスターが並び、ポップコーンの香りが漂っている。
@@ -1392,7 +1387,6 @@ map:
           name: 映画チケットを買う
           description: 受付でチケットを購入する。
           duration_ms: 600000
-          result_description: チケットを手に入れた。今日はどんな映画をやっているだろう。
           cost_money: 1800
           reward_items:
             - item_id: movie-ticket
@@ -1401,18 +1395,32 @@ map:
           name: 映画を観る
           description: 薄暗いスクリーンルームの座席に座り、上映中の映画を観る。
           duration_ms: 3600000
-          result_description: 映画を観終わった。心に残る作品だった。
           required_items:
             - item_id: movie-ticket
               quantity: 1
         - action_id: buy-popcorn
           name: ポップコーンを買う
-          description: 売店でポップコーンとドリンクを買う。
+          description: 売店でポップコーンを買う。
           duration_ms: 600000
-          result_description: 出来たてのポップコーンを手に入れた。バターの香りがたまらない。
           cost_money: 400
           reward_items:
             - item_id: popcorn
+              quantity: 1
+        - action_id: buy-tea-cinema
+          name: お茶を買う
+          description: 売店でお茶を買う。
+          duration_ms: 600000
+          cost_money: 200
+          reward_items:
+            - item_id: tea
+              quantity: 1
+        - action_id: buy-cola-cinema
+          name: コーラを買う
+          description: 売店でコーラを買う。
+          duration_ms: 600000
+          cost_money: 200
+          reward_items:
+            - item_id: cola
               quantity: 1
       hours:
         open: '10:00'
@@ -1437,12 +1445,10 @@ map:
           name: 休憩する
           description: 居間で少し休む。
           duration_ms: 1200000
-          result_description: 静かな部屋でひと休みした。
         - action_id: sleep-house-f
           name: 寝る
           description: 布団を敷いて眠る。
           duration_ms: 28800000
-          result_description: ぐっすり眠った。体力が回復した。
     - building_id: building-house-g
       name: 住宅G
       description: 小さな平屋。玄関に傘立てがある。
@@ -1463,12 +1469,10 @@ map:
           name: 休憩する
           description: 居間で少し休む。
           duration_ms: 1200000
-          result_description: 静かな部屋でひと休みした。
         - action_id: sleep-house-g
           name: 寝る
           description: 布団を敷いて眠る。
           duration_ms: 28800000
-          result_description: ぐっすり眠った。体力が回復した。
     - building_id: building-house-h
       name: 住宅H
       description: 瓦屋根の家。軒先に風鈴が揺れている。
@@ -1489,12 +1493,10 @@ map:
           name: 休憩する
           description: 居間で少し休む。
           duration_ms: 1200000
-          result_description: 静かな部屋でひと休みした。
         - action_id: sleep-house-h
           name: 寝る
           description: 布団を敷いて眠る。
           duration_ms: 28800000
-          result_description: ぐっすり眠った。体力が回復した。
     - building_id: building-park
       name: 町民公園
       description: 大きな木と花壇のある町の公園。ベンチや公衆トイレ、充電スポットがある。
@@ -1521,17 +1523,14 @@ map:
           name: ベンチで仮眠する
           description: 公園のベンチに横になって少し眠る。
           duration_ms: 1800000
-          result_description: ベンチで少し眠った。外の空気が気持ちよかった。
         - action_id: use-toilet
           name: トイレに行く
           description: 公衆トイレを使う。
           duration_ms: 600000
-          result_description: すっきりした。
         - action_id: charge-device
           name: 充電する
           description: 充電スポットでデバイスを充電する。
           duration_ms: 1800000
-          result_description: デバイスがフル充電になった。
   npcs:
     - npc_id: npc-miko
       name: 巫女
@@ -1542,7 +1541,6 @@ map:
           name: 運勢を聞く
           description: 今日の運勢について巫女さんに尋ねる。
           duration_ms: 1200000
-          result_description: 巫女さんが優しく今日の運勢を教えてくれた。
           reward_money: 100
       hours:
         open: '09:00'
@@ -1556,7 +1554,6 @@ map:
           name: 道を聞く
           description: 町のことについておまわりさんに聞く。
           duration_ms: 900000
-          result_description: おまわりさんが親切に教えてくれた。
     - npc_id: npc-cat
       name: 猫
       description: 町をうろうろしている三毛猫。人懐っこくて撫でさせてくれる。
@@ -1566,7 +1563,6 @@ map:
           name: 猫を撫でる
           description: しゃがんで猫の頭を撫でる。
           duration_ms: 1200000
-          result_description: 猫がゴロゴロと喉を鳴らした。癒された。
     - npc_id: npc-ojiisan
       name: おじいさん
       description: 公園のベンチに座っているおじいさん。鳩にパンくずをあげている。
@@ -1576,7 +1572,6 @@ map:
           name: おじいさんと話す
           description: ベンチに座っておじいさんと世間話をする。
           duration_ms: 3600000
-          result_description: おじいさんが昔の町の話を聞かせてくれた。
     - npc_id: npc-cinema-staff
       name: 映画館スタッフ
       description: 映画館の受付と売店を切り盛りしているスタッフ。映画に詳しくておすすめを教えてくれる。
@@ -1586,7 +1581,6 @@ map:
           name: おすすめの映画を聞く
           description: 今上映中のおすすめ映画をスタッフに聞く。
           duration_ms: 600000
-          result_description: スタッフが目を輝かせながらおすすめの映画を教えてくれた。
           reward_money: 200
       hours:
         open: '10:00'
@@ -1607,25 +1601,60 @@ items:
   - item_id: bread
     name: パン
     description: 焼きたてのパン
+    type: food
     stackable: true
     max_stack: 5
   - item_id: onigiri
     name: おにぎり
     description: 梅おにぎり
+    type: food
     stackable: true
     max_stack: 5
   - item_id: flower-bouquet
     name: 花束
     description: 色とりどりの花束
+    type: general
     stackable: true
     max_stack: 3
   - item_id: movie-ticket
     name: 映画チケット
     description: 最新作のチケット
+    type: venue
     stackable: true
     max_stack: 10
   - item_id: popcorn
     name: ポップコーン
     description: 映画館のポップコーン
+    type: food
     stackable: true
     max_stack: 3
+  - item_id: omikuji
+    name: おみくじ
+    description: 神社で引いたおみくじ
+    type: general
+    stackable: true
+    max_stack: 3
+  - item_id: book
+    name: 本
+    description: 本屋で買った本
+    type: general
+    stackable: true
+    max_stack: 5
+  - item_id: sake
+    name: 地酒
+    description: 店主おすすめの地酒
+    type: drink
+    stackable: true
+    max_stack: 3
+  - item_id: tea
+    name: お茶
+    description: 冷たいお茶
+    type: drink
+    stackable: true
+    max_stack: 5
+  - item_id: cola
+    name: コーラ
+    description: 冷えたコーラ
+    type: drink
+    stackable: true
+    max_stack: 5

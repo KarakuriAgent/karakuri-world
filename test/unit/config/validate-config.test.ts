@@ -87,7 +87,7 @@ describe('validateConfig', () => {
 
   it('rejects action item references that are missing from the item master', () => {
     const base = createTestConfig({
-      items: [{ item_id: 'bread', name: 'パン', description: '焼きたて', stackable: true }],
+      items: [{ item_id: 'bread', name: 'パン', description: '焼きたて', type: 'food' as const, stackable: true }],
     });
     const invalidConfig = {
       ...base,
@@ -104,7 +104,6 @@ describe('validateConfig', () => {
                     name: 'Use missing',
                     description: 'Uses a missing item.',
                     duration_ms: 300,
-                    result_description: 'Done.',
                     required_items: [{ item_id: 'missing-item', quantity: 1 }],
                   },
                 ],

@@ -232,7 +232,6 @@ describe('actions domain', () => {
                   name: 'Greet the gatekeeper',
                   description: 'Offer a greeting.',
                   duration_ms: 1200,
-                  result_description: 'A nod.',
                   cost_money: 500,
                 },
               ],
@@ -257,7 +256,7 @@ describe('actions domain', () => {
   it('rejects an action when the agent lacks required items', async () => {
     const { engine } = createTestWorld({
       config: {
-        items: [{ item_id: 'flower', name: '花束', description: '花', stackable: true }],
+        items: [{ item_id: 'flower', name: '花束', description: '花', type: 'general' as const, stackable: true }],
         map: {
           ...createTestWorld().config.map,
           npcs: [
@@ -272,7 +271,6 @@ describe('actions domain', () => {
                   name: 'Offer a flower',
                   description: 'Give flowers.',
                   duration_ms: 600,
-                  result_description: 'Accepted.',
                   required_items: [{ item_id: 'flower', quantity: 1 }],
                 },
               ],
@@ -313,7 +311,6 @@ describe('actions domain', () => {
                   name: 'Work',
                   description: 'Do work.',
                   duration_ms: 1000,
-                  result_description: 'Done.',
                   cost_money: 200,
                   reward_money: 500,
                 },
@@ -338,8 +335,8 @@ describe('actions domain', () => {
     const { engine } = createTestWorld({
       config: {
         items: [
-          { item_id: 'wood', name: '木材', description: '木', stackable: true },
-          { item_id: 'chair', name: '椅子', description: '椅子', stackable: false },
+          { item_id: 'wood', name: '木材', description: '木', type: 'general' as const, stackable: true },
+          { item_id: 'chair', name: '椅子', description: '椅子', type: 'general' as const, stackable: false },
         ],
         map: {
           ...createTestWorld().config.map,
@@ -357,7 +354,6 @@ describe('actions domain', () => {
                   name: 'Craft chair',
                   description: 'Build a chair.',
                   duration_ms: 1000,
-                  result_description: 'Built.',
                   required_items: [{ item_id: 'wood', quantity: 2 }],
                   reward_items: [{ item_id: 'chair', quantity: 1 }],
                 },
@@ -384,7 +380,7 @@ describe('actions domain', () => {
   it('shows actions with required_items even when the agent does not hold them', async () => {
     const { engine } = createTestWorld({
       config: {
-        items: [{ item_id: 'key', name: '鍵', description: '鍵', stackable: false }],
+        items: [{ item_id: 'key', name: '鍵', description: '鍵', type: 'venue' as const, stackable: false }],
         map: {
           ...createTestMapConfig(),
           buildings: [
@@ -397,7 +393,6 @@ describe('actions domain', () => {
                   name: 'Unlock door',
                   description: 'Unlock the door with a key.',
                   duration_ms: 500,
-                  result_description: 'The door is now unlocked.',
                   required_items: [{ item_id: 'key', quantity: 1 }],
                 },
               ],

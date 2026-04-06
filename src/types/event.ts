@@ -1,6 +1,6 @@
 import type { AgentItem, AgentState } from './agent.js';
 import type { ConversationClosureReason, ConversationRejectionReason } from './conversation.js';
-import type { NodeId } from './data-model.js';
+import type { ItemType, NodeId } from './data-model.js';
 
 export type EventType =
   | 'agent_logged_in'
@@ -14,6 +14,7 @@ export type EventType =
   | 'wait_completed'
   | 'item_use_started'
   | 'item_use_completed'
+  | 'item_use_venue_rejected'
   | 'conversation_requested'
   | 'conversation_accepted'
   | 'conversation_rejected'
@@ -86,7 +87,6 @@ export interface ActionCompletedEvent extends EventBase {
   agent_name: string;
   action_id: string;
   action_name: string;
-  result_description: string;
   cost_money?: number;
   reward_money?: number;
   money_balance?: number;
@@ -133,6 +133,16 @@ export interface ItemUseCompletedEvent extends EventBase {
   agent_name: string;
   item_id: string;
   item_name: string;
+  item_type: ItemType;
+}
+
+export interface ItemUseVenueRejectedEvent extends EventBase {
+  type: 'item_use_venue_rejected';
+  agent_id: string;
+  agent_name: string;
+  item_id: string;
+  item_name: string;
+  venue_hints: string[];
 }
 
 export interface ConversationRequestedEvent extends EventBase {
@@ -234,6 +244,7 @@ export type WorldEvent =
   | WaitCompletedEvent
   | ItemUseStartedEvent
   | ItemUseCompletedEvent
+  | ItemUseVenueRejectedEvent
   | ConversationRequestedEvent
   | ConversationAcceptedEvent
   | ConversationRejectedEvent

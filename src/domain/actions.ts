@@ -343,7 +343,6 @@ export function handleActionCompleted(engine: WorldEngine, timer: ActionTimer): 
     agent_name: updatedAgent.agent_name,
     action_id: source.action.action_id,
     action_name: source.action.name,
-    result_description: source.action.result_description,
     ...(source.action.cost_money !== undefined || rewardMoney > 0
       ? {
           ...(source.action.cost_money !== undefined ? { cost_money: source.action.cost_money } : {}),

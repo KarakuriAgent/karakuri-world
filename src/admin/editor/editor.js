@@ -725,17 +725,11 @@ function promptForAction(initialAction = null) {
     return null;
   }
 
-  const resultDescription = prompt('結果テキスト', initialAction?.result_description ?? '');
-  if (resultDescription === null) {
-    return null;
-  }
-
   return {
     action_id: actionId.trim(),
     name: name.trim(),
     description: description.trim(),
     duration_ms: Number.parseInt(durationText, 10) || 0,
-    result_description: resultDescription.trim(),
   };
 }
 

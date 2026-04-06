@@ -5,7 +5,7 @@ import { buildPerceptionText } from '../domain/perception.js';
 import { clearActiveServerEvent } from '../domain/server-events.js';
 import type { WorldEngine } from '../engine/world-engine.js';
 import { WorldError } from '../types/api.js';
-import type { NodeId } from '../types/data-model.js';
+import type { ItemType, NodeId } from '../types/data-model.js';
 import type { ConversationRejectionReason } from '../types/conversation.js';
 import type { WorldEvent } from '../types/event.js';
 import type { ConversationIntervalTimer, IdleReminderTimer } from '../types/timer.js';
@@ -27,6 +27,7 @@ import {
   formatConversationServerEventClosingPromptMessage,
   formatIdleReminderMessage,
   formatItemUseCompletedMessage,
+  formatItemUseVenueRejectedMessage,
   formatMapInfoMessage,
   formatMovementCompletedMessage,
   formatPerceptionInfoMessage,
@@ -40,6 +41,7 @@ import {
   formatWorldLogConversationEnded,
   formatWorldLogItemUseCompleted,
   formatWorldLogItemUseStarted,
+  formatWorldLogItemUseVenueRejected,
   formatWorldLogMovementStarted,
   formatWorldLogWaitStarted,
   formatWorldLogConversationStarted,
@@ -144,7 +146,10 @@ export class DiscordEventHandler {
         await this.handleItemUseStarted(event.agent_name, event.item_name, event.completes_at);
         return;
       case 'item_use_completed':
-        await this.handleItemUseCompleted(event.agent_id, event.agent_name, event.item_name);
+        await this.handleItemUseCompleted(event.agent_id, event.agent_name, event.item_name, event.item_type);
+        return;
+      case 'item_use_venue_rejected':
+        await this.handleItemUseVenueRejected(event.agent_id, event.agent_name, event.item_name, event.venue_hints);
         return;
       case 'conversation_requested':
         await this.handleConversationRequested(
@@ -357,7 +362,6 @@ export class DiscordEventHandler {
         formatActionCompletedMessage(
           this.getWorldContext(event.agent_id),
           event.action_name,
-          event.result_description,
           this.buildActionEffectText(event) || undefined,
           perceptionText,
           this.skillName,
@@ -421,17 +425,37 @@ export class DiscordEventHandler {
     await this.bot.sendWorldLog(formatWorldLogItemUseStarted(agentName, itemName, completesAt, this.engine.config.timezone));
   }
 
-  private async handleItemUseCompleted(agentId: string, agentName: string, itemName: string): Promise<void> {
+  private async handleItemUseCompleted(agentId: string, agentName: string, itemName: string, itemType: ItemType): Promise<void> {
     const perceptionText = this.getPerceptionText(agentId);
     if (perceptionText) {
       const choicesText = this.getChoicesText(agentId);
       await this.sendToAgentClearingServerEvent(
         agentId,
-        formatItemUseCompletedMessage(this.getWorldContext(agentId), itemName, perceptionText, this.skillName, choicesText),
+        formatItemUseCompletedMessage(this.getWorldContext(agentId), itemName, itemType, perceptionText, this.skillName, choicesText),
       );
     }
 
     await this.bot.sendWorldLog(formatWorldLogItemUseCompleted(agentName, itemName));
+  }
+
+  private async handleItemUseVenueRejected(agentId: string, agentName: string, itemName: string, venueHints: string[]): Promise<void> {
+    const perceptionText = this.getPerceptionText(agentId);
+    if (perceptionText) {
+      const choicesText = this.getChoicesText(agentId);
+      await this.sendToAgentClearingServerEvent(
+        agentId,
+        formatItemUseVenueRejectedMessage(this.getWorldContext(agentId), itemName, venueHints, perceptionText, this.skillName, choicesText),
+      );
+    } else {
+      console.warn(`[handleItemUseVenueRejected] perceptionText unavailable for agent ${agentId}, sending minimal rejection`);
+      const hintsText = venueHints.length > 0 ? `${venueHints.join('、')} で利用できます。` : '';
+      await this.sendToAgentClearingServerEvent(
+        agentId,
+        `ここでは「${itemName}」を利用できません。${hintsText}`,
+      );
+    }
+
+    await this.bot.sendWorldLog(formatWorldLogItemUseVenueRejected(agentName, itemName));
   }
 
   private async handleConversationRequested(

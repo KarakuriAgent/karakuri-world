@@ -4,8 +4,8 @@ import { consumeItems, countInventorySlots, grantItems, hasRequiredItems } from 
 
 describe('inventory domain', () => {
   const items = [
-    { item_id: 'bread', name: 'パン', description: '焼きたて', stackable: true, max_stack: 2 },
-    { item_id: 'book', name: '本', description: '古書', stackable: false },
+    { item_id: 'bread', name: 'パン', description: '焼きたて', type: 'food' as const, stackable: true, max_stack: 2 },
+    { item_id: 'book', name: '本', description: '古書', type: 'general' as const, stackable: false },
   ];
 
   it('checks and consumes required items', () => {
@@ -49,7 +49,7 @@ describe('inventory domain', () => {
   it('counts unlimited stackable items as one slot', () => {
     expect(countInventorySlots(
       [{ item_id: 'coin', quantity: 3 }],
-      [{ item_id: 'coin', name: 'コイン', description: '通貨', stackable: true }],
+      [{ item_id: 'coin', name: 'コイン', description: '通貨', type: 'general' as const, stackable: true }],
     )).toBe(1);
   });
 });

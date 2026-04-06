@@ -25,7 +25,6 @@ export const actionConfigSchema = z
     name: z.string().min(1),
     description: z.string().min(1),
     duration_ms: positiveIntSchema,
-    result_description: z.string().min(1),
     hours: hoursSchema.optional(),
     cost_money: nonNegativeIntSchema.optional(),
     reward_money: nonNegativeIntSchema.optional(),
@@ -103,11 +102,14 @@ export const economyConfigSchema = z
   })
   .strict();
 
+export const itemTypeSchema = z.enum(['general', 'food', 'drink', 'venue']);
+
 export const itemConfigSchema = z
   .object({
     item_id: z.string().min(1),
     name: z.string().min(1),
     description: z.string().min(1),
+    type: itemTypeSchema,
     stackable: z.boolean().default(true),
     max_stack: positiveIntSchema.optional(),
   })
