@@ -1,6 +1,8 @@
 services:
   world:
-    build: .
+    build:
+      context: .
+      network: host
     restart: unless-stopped
     environment:
       # Required — docker compose up will fail if these are not set in .env
