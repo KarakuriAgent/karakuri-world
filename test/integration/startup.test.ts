@@ -123,6 +123,7 @@ function createRegistration(overrides: Partial<AgentRegistration> = {}): AgentRe
     api_key: 'karakuri_deadbeef',
     discord_bot_id: discordBotId,
     created_at: 1,
+    items: [],
     ...overrides,
   };
 }
@@ -164,7 +165,6 @@ describe('runtime startup', () => {
         publicBaseUrl: 'http://127.0.0.1',
         discordToken: 'fake-token',
         discordGuildId: 'fake-guild',
-        timezone: 'Asia/Tokyo',
         statusBoardDebounceMs: 3000,
       });
 
@@ -198,7 +198,6 @@ describe('runtime startup', () => {
         publicBaseUrl: 'http://127.0.0.1',
         discordToken: 'fake-token',
         discordGuildId: 'fake-guild',
-        timezone: 'Asia/Tokyo',
         statusBoardDebounceMs: 3000,
       }),
     ).rejects.toThrow('status board unavailable');
@@ -225,7 +224,6 @@ describe('runtime startup', () => {
           publicBaseUrl: 'http://127.0.0.1',
           discordToken: 'fake-token',
           discordGuildId: 'fake-guild',
-          timezone: 'Asia/Tokyo',
           statusBoardDebounceMs: 3000,
         }),
       ).rejects.toThrow(/EADDRINUSE|listen/i);

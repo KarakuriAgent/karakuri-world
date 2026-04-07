@@ -2,6 +2,11 @@ import type { NodeId } from './data-model.js';
 
 export type AgentState = 'idle' | 'moving' | 'in_action' | 'in_conversation';
 
+export interface AgentItem {
+  item_id: string;
+  quantity: number;
+}
+
 export interface AgentRegistration {
   agent_id: string;
   agent_name: string;
@@ -11,6 +16,8 @@ export interface AgentRegistration {
   created_at: number;
   discord_channel_id?: string;
   last_node_id?: NodeId;
+  money?: number;
+  items?: AgentItem[];
 }
 
 export interface LoggedInAgent {
@@ -25,4 +32,6 @@ export interface LoggedInAgent {
   pending_server_event_ids: string[];
   active_server_event_id: string | null;
   last_action_id: string | null;
+  money: number;
+  items: AgentItem[];
 }

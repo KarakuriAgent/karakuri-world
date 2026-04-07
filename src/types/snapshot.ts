@@ -1,4 +1,4 @@
-import type { AgentState } from './agent.js';
+import type { AgentItem, AgentState } from './agent.js';
 import type { ConversationClosureReason, ConversationStatus } from './conversation.js';
 import type { MapConfig, NodeId, WorldConfig } from './data-model.js';
 
@@ -13,7 +13,18 @@ export type AgentActivitySnapshot =
       type: 'wait';
       duration_ms: number;
       completes_at: number;
+    }
+  | {
+      type: 'item_use';
+      item_id: string;
+      item_name: string;
+      completes_at: number;
     };
+
+export interface SnapshotWeather {
+  condition: string;
+  temperature_celsius: number;
+}
 
 export interface AgentSnapshot {
   agent_id: string;
@@ -21,6 +32,8 @@ export interface AgentSnapshot {
   node_id: NodeId;
   state: AgentState;
   discord_channel_id: string;
+  money: number;
+  items: AgentItem[];
   movement?: {
     from_node_id: NodeId;
     to_node_id: NodeId;
@@ -51,6 +64,7 @@ export interface ServerEventSnapshot {
 export interface WorldSnapshot {
   world: WorldConfig;
   map: MapConfig;
+  weather?: SnapshotWeather;
   agents: AgentSnapshot[];
   conversations: ConversationSnapshot[];
   server_events: ServerEventSnapshot[];

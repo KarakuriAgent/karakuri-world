@@ -21,7 +21,7 @@ describe('actions integration', () => {
     engine.state.setNode(alice.agent_id, '1-1');
 
     const response = engine.executeAction(alice.agent_id, { action_id: 'greet-gatekeeper' });
-    expect(response.action_id).toBe('greet-gatekeeper');
+    expect(response.ok).toBe(true);
 
     vi.advanceTimersByTime(1200);
     expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('idle');

@@ -42,6 +42,63 @@ function checkNodeBounds(config: ServerConfig, issues: ConfigValidationIssue[]):
   }
 }
 
+function validateItemReferences(config: ServerConfig, issues: ConfigValidationIssue[]): void {
+  const itemIds = new Map<string, number>();
+  (config.items ?? []).forEach((item, itemIndex) => {
+    const previousIndex = itemIds.get(item.item_id);
+    if (previousIndex !== undefined) {
+      pushIssue(issues, `items[${itemIndex}].item_id`, `Duplicate item id "${item.item_id}".`);
+    } else {
+      itemIds.set(item.item_id, itemIndex);
+    }
+  });
+
+  const validateRequirements = (
+    action: { required_items?: Array<{ item_id: string }>; reward_items?: Array<{ item_id: string }> },
+    basePath: string,
+  ): void => {
+    action.required_items?.forEach((item, index) => {
+      if (!itemIds.has(item.item_id)) {
+        pushIssue(issues, `${basePath}.required_items[${index}].item_id`, `Unknown item id "${item.item_id}".`);
+      }
+    });
+    action.reward_items?.forEach((item, index) => {
+      if (!itemIds.has(item.item_id)) {
+        pushIssue(issues, `${basePath}.reward_items[${index}].item_id`, `Unknown item id "${item.item_id}".`);
+      }
+    });
+  };
+
+  config.map.buildings.forEach((building, buildingIndex) => {
+    building.actions.forEach((action, actionIndex) => {
+      validateRequirements(action, `map.buildings[${buildingIndex}].actions[${actionIndex}]`);
+    });
+  });
+  config.map.npcs.forEach((npc, npcIndex) => {
+    npc.actions.forEach((action, actionIndex) => {
+      validateRequirements(action, `map.npcs[${npcIndex}].actions[${actionIndex}]`);
+    });
+  });
+
+  const referencedItemIds = new Set<string>();
+  for (const building of config.map.buildings) {
+    for (const action of building.actions) {
+      action.required_items?.forEach((item) => referencedItemIds.add(item.item_id));
+    }
+  }
+  for (const npc of config.map.npcs) {
+    for (const action of npc.actions) {
+      action.required_items?.forEach((item) => referencedItemIds.add(item.item_id));
+    }
+  }
+
+  (config.items ?? []).forEach((item, itemIndex) => {
+    if (item.type === 'venue' && !referencedItemIds.has(item.item_id)) {
+      pushIssue(issues, `items[${itemIndex}]`, `Venue item "${item.item_id}" is not referenced by any action's required_items.`);
+    }
+  });
+}
+
 export function collectValidationIssues(config: ServerConfig): ConfigValidationIssue[] {
   const issues: ConfigValidationIssue[] = [];
   const actionOwners = new Map<string, string>();
@@ -51,6 +108,7 @@ export function collectValidationIssues(config: ServerConfig): ConfigValidationI
   const npcNodeOwners = new Map<string, { npcId: string; npcIndex: number }>();
 
   checkNodeBounds(config, issues);
+  validateItemReferences(config, issues);
 
   config.map.buildings.forEach((building, buildingIndex) => {
     const previousIndex = buildingIds.get(building.building_id);

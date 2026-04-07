@@ -1,6 +1,8 @@
 services:
   world:
-    build: .
+    build:
+      context: .
+      network: host
     restart: unless-stopped
     environment:
       # Required — docker compose up will fail if these are not set in .env
@@ -11,6 +13,7 @@ services:
       # CONFIG_PATH is constructed from CONFIG_FILE for the container-internal path
       CONFIG_PATH: /app/config/${CONFIG_FILE:-example.yaml}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      OPENWEATHERMAP_API_KEY: ${OPENWEATHERMAP_API_KEY:-}
       # Container-internal path (host path is set via volumes below)
       DATA_DIR: /app/data
       TZ: ${TZ:-Asia/Tokyo}

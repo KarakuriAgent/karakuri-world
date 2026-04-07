@@ -24,6 +24,8 @@ const STATUS_TRIGGERING_EVENTS = new Set<EventType>([
   'action_completed',
   'wait_started',
   'wait_completed',
+  'item_use_started',
+  'item_use_completed',
   'conversation_accepted',
   'conversation_message',
   'conversation_closing',
@@ -49,9 +51,9 @@ export class StatusBoard {
     private readonly engine: WorldEngine,
     private readonly channel: StatusBoardChannel,
     private readonly options: {
-      timezone: string;
       debounceMs: number;
       mapImage: Buffer | null;
+      onError?: (message: string) => void;
     },
   ) {}
 
@@ -173,6 +175,7 @@ export class StatusBoard {
     this.refreshPromise = this.performRefresh()
       .catch((error) => {
         console.error('Failed to refresh status board.', error);
+        this.options.onError?.(`ステータスボードの更新に失敗しました: ${error instanceof Error ? error.message : String(error)}`);
       })
       .finally(() => {
         const refreshCompletedAt = Date.now();
@@ -197,7 +200,7 @@ export class StatusBoard {
 
   private async performRefresh(): Promise<void> {
     const snapshot = this.engine.getSnapshot();
-    const messages = formatStatusBoard(snapshot, this.options.timezone);
+    const messages = formatStatusBoard(snapshot, this.engine.config.timezone);
     const existingMessages = await this.channel.fetchMessages();
     if (this.canSkipRefresh(messages, existingMessages)) {
       return;
@@ -238,8 +241,22 @@ export class StatusBoard {
       .list()
       .map((timer) => this.getTimerRefreshAt(timer, now))
       .filter((value): value is number => value !== null);
+    const weatherRefreshAt = this.getWeatherRefreshAt(now);
+    if (weatherRefreshAt !== null) {
+      candidates.push(weatherRefreshAt);
+    }
 
     return candidates.length > 0 ? Math.min(...candidates) : null;
+  }
+
+  private getWeatherRefreshAt(now: number): number | null {
+    if (!this.engine.config.weather) {
+      return null;
+    }
+
+    const intervalMs = this.engine.config.weather.interval_ms ?? 1_800_000;
+    const weather = this.engine.getWeatherState();
+    return (weather?.fetched_at ?? now) + intervalMs + 1;
   }
 
   private getTimerRefreshAt(timer: Timer, now: number): number | null {
@@ -248,6 +265,7 @@ export class StatusBoard {
         return this.getMovementRefreshAt(timer, now);
       case 'action':
       case 'wait':
+      case 'item_use':
       case 'conversation_interval':
       case 'conversation_turn':
         // +1ms: refresh after the timer fires so the snapshot reflects the completed state.

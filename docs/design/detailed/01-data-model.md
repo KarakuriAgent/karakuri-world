@@ -125,7 +125,6 @@ interface ActionConfig {
   name: string; // アクション名（例: "武器を鍛造する"）
   description: string; // アクションの説明
   duration_ms: number; // 所要時間（ミリ秒）
-  result_description: string; // 完了時にエージェントに通知するテキスト
 }
 ```
 
@@ -140,7 +139,7 @@ interface ActionConfig {
 
 ### 5.3 アクション結果
 
-アクション完了時、`result_description` のテキストがエージェントに通知される。世界の状態を変更する副作用は持たない。
+アクション完了時、アクション名を含む完了通知がエージェントに送られる。結果の解釈はエージェントに委ねられる。世界の状態を変更する副作用は持たない。
 
 ## 6. サーバー設定
 

@@ -10,6 +10,7 @@ import { DiscordBot } from './discord/bot.js';
 import { DiscordEventHandler } from './discord/event-handler.js';
 import { renderMapImage } from './discord/map-renderer.js';
 import { StatusBoard } from './discord/status-board.js';
+import { WeatherService } from './domain/weather.js';
 import { WorldEngine } from './engine/world-engine.js';
 import { McpServerManager } from './mcp/server.js';
 import { loadAgents, saveAgents } from './storage/agent-storage.js';
@@ -22,7 +23,7 @@ export interface RuntimeOptions {
   publicBaseUrl: string;
   discordToken: string;
   discordGuildId: string;
-  timezone: string;
+  openWeatherMapApiKey?: string;
   statusBoardDebounceMs: number;
 }
 
@@ -67,7 +68,7 @@ export function resolveRuntimeOptions(env: NodeJS.ProcessEnv = process.env): Run
     publicBaseUrl: getOptionalEnv(env.PUBLIC_BASE_URL) ?? `http://127.0.0.1:${port}`,
     discordToken: getRequiredEnv('DISCORD_TOKEN', env.DISCORD_TOKEN),
     discordGuildId: getRequiredEnv('DISCORD_GUILD_ID', env.DISCORD_GUILD_ID),
-    timezone: getOptionalEnv(env.TZ) ?? 'Asia/Tokyo',
+    openWeatherMapApiKey: getOptionalEnv(env.OPENWEATHERMAP_API_KEY),
     statusBoardDebounceMs,
   };
 }
@@ -86,17 +87,33 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
   let discordEventHandler: DiscordEventHandler | null = null;
   let adminCommandHandler: AdminCommandHandler | null = null;
   let statusBoard: StatusBoard | null = null;
+  let weatherService: WeatherService | null = null;
+
+  const reportError = (message: string) => {
+    void discordBot.sendErrorReport(message).catch((err) => {
+      console.error('Failed to send error report to Discord.', err);
+    });
+  };
 
   try {
+    if (config.weather && options.openWeatherMapApiKey) {
+      weatherService = new WeatherService(config.weather, options.openWeatherMapApiKey, reportError);
+      await weatherService.start();
+    } else if (config.weather) {
+      console.warn('Weather config is present but OPENWEATHERMAP_API_KEY is not set. Weather updates are disabled.');
+    }
+
     const engine = new WorldEngine(config, discordBot, {
       initialRegistrations,
       onRegistrationChanged: (agents) => saveAgents(agentsFilePath, agents),
+      weatherService: weatherService ?? undefined,
+      onError: reportError,
     });
     const adminRoleId = discordBot.getAdminRoleId();
     const worldAdminChannelId = discordBot.getWorldAdminChannelId();
     adminCommandHandler = new AdminCommandHandler(engine, options.publicBaseUrl, adminRoleId, worldAdminChannelId);
     await adminCommandHandler.register(discordBot);
-    discordEventHandler = new DiscordEventHandler(engine, discordBot, options.timezone);
+    discordEventHandler = new DiscordEventHandler(engine, discordBot);
     const statusBoardChannel = await discordBot.getStatusBoardChannel();
     let mapImage: Buffer | null = null;
     try {
@@ -105,9 +122,9 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
       console.error('Failed to render status board map image.', error);
     }
     statusBoard = new StatusBoard(engine, statusBoardChannel, {
-      timezone: options.timezone,
       debounceMs: options.statusBoardDebounceMs,
       mapImage,
+      onError: reportError,
     });
     const { app, injectWebSocket, websocketManager: createdWebsocketManager } = createApp(engine, {
       adminKey: options.adminKey,
@@ -158,6 +175,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
     const activeDiscordEventHandler = discordEventHandler!;
     const activeWebsocketManager = websocketManager!;
     const activeMcpServerManager = mcpServerManager!;
+    const activeWeatherService = weatherService;
 
     return {
       engine,
@@ -170,6 +188,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
         activeDiscordEventHandler.dispose();
         activeWebsocketManager.dispose();
         await activeMcpServerManager.close();
+        activeWeatherService?.stop();
         await new Promise<void>((resolve, reject) => {
           activeServer.close((error) => {
             if (error) {
@@ -184,6 +203,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
       },
     };
   } catch (error) {
+    weatherService?.stop();
     if (statusBoard) {
       await statusBoard.dispose({ postStoppedMessage: false }).catch((disposeError) => {
         console.error('Failed to dispose status board after startup error.', disposeError);
@@ -233,9 +253,7 @@ export async function main(): Promise<void> {
     void shutdown('SIGTERM');
   });
 
-  console.log(
-    `Karakuri World listening on port ${options.port}.`,
-  );
+  console.log(`Karakuri World listening on port ${options.port}.`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

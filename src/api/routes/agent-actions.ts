@@ -17,6 +17,10 @@ const actionSchema = z.object({
   action_id: z.string().min(1),
 });
 
+const useItemSchema = z.object({
+  item_id: z.string().min(1),
+});
+
 const waitSchema = z.object({
   duration: z.number().int().min(1).max(6),
 });
@@ -36,6 +40,11 @@ export function registerAgentActionRoutes(app: Hono<ApiEnv>, engine: WorldEngine
   app.post('/api/agents/action', agentAuth(engine), requireLoggedIn(engine), validateBody(actionSchema), (c) => {
     const agentId = c.get('agentId') as string;
     return c.json(engine.executeAction(agentId, c.get('validatedBody') as z.infer<typeof actionSchema>));
+  });
+
+  app.post('/api/agents/use-item', agentAuth(engine), requireLoggedIn(engine), validateBody(useItemSchema), (c) => {
+    const agentId = c.get('agentId') as string;
+    return c.json(engine.useItem(agentId, c.get('validatedBody') as z.infer<typeof useItemSchema>));
   });
 
   app.post('/api/agents/wait', agentAuth(engine), requireLoggedIn(engine), validateBody(waitSchema), (c) => {

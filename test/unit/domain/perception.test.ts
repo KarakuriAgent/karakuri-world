@@ -17,6 +17,8 @@ const loggedInAgents: LoggedInAgent[] = [
     pending_server_event_ids: [],
     active_server_event_id: null,
     last_action_id: null,
+    money: 1000,
+    items: [],
   },
   {
     agent_id: 'agent-bob',
@@ -30,12 +32,18 @@ const loggedInAgents: LoggedInAgent[] = [
     pending_server_event_ids: [],
     active_server_event_id: null,
     last_action_id: null,
+    money: 500,
+    items: [],
   },
 ];
 
 describe('perception', () => {
   it('builds structured perception data', () => {
-    const data = buildPerceptionData(loggedInAgents[0], loggedInAgents, createTestMapConfig(), 3);
+    const data = buildPerceptionData(loggedInAgents[0], loggedInAgents, createTestMapConfig(), 3, {
+      timezone: 'Asia/Tokyo',
+      now: new Date('2026-01-01T00:00:00Z'),
+      itemConfigs: [],
+    });
 
     expect(data.current_node.node_id).toBe('2-1');
     expect(data.agents).toEqual([
@@ -62,13 +70,19 @@ describe('perception', () => {
   });
 
   it('builds readable perception text', () => {
-    const data = buildPerceptionData(loggedInAgents[0], loggedInAgents, createTestMapConfig(), 3);
+    const data = buildPerceptionData(loggedInAgents[0], loggedInAgents, createTestMapConfig(), 3, {
+      timezone: 'Asia/Tokyo',
+      now: new Date('2026-01-01T00:00:00Z'),
+      itemConfigs: [],
+    });
     const text = buildPerceptionText(data);
 
+    expect(text).toContain('現在時刻: 2026-01-01 09:00 (Asia/Tokyo)');
     expect(text).toContain('現在地: 2-1');
     expect(text).toContain('近くのノード:');
     expect(text).toContain('Bob@3-2');
     expect(text).toContain('Gatekeeper@1-2');
     expect(text).toContain('Clockwork Workshop');
+    expect(text).toContain('所持金: 1,000円');
   });
 });

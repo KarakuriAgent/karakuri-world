@@ -2,6 +2,7 @@ import { buildPerceptionText } from '../domain/perception.js';
 import type { AgentState } from '../types/agent.js';
 import type { PerceptionResponse } from '../types/api.js';
 import type { ConversationClosureReason, ConversationRejectionReason } from '../types/conversation.js';
+import type { ItemType } from '../types/data-model.js';
 
 export interface WorldContext {
   worldName: string;
@@ -87,7 +88,7 @@ export function formatMovementCompletedMessage(
 export function formatActionCompletedMessage(
   ctx: WorldContext,
   actionName: string,
-  resultDescription: string,
+  effectText: string | undefined,
   perceptionText: string,
   skillName: string,
   choicesText?: string,
@@ -95,7 +96,23 @@ export function formatActionCompletedMessage(
   return joinSections(
     formatWorldContextHeader(ctx),
     `「${actionName}」が完了しました。`,
-    resultDescription,
+    effectText,
+    perceptionText,
+    formatActionPrompt(skillName, choicesText),
+  );
+}
+
+export function formatActionRejectedMessage(
+  ctx: WorldContext,
+  actionName: string,
+  rejectionReason: string,
+  perceptionText: string,
+  skillName: string,
+  choicesText?: string,
+): string {
+  return joinSections(
+    formatWorldContextHeader(ctx),
+    `「${actionName}」を実行できませんでした。${rejectionReason}。`,
     perceptionText,
     formatActionPrompt(skillName, choicesText),
   );
@@ -111,6 +128,53 @@ export function formatWaitCompletedMessage(
   const minutes = Math.floor(durationMs / 60000);
   const durationText = minutes >= 1 ? `${minutes}分間待機しました。` : `${Math.floor(durationMs / 1000)}秒間待機しました。`;
   return joinSections(formatWorldContextHeader(ctx), durationText, perceptionText, formatActionPrompt(skillName, choicesText));
+}
+
+function formatItemUseVerb(itemType: ItemType): string {
+  switch (itemType) {
+    case 'food':
+      return '食べました';
+    case 'drink':
+      return '飲みました';
+    case 'general':
+    case 'venue':
+      return '使用しました';
+  }
+}
+
+export function formatItemUseCompletedMessage(
+  ctx: WorldContext,
+  itemName: string,
+  itemType: ItemType,
+  perceptionText: string,
+  skillName: string,
+  choicesText?: string,
+): string {
+  return joinSections(
+    formatWorldContextHeader(ctx),
+    `「${itemName}」を${formatItemUseVerb(itemType)}。`,
+    perceptionText,
+    formatActionPrompt(skillName, choicesText),
+  );
+}
+
+export function formatItemUseVenueRejectedMessage(
+  ctx: WorldContext,
+  itemName: string,
+  venueHints: string[],
+  perceptionText: string,
+  skillName: string,
+  choicesText?: string,
+): string {
+  const hintsText = venueHints.length > 0
+    ? `${venueHints.join('、')} で利用できます。`
+    : '';
+  return joinSections(
+    formatWorldContextHeader(ctx),
+    `ここでは「${itemName}」を利用できません。${hintsText}`,
+    perceptionText,
+    formatActionPrompt(skillName, choicesText),
+  );
 }
 
 export function formatConversationRequestedMessage(
@@ -331,6 +395,16 @@ export function formatWorldLogAction(agentName: string, actionName: string): str
   return `${agentName} が「${actionName}」を終了しました`;
 }
 
+export function formatWorldLogActionRejected(agentName: string, actionName: string, rejectionReason: string): string {
+  if (rejectionReason.includes('所持金')) {
+    return `${agentName} が「${actionName}」を試みたが、所持金が足りなかった`;
+  }
+  if (rejectionReason.includes('アイテム')) {
+    return `${agentName} が「${actionName}」を試みたが、必要なアイテムが足りなかった`;
+  }
+  return `${agentName} が「${actionName}」を試みたが、実行できなかった`;
+}
+
 export function formatWorldLogWaitStarted(agentName: string, durationMs: number, completesAt: number, timezone: string): string {
   const minutes = Math.floor(durationMs / 60000);
   const durationText = minutes >= 1 ? `${minutes}分間` : `${Math.floor(durationMs / 1000)}秒間`;
@@ -341,6 +415,18 @@ export function formatWorldLogWait(agentName: string, durationMs: number): strin
   const minutes = Math.floor(durationMs / 60000);
   const durationText = minutes >= 1 ? `${minutes}分間` : `${Math.floor(durationMs / 1000)}秒間`;
   return `${agentName} が${durationText}待機しました`;
+}
+
+export function formatWorldLogItemUseStarted(agentName: string, itemName: string, completesAt: number, timezone: string): string {
+  return `${agentName} が「${itemName}」の使用を開始しました（${formatTime(completesAt, timezone)} 終了予定）`;
+}
+
+export function formatWorldLogItemUseCompleted(agentName: string, itemName: string): string {
+  return `${agentName} が「${itemName}」を使用しました`;
+}
+
+export function formatWorldLogItemUseVenueRejected(agentName: string, itemName: string): string {
+  return `${agentName} が「${itemName}」を使おうとしたが、ここでは利用できなかった`;
 }
 
 export function formatWorldLogConversationStarted(initiatorName: string, targetName: string): string {

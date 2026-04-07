@@ -20,6 +20,7 @@ import type {
 } from '../types/timer.js';
 import { cancelActiveAction } from './actions.js';
 import { cancelIdleReminder, startIdleReminder } from './idle-reminder.js';
+import { cancelActiveItemUse } from './use-item.js';
 import { clearActiveServerEvent } from './server-events.js';
 import { manhattanDistance } from './map-utils.js';
 import { cancelActiveWait } from './wait.js';
@@ -269,6 +270,7 @@ export function acceptConversation(engine: WorldEngine, agentId: string, request
   if (target.state === 'in_action') {
     cancelActiveAction(engine, target.agent_id);
     cancelActiveWait(engine, target.agent_id);
+    cancelActiveItemUse(engine, target.agent_id);
   }
 
   cancelIdleReminder(engine, initiator.agent_id);

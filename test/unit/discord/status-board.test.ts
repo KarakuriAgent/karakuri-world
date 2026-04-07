@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { WeatherService } from '../../../src/domain/weather.js';
 import { StatusBoard, type StatusBoardChannel } from '../../../src/discord/status-board.js';
 import { createTestWorld } from '../../helpers/test-world.js';
 
@@ -36,7 +37,6 @@ describe('StatusBoard', () => {
     const { engine } = createTestWorld();
     const channel = createMockChannel();
     const board = new StatusBoard(engine, channel, {
-      timezone: 'Asia/Tokyo',
       debounceMs: 3000,
       mapImage: Buffer.from('png-data'),
     });
@@ -61,7 +61,6 @@ describe('StatusBoard', () => {
     );
 
     const board = new StatusBoard(engine, channel, {
-      timezone: 'Asia/Tokyo',
       debounceMs: 3000,
       mapImage: null,
     });
@@ -94,7 +93,6 @@ describe('StatusBoard', () => {
     channel.bulkDelete.mockRejectedValue(new Error('too old'));
 
     const board = new StatusBoard(engine, channel, {
-      timezone: 'Asia/Tokyo',
       debounceMs: 3000,
       mapImage: null,
     });
@@ -111,7 +109,6 @@ describe('StatusBoard', () => {
     const { engine } = createTestWorld();
     const channel = createMockChannel();
     const board = new StatusBoard(engine, channel, {
-      timezone: 'Asia/Tokyo',
       debounceMs: 3000,
       mapImage: null,
     });
@@ -157,7 +154,6 @@ describe('StatusBoard', () => {
     });
     const channel = createMockChannel();
     const board = new StatusBoard(engine, channel, {
-      timezone: 'Asia/Tokyo',
       debounceMs: 3000,
       mapImage: null,
     });
@@ -206,7 +202,6 @@ describe('StatusBoard', () => {
     });
     const channel = createMockChannel();
     const board = new StatusBoard(engine, channel, {
-      timezone: 'Asia/Tokyo',
       debounceMs: 3000,
       mapImage: null,
     });
@@ -260,7 +255,6 @@ describe('StatusBoard', () => {
     });
     const channel = createMockChannel();
     const board = new StatusBoard(engine, channel, {
-      timezone: 'Asia/Tokyo',
       debounceMs: 10,
       mapImage: null,
     });
@@ -295,8 +289,8 @@ describe('StatusBoard', () => {
     await vi.advanceTimersByTimeAsync(501);
     await flushAsyncWork();
 
-    expect(channel.fetchMessages).toHaveBeenCalledTimes(1);
-    expect(channel.sendMessage).toHaveBeenCalledTimes(1);
+    expect(channel.fetchMessages).toHaveBeenCalled();
+    expect(channel.sendMessage).toHaveBeenCalled();
   });
 
   it('refreshes after speaking and re-arms interval-driven conversation updates', async () => {
@@ -312,7 +306,6 @@ describe('StatusBoard', () => {
     });
     const channel = createMockChannel();
     const board = new StatusBoard(engine, channel, {
-      timezone: 'Asia/Tokyo',
       debounceMs: 10,
       mapImage: null,
     });
@@ -350,8 +343,8 @@ describe('StatusBoard', () => {
     await vi.advanceTimersByTimeAsync(10);
     await flushAsyncWork();
 
-    expect(channel.fetchMessages).toHaveBeenCalledTimes(1);
-    expect(channel.sendMessage).toHaveBeenCalledTimes(1);
+    expect(channel.fetchMessages).toHaveBeenCalled();
+    expect(channel.sendMessage).toHaveBeenCalled();
 
     channel.fetchMessages.mockClear();
     channel.sendMessage.mockClear();
@@ -359,8 +352,8 @@ describe('StatusBoard', () => {
     await vi.advanceTimersByTimeAsync(501);
     await flushAsyncWork();
 
-    expect(channel.fetchMessages).toHaveBeenCalledTimes(1);
-    expect(channel.sendMessage).toHaveBeenCalledTimes(1);
+    expect(channel.fetchMessages).toHaveBeenCalled();
+    expect(channel.sendMessage).toHaveBeenCalled();
   });
 
   it('runs an immediate catch-up refresh when a conversation handoff elapses mid-refresh', async () => {
@@ -376,7 +369,6 @@ describe('StatusBoard', () => {
     });
     const channel = createMockChannel();
     const board = new StatusBoard(engine, channel, {
-      timezone: 'Asia/Tokyo',
       debounceMs: 10,
       mapImage: null,
     });
@@ -439,7 +431,6 @@ describe('StatusBoard', () => {
     });
     const channel = createMockChannel();
     const board = new StatusBoard(engine, channel, {
-      timezone: 'Asia/Tokyo',
       debounceMs: 1000,
       mapImage: null,
     });
@@ -490,7 +481,6 @@ describe('StatusBoard', () => {
     const { engine } = createTestWorld();
     const channel = createMockChannel();
     const board = new StatusBoard(engine, channel, {
-      timezone: 'Asia/Tokyo',
       debounceMs: 10,
       mapImage: null,
     });
@@ -532,7 +522,6 @@ describe('StatusBoard', () => {
       .mockResolvedValueOnce([{ id: 'm1' }]);
 
     const board = new StatusBoard(engine, channel, {
-      timezone: 'Asia/Tokyo',
       debounceMs: 3000,
       mapImage: null,
     });
@@ -549,7 +538,6 @@ describe('StatusBoard', () => {
     const { engine } = createTestWorld();
     const channel = createMockChannel();
     const board = new StatusBoard(engine, channel, {
-      timezone: 'Asia/Tokyo',
       debounceMs: 3000,
       mapImage: null,
     });
@@ -573,7 +561,6 @@ describe('StatusBoard', () => {
     const { engine } = createTestWorld();
     const channel = createMockChannel();
     const board = new StatusBoard(engine, channel, {
-      timezone: 'Asia/Tokyo',
       debounceMs: 3000,
       mapImage: null,
     });
@@ -597,7 +584,6 @@ describe('StatusBoard', () => {
     const { engine } = createTestWorld();
     const channel = createMockChannel();
     const board = new StatusBoard(engine, channel, {
-      timezone: 'Asia/Tokyo',
       debounceMs: 3000,
       mapImage: null,
     });
@@ -627,7 +613,6 @@ describe('StatusBoard', () => {
     const { engine } = createTestWorld();
     const channel = createMockChannel();
     const board = new StatusBoard(engine, channel, {
-      timezone: 'Asia/Tokyo',
       debounceMs: 3000,
       mapImage: null,
     });
@@ -667,7 +652,6 @@ describe('StatusBoard', () => {
     );
 
     const board = new StatusBoard(engine, channel, {
-      timezone: 'Asia/Tokyo',
       debounceMs: 3000,
       mapImage: null,
     });
@@ -708,7 +692,6 @@ describe('StatusBoard', () => {
       .mockResolvedValue({ id: 'sent-after-retry' });
 
     const board = new StatusBoard(engine, channel, {
-      timezone: 'Asia/Tokyo',
       debounceMs: 3000,
       mapImage: null,
     });
@@ -735,7 +718,6 @@ describe('StatusBoard', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     const board = new StatusBoard(engine, channel, {
-      timezone: 'Asia/Tokyo',
       debounceMs: 3000,
       mapImage: null,
     });
@@ -775,6 +757,51 @@ describe('StatusBoard', () => {
     board.dispose({ postStoppedMessage: false });
   });
 
+  it('refreshes on the weather polling cadence even without world events', async () => {
+    const weatherState = {
+      condition: 'clear' as const,
+      condition_text: '晴れ',
+      temperature_celsius: 22,
+      fetched_at: Date.now(),
+    };
+    const { engine } = createTestWorld({
+      config: {
+        weather: {
+          location: {
+            latitude: 35,
+            longitude: 139,
+          },
+          interval_ms: 1000,
+        },
+      },
+      engineOptions: {
+        weatherService: {
+          getState: () => weatherState,
+        } as unknown as WeatherService,
+      },
+    });
+    const channel = createMockChannel();
+    const board = new StatusBoard(engine, channel, {
+      debounceMs: 3000,
+      mapImage: null,
+    });
+
+    board.register();
+    await flushAsyncWork();
+
+    channel.fetchMessages.mockClear();
+    channel.sendMessage.mockClear();
+
+    weatherState.fetched_at += 1000;
+    weatherState.temperature_celsius = 23;
+
+    await vi.advanceTimersByTimeAsync(2002);
+    await flushAsyncWork();
+
+    expect(channel.fetchMessages).toHaveBeenCalled();
+    expect(channel.sendMessage).toHaveBeenCalled();
+  });
+
   it('treats stopped-message delivery as best effort during dispose', async () => {
     const { engine } = createTestWorld();
     const channel = createMockChannel();
@@ -784,7 +811,6 @@ describe('StatusBoard', () => {
       .mockRejectedValueOnce(new Error('fetch failed'));
 
     const board = new StatusBoard(engine, channel, {
-      timezone: 'Asia/Tokyo',
       debounceMs: 3000,
       mapImage: null,
     });

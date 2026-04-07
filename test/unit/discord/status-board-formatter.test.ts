@@ -1,8 +1,22 @@
 import { describe, expect, it } from 'vitest';
 
 import { formatStatusBoard } from '../../../src/discord/status-board-formatter.js';
+import type { AgentSnapshot } from '../../../src/types/snapshot.js';
 import type { WorldSnapshot } from '../../../src/types/snapshot.js';
 import { createTestConfig } from '../../helpers/test-map.js';
+
+function createAgentSnapshot(overrides: Partial<AgentSnapshot>): AgentSnapshot {
+  return {
+    agent_id: 'agent-1',
+    agent_name: 'agent',
+    node_id: '3-1',
+    state: 'idle',
+    discord_channel_id: 'channel',
+    money: 0,
+    items: [],
+    ...overrides,
+  };
+}
 
 function createSnapshot(): WorldSnapshot {
   const config = createTestConfig();
@@ -10,14 +24,14 @@ function createSnapshot(): WorldSnapshot {
     world: config.world,
     map: config.map,
     agents: [
-      {
+      createAgentSnapshot({
         agent_id: 'agent-1',
         agent_name: 'sakura',
         node_id: '3-4',
         state: 'idle',
         discord_channel_id: 'channel-1',
-      },
-      {
+      }),
+      createAgentSnapshot({
         agent_id: 'agent-2',
         agent_name: 'taro',
         node_id: '3-2',
@@ -29,8 +43,8 @@ function createSnapshot(): WorldSnapshot {
           path: ['3-1', '3-2', '3-3', '2-3', '2-4'],
           arrives_at: Date.UTC(2026, 0, 1, 5, 31, 0),
         },
-      },
-      {
+      }),
+      createAgentSnapshot({
         agent_id: 'agent-3',
         agent_name: 'hana',
         node_id: '2-4',
@@ -42,7 +56,7 @@ function createSnapshot(): WorldSnapshot {
           action_name: 'お茶を淹れる',
           completes_at: Date.UTC(2026, 0, 1, 5, 31, 0),
         },
-      },
+      }),
     ],
     conversations: [
       {
@@ -119,11 +133,13 @@ describe('formatStatusBoard', () => {
     const snapshot = createSnapshot();
     snapshot.agents = [
       {
-        agent_id: 'agent-1',
-        agent_name: 'sakura',
-        node_id: '3-2',
-        state: 'moving',
-        discord_channel_id: 'channel-1',
+        ...createAgentSnapshot({
+          agent_id: 'agent-1',
+          agent_name: 'sakura',
+          node_id: '3-2',
+          state: 'moving',
+          discord_channel_id: 'channel-1',
+        }),
       },
     ];
 
@@ -136,7 +152,7 @@ describe('formatStatusBoard', () => {
   it('shows a waiting agent under in_action state', () => {
     const snapshot = createSnapshot();
     snapshot.agents = [
-      {
+      createAgentSnapshot({
         agent_id: 'agent-1',
         agent_name: 'sakura',
         node_id: '3-2',
@@ -147,7 +163,7 @@ describe('formatStatusBoard', () => {
           duration_ms: 600_000,
           completes_at: Date.UTC(2026, 0, 1, 5, 40, 0),
         },
-      },
+      }),
     ];
 
     const [message] = formatStatusBoard(snapshot, 'Asia/Tokyo');
@@ -158,13 +174,13 @@ describe('formatStatusBoard', () => {
   it('shows a plain fallback for in_action agent without current_activity', () => {
     const snapshot = createSnapshot();
     snapshot.agents = [
-      {
+      createAgentSnapshot({
         agent_id: 'agent-1',
         agent_name: 'sakura',
         node_id: '3-2',
         state: 'in_action',
         discord_channel_id: 'channel-1',
-      },
+      }),
     ];
 
     const [message] = formatStatusBoard(snapshot, 'Asia/Tokyo');
@@ -195,19 +211,21 @@ describe('formatStatusBoard', () => {
 
   it('splits oversized sections into multiple Discord-safe messages', () => {
     const snapshot = createSnapshot();
-    snapshot.agents = Array.from({ length: 40 }, (_, index) => ({
-      agent_id: `agent-${index + 1}`,
-      agent_name: `agent-${String(index + 1).padStart(2, '0')}`,
-      node_id: '2-4',
-      state: 'in_action' as const,
-      discord_channel_id: `channel-${index + 1}`,
-      current_activity: {
-        type: 'action' as const,
-        action_id: `action-${index + 1}`,
-        action_name: `非常に長い行動名 ${index + 1} `.repeat(8).trim(),
-        completes_at: Date.UTC(2026, 0, 1, 5, 31, 0),
-      },
-    }));
+    snapshot.agents = Array.from({ length: 40 }, (_, index) =>
+      createAgentSnapshot({
+        agent_id: `agent-${index + 1}`,
+        agent_name: `agent-${String(index + 1).padStart(2, '0')}`,
+        node_id: '2-4',
+        state: 'in_action',
+        discord_channel_id: `channel-${index + 1}`,
+        current_activity: {
+          type: 'action',
+          action_id: `action-${index + 1}`,
+          action_name: `非常に長い行動名 ${index + 1} `.repeat(8).trim(),
+          completes_at: Date.UTC(2026, 0, 1, 5, 31, 0),
+        },
+      }),
+    );
 
     const messages = formatStatusBoard(snapshot, 'Asia/Tokyo');
 

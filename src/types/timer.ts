@@ -1,9 +1,10 @@
-import type { NodeId } from './data-model.js';
+import type { ItemType, NodeId } from './data-model.js';
 
 export type TimerType =
   | 'movement'
   | 'action'
   | 'wait'
+  | 'item_use'
   | 'conversation_accept'
   | 'conversation_turn'
   | 'conversation_interval'
@@ -38,6 +39,14 @@ export interface WaitTimer extends TimerBase {
   duration_ms: number;
 }
 
+export interface ItemUseTimer extends TimerBase {
+  type: 'item_use';
+  agent_id: string;
+  item_id: string;
+  item_name: string;
+  item_type: ItemType;
+}
+
 export interface ConversationAcceptTimer extends TimerBase {
   type: 'conversation_accept';
   conversation_id: string;
@@ -70,6 +79,7 @@ export type Timer =
   | MovementTimer
   | ActionTimer
   | WaitTimer
+  | ItemUseTimer
   | ConversationAcceptTimer
   | ConversationTurnTimer
   | ConversationIntervalTimer

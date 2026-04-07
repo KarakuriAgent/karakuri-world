@@ -1,14 +1,16 @@
 import type { WorldEngine } from '../engine/world-engine.js';
-import type { ActionRequest, ActionResponse, AvailableActionSummary } from '../types/api.js';
-import { WorldError } from '../types/api.js';
-import type { LoggedInAgent } from '../types/agent.js';
-import type { ActionConfig, BuildingConfig, NpcConfig } from '../types/data-model.js';
+import type { ActionRequest, AvailableActionSummary, NotificationAcceptedResponse } from '../types/api.js';
+import { WorldError, createNotificationAcceptedResponse } from '../types/api.js';
+import type { AgentItem, LoggedInAgent } from '../types/agent.js';
+import type { ActionConfig, BuildingConfig, ItemConfig, NpcConfig } from '../types/data-model.js';
 import type { ActionTimer } from '../types/timer.js';
 import { cancelIdleReminder, startIdleReminder } from './idle-reminder.js';
+import { consumeItems, grantItems, hasRequiredItems } from './inventory.js';
 import { findAdjacentNpcs, findBuildingByInteriorNode } from './map-utils.js';
 import { getAgentCurrentNode } from './movement.js';
+import { isWithinHours } from './time-utils.js';
 
-type ActionSource =
+export type ActionSource =
   | {
       type: 'building';
       id: string;
@@ -39,12 +41,19 @@ function requireActionReadyAgent(engine: WorldEngine, agentId: string): LoggedIn
   return agent;
 }
 
+function toAgentItems(items: ActionConfig['required_items'] | undefined): AgentItem[] | undefined {
+  return items?.map((item) => ({ item_id: item.item_id, quantity: item.quantity }));
+}
+
 function mapActionSource(source: ActionSource): AvailableActionSummary {
   return {
     action_id: source.action.action_id,
     name: source.action.name,
     description: source.action.description,
     duration_ms: source.action.duration_ms,
+    cost_money: source.action.cost_money,
+    reward_money: source.action.reward_money,
+    required_items: toAgentItems(source.action.required_items),
     source: {
       type: source.type,
       id: source.id,
@@ -53,8 +62,42 @@ function mapActionSource(source: ActionSource): AvailableActionSummary {
   };
 }
 
-export function formatActionSourceLine(source: ActionSource): string {
-  return `${source.action.name} (action_id: ${source.action.action_id}, ${Math.floor(source.action.duration_ms / 1000)}秒) - ${source.name}`;
+function formatRequiredItems(items: ReadonlyArray<AgentItem> | undefined, itemConfigs: ReadonlyArray<ItemConfig>): string {
+  if (!items || items.length === 0) {
+    return '';
+  }
+
+  const itemNames = new Map(itemConfigs.map((item) => [item.item_id, item.name]));
+  return items
+    .map((item) => `${itemNames.get(item.item_id) ?? item.item_id}×${item.quantity}`)
+    .join(', ');
+}
+
+export function formatActionSourceLine(source: ActionSource, itemConfigs: ReadonlyArray<ItemConfig> = []): string {
+  const details = [`action_id: ${source.action.action_id}`, `${Math.floor(source.action.duration_ms / 1000)}秒`];
+  if (source.action.cost_money !== undefined) {
+    details.push(`${source.action.cost_money.toLocaleString('ja-JP')}円`);
+  }
+  if (source.action.reward_money !== undefined) {
+    details.push(`報酬: ${source.action.reward_money.toLocaleString('ja-JP')}円`);
+  }
+  const requiredItems = formatRequiredItems(toAgentItems(source.action.required_items), itemConfigs);
+  if (requiredItems) {
+    details.push(`必要: ${requiredItems}`);
+  }
+  return `${source.action.name} (${details.join(', ')}) - ${source.name}`;
+}
+
+function isActionSourceAvailable(engine: WorldEngine, source: ActionSource, now: Date): boolean {
+  return isWithinHours(source.action.hours, now, engine.config.timezone);
+}
+
+function isBuildingAvailable(engine: WorldEngine, building: BuildingConfig, now: Date): boolean {
+  return isWithinHours(building.hours, now, engine.config.timezone);
+}
+
+function isNpcAvailable(engine: WorldEngine, npc: NpcConfig, now: Date): boolean {
+  return isWithinHours(npc.hours, now, engine.config.timezone);
 }
 
 export function getAvailableActionSources(engine: WorldEngine, agentId: string): ActionSource[] {
@@ -63,29 +106,36 @@ export function getAvailableActionSources(engine: WorldEngine, agentId: string):
     throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
   }
 
+  const now = new Date();
   const sources: ActionSource[] = [];
   const currentNodeId = getAgentCurrentNode(engine, agent);
   const building = findBuildingByInteriorNode(currentNodeId, engine.config.map);
-  if (building) {
+  if (building && isBuildingAvailable(engine, building, now)) {
     sources.push(
-      ...building.actions.map((action) => ({
-        type: 'building' as const,
-        id: building.building_id,
-        name: building.name,
-        action,
-      })),
+      ...building.actions
+        .map((action) => ({
+          type: 'building' as const,
+          id: building.building_id,
+          name: building.name,
+          action,
+        }))
+        .filter((source) => isActionSourceAvailable(engine, source, now)),
     );
   }
 
   sources.push(
-    ...findAdjacentNpcs(currentNodeId, engine.config.map).flatMap((npc) =>
-      npc.actions.map((action) => ({
-        type: 'npc' as const,
-        id: npc.npc_id,
-        name: npc.name,
-        action,
-      })),
-    ),
+    ...findAdjacentNpcs(currentNodeId, engine.config.map)
+      .filter((npc) => isNpcAvailable(engine, npc, now))
+      .flatMap((npc) =>
+        npc.actions
+          .map((action) => ({
+            type: 'npc' as const,
+            id: npc.npc_id,
+            name: npc.name,
+            action,
+          }))
+          .filter((source) => isActionSourceAvailable(engine, source, now)),
+      ),
   );
 
   return sources
@@ -94,6 +144,7 @@ export function getAvailableActionSources(engine: WorldEngine, agentId: string):
 }
 
 function lookupActionById(engine: WorldEngine, actionId: string): ActionSource | null {
+
   const buildingAction = engine.config.map.buildings
     .flatMap((building: BuildingConfig) =>
       building.actions.map((action) => ({
@@ -128,10 +179,22 @@ export function getAvailableActions(engine: WorldEngine, agentId: string): { act
   };
 }
 
-export function validateAction(engine: WorldEngine, agentId: string, request: ActionRequest): {
-  agent: LoggedInAgent;
-  source: ActionSource;
-} {
+export function validateAction(
+  engine: WorldEngine,
+  agentId: string,
+  request: ActionRequest,
+):
+  | {
+      agent: LoggedInAgent;
+      source: ActionSource;
+      rejected?: false;
+    }
+  | {
+      agent: LoggedInAgent;
+      source: ActionSource;
+      rejected: true;
+      rejection_reason: string;
+    } {
   const agent = requireActionReadyAgent(engine, agentId);
   const action = lookupActionById(engine, request.action_id);
   if (!action) {
@@ -145,19 +208,49 @@ export function validateAction(engine: WorldEngine, agentId: string, request: Ac
     throw new WorldError(400, 'action_not_available', `Action is not currently available: ${request.action_id}`);
   }
 
+  if ((availableAction.action.cost_money ?? 0) > agent.money) {
+    return {
+      agent,
+      source: availableAction,
+      rejected: true,
+      rejection_reason: `所持金が足りません（必要: ${(availableAction.action.cost_money ?? 0).toLocaleString('ja-JP')}円、所持金: ${agent.money.toLocaleString('ja-JP')}円）`,
+    };
+  }
+
+  if (!hasRequiredItems(agent.items, availableAction.action.required_items)) {
+    const requiredItems = formatRequiredItems(toAgentItems(availableAction.action.required_items), engine.config.items ?? []);
+    return {
+      agent,
+      source: availableAction,
+      rejected: true,
+      rejection_reason: `必要なアイテムが足りません（必要: ${requiredItems}）`,
+    };
+  }
+
   return {
     agent,
     source: availableAction,
   };
 }
 
-export function executeAction(engine: WorldEngine, agentId: string, request: ActionRequest): ActionResponse {
-  const { agent, source } = validateAction(engine, agentId, request);
-  return executeValidatedAction(engine, agent, source);
-}
-
-export function executeValidatedAction(engine: WorldEngine, agent: LoggedInAgent, source: ActionSource): ActionResponse {
+export function executeValidatedAction(
+  engine: WorldEngine,
+  agent: LoggedInAgent,
+  source: ActionSource,
+): NotificationAcceptedResponse {
   const completesAt = Date.now() + source.action.duration_ms;
+  const costMoney = source.action.cost_money ?? 0;
+  const itemsConsumed = toAgentItems(source.action.required_items) ?? [];
+
+  if (costMoney > 0) {
+    engine.state.addMoney(agent.agent_id, -costMoney);
+  }
+  if (itemsConsumed.length > 0) {
+    engine.state.setItems(agent.agent_id, consumeItems(agent.items, source.action.required_items));
+  }
+  if (costMoney > 0 || itemsConsumed.length > 0) {
+    engine.persistLoggedInAgentState(agent.agent_id);
+  }
 
   cancelIdleReminder(engine, agent.agent_id);
   engine.timerManager.cancelByType(agent.agent_id, 'action');
@@ -179,13 +272,11 @@ export function executeValidatedAction(engine: WorldEngine, agent: LoggedInAgent
     action_id: source.action.action_id,
     action_name: source.action.name,
     completes_at: completesAt,
+    ...(costMoney > 0 ? { cost_money: costMoney } : {}),
+    ...(itemsConsumed.length > 0 ? { items_consumed: itemsConsumed } : {}),
   });
 
-  return {
-    action_id: source.action.action_id,
-    action_name: source.action.name,
-    completes_at: completesAt,
-  };
+  return createNotificationAcceptedResponse();
 }
 
 export function cancelActiveAction(engine: WorldEngine, agentId: string): ActionTimer | null {
@@ -213,6 +304,34 @@ export function handleActionCompleted(engine: WorldEngine, timer: ActionTimer): 
 
   const source = lookupActionById(engine, timer.action_id);
   if (!source) {
+    const message = `Action config not found for completed action: ${timer.action_id} (agent: ${timer.agent_id}). Recovering to idle.`;
+    console.warn(message);
+    engine.reportError(`アクション設定が見つかりません: ${timer.action_id} (agent: ${timer.agent_id})。idle に復帰しました。`);
+    engine.state.setState(timer.agent_id, 'idle');
+    startIdleReminder(engine, timer.agent_id);
+    return;
+  }
+
+  const rewardMoney = source.action.reward_money ?? 0;
+  if (rewardMoney > 0) {
+    engine.state.addMoney(timer.agent_id, rewardMoney);
+  }
+
+  const granted = grantItems(
+    agent.items,
+    source.action.reward_items,
+    engine.config.items ?? [],
+    engine.config.economy?.max_inventory_slots,
+  );
+  if ((source.action.reward_items?.length ?? 0) > 0) {
+    engine.state.setItems(timer.agent_id, granted.items);
+  }
+  if (rewardMoney > 0 || (source.action.reward_items?.length ?? 0) > 0) {
+    engine.persistLoggedInAgentState(timer.agent_id);
+  }
+
+  const updatedAgent = engine.state.getLoggedIn(timer.agent_id);
+  if (!updatedAgent) {
     return;
   }
 
@@ -220,10 +339,18 @@ export function handleActionCompleted(engine: WorldEngine, timer: ActionTimer): 
   startIdleReminder(engine, timer.agent_id);
   engine.emitEvent({
     type: 'action_completed',
-    agent_id: agent.agent_id,
-    agent_name: agent.agent_name,
+    agent_id: updatedAgent.agent_id,
+    agent_name: updatedAgent.agent_name,
     action_id: source.action.action_id,
     action_name: source.action.name,
-    result_description: source.action.result_description,
+    ...(source.action.cost_money !== undefined || rewardMoney > 0
+      ? {
+          ...(source.action.cost_money !== undefined ? { cost_money: source.action.cost_money } : {}),
+          ...(rewardMoney > 0 ? { reward_money: rewardMoney } : {}),
+          money_balance: updatedAgent.money,
+        }
+      : {}),
+    ...(granted.granted.length > 0 ? { items_granted: granted.granted } : {}),
+    ...(granted.dropped.length > 0 ? { items_dropped: granted.dropped } : {}),
   });
 }

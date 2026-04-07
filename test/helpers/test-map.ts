@@ -28,7 +28,6 @@ export function createTestMapConfig(): MapConfig {
             name: 'Gears polishing',
             description: 'Carefully polish the workshop gears.',
             duration_ms: 1500,
-            result_description: 'The workshop gleams with fresh polish.',
           },
         ],
       },
@@ -45,7 +44,6 @@ export function createTestMapConfig(): MapConfig {
             name: 'Greet the gatekeeper',
             description: 'Offer a respectful greeting.',
             duration_ms: 1200,
-            result_description: 'The gatekeeper returns the greeting with a nod.',
           },
         ],
       },
@@ -60,6 +58,7 @@ export function createTestConfig(overrides: Partial<ServerConfig> = {}): ServerC
       description: 'A compact map used by automated tests.',
       skill_name: 'test-skill',
     },
+    timezone: 'Asia/Tokyo',
     movement: {
       duration_ms: 1000,
     },
@@ -88,6 +87,9 @@ export function createTestConfig(overrides: Partial<ServerConfig> = {}): ServerC
     perception: { ...config.perception, ...overrides.perception },
     spawn: { ...config.spawn, ...overrides.spawn },
     map: overrides.map ?? config.map,
+    economy: overrides.economy ?? config.economy,
+    weather: overrides.weather ?? config.weather,
+    items: overrides.items ?? config.items,
     idle_reminder: overrides.idle_reminder === undefined ? config.idle_reminder : overrides.idle_reminder,
   };
 }

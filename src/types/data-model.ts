@@ -16,12 +16,26 @@ export interface NodeConfig {
   npc_id?: string;
 }
 
+export interface Hours {
+  open: string;
+  close: string;
+}
+
+export interface ItemRequirement {
+  item_id: string;
+  quantity: number;
+}
+
 export interface ActionConfig {
   action_id: string;
   name: string;
   description: string;
   duration_ms: number;
-  result_description: string;
+  hours?: Hours;
+  cost_money?: number;
+  reward_money?: number;
+  required_items?: ItemRequirement[];
+  reward_items?: ItemRequirement[];
 }
 
 export interface BuildingConfig {
@@ -32,6 +46,7 @@ export interface BuildingConfig {
   interior_nodes: NodeId[];
   door_nodes: NodeId[];
   actions: ActionConfig[];
+  hours?: Hours;
 }
 
 export interface NpcConfig {
@@ -40,6 +55,7 @@ export interface NpcConfig {
   description: string;
   node_id: NodeId;
   actions: ActionConfig[];
+  hours?: Hours;
 }
 
 export interface MapConfig {
@@ -79,12 +95,43 @@ export interface IdleReminderConfig {
   interval_ms: number;
 }
 
+export interface WeatherLocation {
+  latitude: number;
+  longitude: number;
+}
+
+export interface WeatherConfig {
+  location: WeatherLocation;
+  interval_ms: number;
+}
+
+export interface EconomyConfig {
+  initial_money?: number;
+  max_inventory_slots?: number;
+  item_use_duration_ms?: number;
+}
+
+export type ItemType = 'general' | 'food' | 'drink' | 'venue';
+
+export interface ItemConfig {
+  item_id: string;
+  name: string;
+  description: string;
+  type: ItemType;
+  stackable: boolean;
+  max_stack?: number;
+}
+
 export interface ServerConfig {
   world: WorldConfig;
+  timezone: string;
   movement: MovementConfig;
   conversation: ConversationConfig;
   perception: PerceptionConfig;
   spawn: SpawnConfig;
   map: MapConfig;
   idle_reminder?: IdleReminderConfig;
+  weather?: WeatherConfig;
+  economy?: EconomyConfig;
+  items?: ItemConfig[];
 }

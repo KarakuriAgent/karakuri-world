@@ -1,14 +1,35 @@
 import { z } from 'zod';
 
 const nodeIdSchema = z.string().regex(/^\d+-\d+$/);
+const hoursTimeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+const nonNegativeIntSchema = z.number().int().min(0);
+const positiveIntSchema = z.number().int().min(1);
+
+export const hoursSchema = z
+  .object({
+    open: hoursTimeSchema,
+    close: hoursTimeSchema,
+  })
+  .strict();
+
+export const itemRequirementSchema = z
+  .object({
+    item_id: z.string().min(1),
+    quantity: positiveIntSchema,
+  })
+  .strict();
 
 export const actionConfigSchema = z
   .object({
     action_id: z.string().min(1),
     name: z.string().min(1),
     description: z.string().min(1),
-    duration_ms: z.number().int().min(1),
-    result_description: z.string().min(1),
+    duration_ms: positiveIntSchema,
+    hours: hoursSchema.optional(),
+    cost_money: nonNegativeIntSchema.optional(),
+    reward_money: nonNegativeIntSchema.optional(),
+    required_items: z.array(itemRequirementSchema).optional(),
+    reward_items: z.array(itemRequirementSchema).optional(),
   })
   .strict();
 
@@ -30,6 +51,7 @@ export const buildingConfigSchema = z
     interior_nodes: z.array(nodeIdSchema).min(1),
     door_nodes: z.array(nodeIdSchema).min(1),
     actions: z.array(actionConfigSchema),
+    hours: hoursSchema.optional(),
   })
   .strict();
 
@@ -40,13 +62,14 @@ export const npcConfigSchema = z
     description: z.string().min(1),
     node_id: nodeIdSchema,
     actions: z.array(actionConfigSchema),
+    hours: hoursSchema.optional(),
   })
   .strict();
 
 export const mapConfigSchema = z
   .object({
-    rows: z.number().int().min(1),
-    cols: z.number().int().min(1),
+    rows: positiveIntSchema,
+    cols: positiveIntSchema,
     nodes: z.record(nodeIdSchema, nodeConfigSchema),
     buildings: z.array(buildingConfigSchema),
     npcs: z.array(npcConfigSchema),
@@ -55,9 +78,54 @@ export const mapConfigSchema = z
 
 export const idleReminderConfigSchema = z
   .object({
-    interval_ms: z.number().int().min(1),
+    interval_ms: positiveIntSchema,
   })
   .strict();
+
+export const weatherConfigSchema = z
+  .object({
+    location: z
+      .object({
+        latitude: z.number().min(-90).max(90),
+        longitude: z.number().min(-180).max(180),
+      })
+      .strict(),
+    interval_ms: positiveIntSchema.default(1_800_000),
+  })
+  .strict();
+
+export const economyConfigSchema = z
+  .object({
+    initial_money: nonNegativeIntSchema.optional(),
+    max_inventory_slots: positiveIntSchema.optional(),
+    item_use_duration_ms: positiveIntSchema.optional(),
+  })
+  .strict();
+
+export const itemTypeSchema = z.enum(['general', 'food', 'drink', 'venue']);
+
+export const itemConfigSchema = z
+  .object({
+    item_id: z.string().min(1),
+    name: z.string().min(1),
+    description: z.string().min(1),
+    type: itemTypeSchema,
+    stackable: z.boolean().default(true),
+    max_stack: positiveIntSchema.optional(),
+  })
+  .strict();
+
+const timezoneSchema = z.string().default('Asia/Tokyo').refine(
+  (timezone) => {
+    try {
+      Intl.DateTimeFormat(undefined, { timeZone: timezone });
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  { message: 'Invalid IANA timezone' },
+);
 
 export const serverConfigSchema = z
   .object({
@@ -68,17 +136,18 @@ export const serverConfigSchema = z
         skill_name: z.string().min(1),
       })
       .strict(),
+    timezone: timezoneSchema,
     movement: z
       .object({
-        duration_ms: z.number().int().min(1),
+        duration_ms: positiveIntSchema,
       })
       .strict(),
     conversation: z
       .object({
-        max_turns: z.number().int().min(1),
-        interval_ms: z.number().int().min(1),
-        accept_timeout_ms: z.number().int().min(1),
-        turn_timeout_ms: z.number().int().min(1),
+        max_turns: positiveIntSchema,
+        interval_ms: positiveIntSchema,
+        accept_timeout_ms: positiveIntSchema,
+        turn_timeout_ms: positiveIntSchema,
       })
       .strict(),
     perception: z
@@ -93,5 +162,8 @@ export const serverConfigSchema = z
       .strict(),
     map: mapConfigSchema,
     idle_reminder: idleReminderConfigSchema.optional(),
+    weather: weatherConfigSchema.optional(),
+    economy: economyConfigSchema.optional(),
+    items: z.array(itemConfigSchema).optional(),
   })
   .strict();

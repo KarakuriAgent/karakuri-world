@@ -124,7 +124,7 @@ Timer 発火:
 2. `action_completed` イベントを発行
 3. 通知を配信
 
-アクション完了による世界状態の変更（副作用）は発生しない。結果は `ActionConfig.result_description` のテキスト通知のみである（01-data-model.md セクション5.3参照）。
+アクション完了による世界状態の変更（副作用）は発生しない。結果はアクション名を含む完了通知のみであり、結果の解釈はエージェントに委ねられる（01-data-model.md セクション5.3参照）。
 
 ### 4.2 イベント発行
 
@@ -135,7 +135,6 @@ Timer 発火:
   agent_id: string,
   action_id: string,
   action_name: string,
-  result_description: string  // ActionConfig.result_description
 }
 ```
 
@@ -148,7 +147,6 @@ Timer 発火:
 アクション完了通知として以下を含める:
 
 - アクション名
-- `result_description`（アクション結果の説明テキスト）
 - 知覚範囲内の情報（03-world-engine.md セクション3.2参照）
 - 行動促進（次のアクションの指示）
 

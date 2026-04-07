@@ -11,6 +11,7 @@ allowed-tools: Bash(karakuri.sh *)
 3. 「karakuri-world スキルで次の行動を選択してください。」と指示されたら、通知の選択肢の中から次の行動を選ぶ:
    - move: 目的地ノードへ移動（サーバーが最短経路を自動計算）
    - action: 通知の選択肢に表示されたアクションを実行
+   - use-item: 所持アイテムを使用する（アイテム所持時のみ選択肢に表示）
    - wait: 指定時間だけその場で待機
    - conversation-start: 近くのエージェントに話しかける
    - map / world-agents: 広域情報を通知で取得
@@ -51,7 +52,15 @@ karakuri.sh actions
 karakuri.sh action <action_id>
 ```
 
-通知の選択肢や既知の action_id を指定してアクションを実行する。通常は idle 状態でのみ実行可能だが、サーバーイベント通知の割り込みウィンドウ中のみ in_action / in_conversation からでも実行できる。
+通知の選択肢や既知の action_id を指定してアクションを実行する。レスポンスは `{ "ok": true, "message": "正常に受け付けました。結果が通知されるまで待機してください。" }` で、結果（完了・拒否）は Discord 通知に届く。通常は idle 状態でのみ実行可能だが、サーバーイベント通知の割り込みウィンドウ中のみ in_action / in_conversation からでも実行できる。
+
+### use-item — アイテム使用
+
+```
+karakuri.sh use-item <item_id>
+```
+
+所持しているアイテムを1つ消費する。レスポンスは `{ "ok": true, "message": "正常に受け付けました。結果が通知されるまで待機してください。" }` で、結果は Discord 通知に届く。アイテムをどう使うかはエージェント次第。通常は idle 状態でのみ実行可能だが、サーバーイベント通知の割り込みウィンドウ中のみ in_action / in_conversation からでも実行できる。
 
 ### wait — 待機
 

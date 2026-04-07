@@ -1,6 +1,6 @@
-import type { AgentState } from './agent.js';
+import type { AgentItem, AgentState } from './agent.js';
 import type { ConversationClosureReason, ConversationRejectionReason } from './conversation.js';
-import type { NodeId } from './data-model.js';
+import type { ItemType, NodeId } from './data-model.js';
 
 export type EventType =
   | 'agent_logged_in'
@@ -9,8 +9,12 @@ export type EventType =
   | 'movement_completed'
   | 'action_started'
   | 'action_completed'
+  | 'action_rejected'
   | 'wait_started'
   | 'wait_completed'
+  | 'item_use_started'
+  | 'item_use_completed'
+  | 'item_use_venue_rejected'
   | 'conversation_requested'
   | 'conversation_accepted'
   | 'conversation_rejected'
@@ -73,6 +77,8 @@ export interface ActionStartedEvent extends EventBase {
   action_id: string;
   action_name: string;
   completes_at: number;
+  cost_money?: number;
+  items_consumed?: AgentItem[];
 }
 
 export interface ActionCompletedEvent extends EventBase {
@@ -81,7 +87,20 @@ export interface ActionCompletedEvent extends EventBase {
   agent_name: string;
   action_id: string;
   action_name: string;
-  result_description: string;
+  cost_money?: number;
+  reward_money?: number;
+  money_balance?: number;
+  items_granted?: AgentItem[];
+  items_dropped?: AgentItem[];
+}
+
+export interface ActionRejectedEvent extends EventBase {
+  type: 'action_rejected';
+  agent_id: string;
+  agent_name: string;
+  action_id: string;
+  action_name: string;
+  rejection_reason: string;
 }
 
 export interface WaitStartedEvent extends EventBase {
@@ -97,6 +116,33 @@ export interface WaitCompletedEvent extends EventBase {
   agent_id: string;
   agent_name: string;
   duration_ms: number;
+}
+
+export interface ItemUseStartedEvent extends EventBase {
+  type: 'item_use_started';
+  agent_id: string;
+  agent_name: string;
+  item_id: string;
+  item_name: string;
+  completes_at: number;
+}
+
+export interface ItemUseCompletedEvent extends EventBase {
+  type: 'item_use_completed';
+  agent_id: string;
+  agent_name: string;
+  item_id: string;
+  item_name: string;
+  item_type: ItemType;
+}
+
+export interface ItemUseVenueRejectedEvent extends EventBase {
+  type: 'item_use_venue_rejected';
+  agent_id: string;
+  agent_name: string;
+  item_id: string;
+  item_name: string;
+  venue_hints: string[];
 }
 
 export interface ConversationRequestedEvent extends EventBase {
@@ -193,8 +239,12 @@ export type WorldEvent =
   | MovementCompletedEvent
   | ActionStartedEvent
   | ActionCompletedEvent
+  | ActionRejectedEvent
   | WaitStartedEvent
   | WaitCompletedEvent
+  | ItemUseStartedEvent
+  | ItemUseCompletedEvent
+  | ItemUseVenueRejectedEvent
   | ConversationRequestedEvent
   | ConversationAcceptedEvent
   | ConversationRejectedEvent
