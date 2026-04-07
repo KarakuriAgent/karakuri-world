@@ -68,9 +68,7 @@ describe('StatusBoard', () => {
     board.register();
     await flushAsyncWork();
 
-    const agent = engine.registerAgent({
-      agent_name: 'sakura',
-      agent_label: 'Sakura',
+    const agent = await engine.registerAgent({
       discord_bot_id: 'discord-bot-1',
     });
     await engine.loginAgent(agent.agent_id);
@@ -113,9 +111,7 @@ describe('StatusBoard', () => {
       mapImage: null,
     });
 
-    const agent = engine.registerAgent({
-      agent_name: 'ame',
-      agent_label: 'Ame',
+    const agent = await engine.registerAgent({
       discord_bot_id: 'discord-bot-3',
     });
 
@@ -158,14 +154,10 @@ describe('StatusBoard', () => {
       mapImage: null,
     });
 
-    const alice = engine.registerAgent({
-      agent_name: 'alice',
-      agent_label: 'Alice',
+    const alice = await engine.registerAgent({
       discord_bot_id: 'discord-bot-a',
     });
-    const bob = engine.registerAgent({
-      agent_name: 'bob',
-      agent_label: 'Bob',
+    const bob = await engine.registerAgent({
       discord_bot_id: 'discord-bot-b',
     });
 
@@ -206,14 +198,10 @@ describe('StatusBoard', () => {
       mapImage: null,
     });
 
-    const alice = engine.registerAgent({
-      agent_name: 'alice',
-      agent_label: 'Alice',
+    const alice = await engine.registerAgent({
       discord_bot_id: 'discord-bot-a',
     });
-    const bob = engine.registerAgent({
-      agent_name: 'bob',
-      agent_label: 'Bob',
+    const bob = await engine.registerAgent({
       discord_bot_id: 'discord-bot-b',
     });
 
@@ -259,14 +247,10 @@ describe('StatusBoard', () => {
       mapImage: null,
     });
 
-    const alice = engine.registerAgent({
-      agent_name: 'alice',
-      agent_label: 'Alice',
+    const alice = await engine.registerAgent({
       discord_bot_id: 'discord-bot-a',
     });
-    const bob = engine.registerAgent({
-      agent_name: 'bob',
-      agent_label: 'Bob',
+    const bob = await engine.registerAgent({
       discord_bot_id: 'discord-bot-b',
     });
 
@@ -310,14 +294,10 @@ describe('StatusBoard', () => {
       mapImage: null,
     });
 
-    const alice = engine.registerAgent({
-      agent_name: 'alice',
-      agent_label: 'Alice',
+    const alice = await engine.registerAgent({
       discord_bot_id: 'discord-bot-a',
     });
-    const bob = engine.registerAgent({
-      agent_name: 'bob',
-      agent_label: 'Bob',
+    const bob = await engine.registerAgent({
       discord_bot_id: 'discord-bot-b',
     });
 
@@ -373,14 +353,10 @@ describe('StatusBoard', () => {
       mapImage: null,
     });
 
-    const alice = engine.registerAgent({
-      agent_name: 'alice',
-      agent_label: 'Alice',
+    const alice = await engine.registerAgent({
       discord_bot_id: 'discord-bot-a',
     });
-    const bob = engine.registerAgent({
-      agent_name: 'bob',
-      agent_label: 'Bob',
+    const bob = await engine.registerAgent({
       discord_bot_id: 'discord-bot-b',
     });
 
@@ -414,8 +390,8 @@ describe('StatusBoard', () => {
 
     expect(channel.fetchMessages).toHaveBeenCalledTimes(2);
     expect(channel.sendMessage).toHaveBeenCalledTimes(2);
-    expect(channel.sendMessage.mock.calls[0]?.[0]).toContain('aliceの番');
-    expect(channel.sendMessage.mock.calls[1]?.[0]).toContain('bobの番');
+    expect(channel.sendMessage.mock.calls[0]?.[0]).toContain('bot-aの番');
+    expect(channel.sendMessage.mock.calls[1]?.[0]).toContain('bot-bの番');
   });
 
   it('re-arms the conversation handoff refresh immediately when debounce exceeds the interval', async () => {
@@ -435,14 +411,10 @@ describe('StatusBoard', () => {
       mapImage: null,
     });
 
-    const alice = engine.registerAgent({
-      agent_name: 'alice',
-      agent_label: 'Alice',
+    const alice = await engine.registerAgent({
       discord_bot_id: 'discord-bot-a',
     });
-    const bob = engine.registerAgent({
-      agent_name: 'bob',
-      agent_label: 'Bob',
+    const bob = await engine.registerAgent({
       discord_bot_id: 'discord-bot-b',
     });
 
@@ -485,9 +457,7 @@ describe('StatusBoard', () => {
       mapImage: null,
     });
 
-    const agent = engine.registerAgent({
-      agent_name: 'sakura',
-      agent_label: 'Sakura',
+    const agent = await engine.registerAgent({
       discord_bot_id: 'discord-bot-1',
     });
 
@@ -617,9 +587,7 @@ describe('StatusBoard', () => {
       mapImage: null,
     });
 
-    const agent = engine.registerAgent({
-      agent_name: 'sakura',
-      agent_label: 'Sakura',
+    const agent = await engine.registerAgent({
       discord_bot_id: 'discord-bot-1',
     });
 
@@ -672,9 +640,7 @@ describe('StatusBoard', () => {
     channel.fetchMessages.mockClear();
     channel.sendMessage.mockClear();
 
-    engine.registerAgent({
-      agent_name: 'taro',
-      agent_label: 'Taro',
+    await engine.registerAgent({
       discord_bot_id: 'discord-bot-2',
     });
     await vi.advanceTimersByTimeAsync(3000);
@@ -699,9 +665,7 @@ describe('StatusBoard', () => {
     board.register();
     await flushAsyncWork();
 
-    const agent = engine.registerAgent({
-      agent_name: 'taro',
-      agent_label: 'Taro',
+    const agent = await engine.registerAgent({
       discord_bot_id: 'discord-bot-2',
     });
     await engine.loginAgent(agent.agent_id);
@@ -728,9 +692,7 @@ describe('StatusBoard', () => {
     // Make the send fail on the initial render
     channel.sendMessage.mockRejectedValueOnce(new Error('Discord rate limit'));
 
-    const agent = engine.registerAgent({
-      agent_name: 'sakura',
-      agent_label: 'Sakura',
+    const agent = await engine.registerAgent({
       discord_bot_id: 'discord-bot-1',
     });
     await engine.loginAgent(agent.agent_id);

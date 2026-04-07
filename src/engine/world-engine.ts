@@ -75,9 +75,10 @@ type EmittableWorldEvent<T extends WorldEvent = WorldEvent> = T extends WorldEve
   : never;
 
 export interface DiscordRuntimeAdapter {
-  createAgentChannel(agentName: string, discordBotId: string): Promise<string>;
+  createAgentChannel(agentName: string, agentId: string): Promise<string>;
   deleteAgentChannel(channelId: string): Promise<void>;
   channelExists(channelId: string): Promise<boolean>;
+  fetchBotInfo(discordBotId: string): Promise<{ username: string; avatarURL: string }>;
 }
 
 export interface WorldEngineOptions {
@@ -93,6 +94,7 @@ export class WorldEngine {
   readonly state: WorldState;
   private readonly onRegistrationChanged?: (agents: AgentRegistration[]) => void;
   private readonly onError?: (message: string) => void;
+  private readonly registeringAgentIds = new Set<string>();
   private readonly loggingInAgentIds = new Set<string>();
   private readonly weatherService: WeatherService | null;
 
@@ -131,25 +133,29 @@ export class WorldEngine {
     });
   }
 
-  registerAgent(input: { agent_name: string; agent_label: string; discord_bot_id: string }): AgentRegistration {
-    const duplicate = this.state.list().find((agent) => agent.agent_name === input.agent_name);
-    if (duplicate) {
-      throw new WorldError(409, 'state_conflict', `Agent name already exists: ${input.agent_name}`);
+  async registerAgent(input: { discord_bot_id: string }): Promise<AgentRegistration> {
+    if (this.state.getById(input.discord_bot_id) || this.registeringAgentIds.has(input.discord_bot_id)) {
+      throw new WorldError(409, 'state_conflict', `Agent already exists: ${input.discord_bot_id}`);
     }
 
-    const registration: AgentRegistration = {
-      agent_id: `agent-${randomUUID()}`,
-      agent_name: input.agent_name,
-      agent_label: input.agent_label,
-      api_key: `karakuri_${randomBytes(16).toString('hex')}`,
-      discord_bot_id: input.discord_bot_id,
-      created_at: Date.now(),
-      money: this.config.economy?.initial_money ?? 0,
-      items: [],
-    };
+    this.registeringAgentIds.add(input.discord_bot_id);
+    try {
+      const botInfo = await this.discordBot.fetchBotInfo(input.discord_bot_id);
+      const registration: AgentRegistration = {
+        agent_id: input.discord_bot_id,
+        agent_name: botInfo.username,
+        api_key: `karakuri_${randomBytes(16).toString('hex')}`,
+        discord_bot_avatar_url: botInfo.avatarURL,
+        created_at: Date.now(),
+        money: this.config.economy?.initial_money ?? 0,
+        items: [],
+      };
 
-    this.persistRegistrations([...this.state.list(), registration]);
-    return this.state.register(registration);
+      this.persistRegistrations([...this.state.list(), registration]);
+      return this.state.register(registration);
+    } finally {
+      this.registeringAgentIds.delete(input.discord_bot_id);
+    }
   }
 
   async deleteAgent(agentId: string): Promise<boolean> {
@@ -197,8 +203,6 @@ export class WorldEngine {
     return this.state.list().map((agent) => ({
       agent_id: agent.agent_id,
       agent_name: agent.agent_name,
-      agent_label: agent.agent_label,
-      discord_bot_id: agent.discord_bot_id,
       is_logged_in: this.state.isLoggedIn(agent.agent_id),
     }));
   }
@@ -229,7 +233,7 @@ export class WorldEngine {
       if (agent.discord_channel_id && (await this.discordBot.channelExists(agent.discord_channel_id))) {
         channelId = agent.discord_channel_id;
       } else {
-        channelId = await this.discordBot.createAgentChannel(agent.agent_name, agent.discord_bot_id);
+        channelId = await this.discordBot.createAgentChannel(agent.agent_name, agent.agent_id);
         channelCreated = true;
       }
 

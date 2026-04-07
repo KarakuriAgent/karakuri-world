@@ -1,5 +1,5 @@
 import type { GuildMember } from 'discord.js';
-import { GatewayIntentBits } from 'discord.js';
+import { GatewayIntentBits, RESTJSONErrorCodes } from 'discord.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => {
   const getAdminRoleId = vi.fn(() => staticChannels.admin_role_id);
   const getWorldAdminChannelId = vi.fn(() => staticChannels.world_admin_id);
   const membersFetch = vi.fn(async () => new Map());
+  const usersFetch = vi.fn();
   const commandsSet = vi.fn(async () => []);
   const login = vi.fn(async () => undefined);
   const isReady = vi.fn(() => true);
@@ -29,6 +30,7 @@ const mocks = vi.hoisted(() => {
 
   const guild = {
     id: 'guild-1',
+    ownerId: 'guild-owner',
     members: {
       fetch: membersFetch,
     },
@@ -46,6 +48,9 @@ const mocks = vi.hoisted(() => {
     on,
     off,
     destroy,
+    users: {
+      fetch: usersFetch,
+    },
     user: {
       id: 'world-bot',
     },
@@ -72,6 +77,7 @@ const mocks = vi.hoisted(() => {
     getAdminRoleId.mockReset().mockReturnValue(staticChannels.admin_role_id);
     getWorldAdminChannelId.mockReset().mockReturnValue(staticChannels.world_admin_id);
     membersFetch.mockReset().mockResolvedValue(new Map());
+    usersFetch.mockReset();
     commandsSet.mockReset().mockResolvedValue([]);
     login.mockReset().mockResolvedValue(undefined);
     isReady.mockReset().mockReturnValue(true);
@@ -115,6 +121,7 @@ const mocks = vi.hoisted(() => {
     guildsFetch,
     login,
     membersFetch,
+    usersFetch,
     off,
     on,
     reset,
@@ -142,6 +149,8 @@ function createMockMember(
   options?: {
     bot?: boolean;
     guildId?: string;
+    guildOwnerId?: string;
+    isAdmin?: boolean;
     roleIds?: string[];
     failAddRoleIds?: string[];
     failRemoveRoleIds?: string[];
@@ -182,6 +191,10 @@ function createMockMember(
     },
     guild: {
       id: options?.guildId ?? mocks.guild.id,
+      ownerId: options?.guildOwnerId ?? mocks.guild.ownerId,
+    },
+    permissions: {
+      has: vi.fn((permission: string) => permission === 'Administrator' && (options?.isAdmin ?? false)),
     },
     roles,
   } as unknown as GuildMember & {
@@ -432,5 +445,37 @@ describe('DiscordBot admin command helpers', () => {
     expect(bot.getWorldAdminChannelId()).toBe(mocks.staticChannels.world_admin_id);
     expect(mocks.getAdminRoleId).toHaveBeenCalledTimes(1);
     expect(mocks.getWorldAdminChannelId).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a validation error when the Discord bot id does not exist', async () => {
+    const bot = await DiscordBot.create({
+      token: 'test-token',
+      guildId: 'guild-1',
+    });
+    const discordBotId = '123456789012345678';
+
+    mocks.membersFetch.mockRejectedValueOnce({ code: RESTJSONErrorCodes.UnknownMember });
+    mocks.usersFetch.mockRejectedValueOnce({ code: RESTJSONErrorCodes.UnknownUser });
+
+    await expect(bot.fetchBotInfo(discordBotId)).rejects.toMatchObject({
+      status: 400,
+      code: 'invalid_request',
+      message: `Discord bot not found: ${discordBotId}`,
+    });
+  });
+
+  it('returns a validation error when the Discord bot id is malformed', async () => {
+    const bot = await DiscordBot.create({
+      token: 'test-token',
+      guildId: 'guild-1',
+    });
+
+    await expect(bot.fetchBotInfo('not-a-snowflake')).rejects.toMatchObject({
+      status: 400,
+      code: 'invalid_request',
+      message: 'Discord bot ID is malformed: not-a-snowflake',
+    });
+    expect(mocks.membersFetch).not.toHaveBeenCalledWith('not-a-snowflake');
+    expect(mocks.usersFetch).not.toHaveBeenCalledWith('not-a-snowflake');
   });
 });

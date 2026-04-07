@@ -8,7 +8,6 @@ import {
   type RESTPostAPIChatInputApplicationCommandsJSONBody,
 } from 'discord.js';
 
-import { agentNamePattern } from '../domain/agent-validation.js';
 import type { WorldEngine } from '../engine/world-engine.js';
 import { WorldError, type AdminAgentSummary } from '../types/api.js';
 import type { AgentRegistration } from '../types/agent.js';
@@ -26,22 +25,6 @@ const commands = [
     .setName('agent-register')
     .setDescription('エージェントを登録します')
     .setDefaultMemberPermissions(null)
-    .addStringOption((option) =>
-      option
-        .setName('agent_name')
-        .setDescription('英小文字・数字・ハイフンのみのエージェント名')
-        .setRequired(true)
-        .setMinLength(2)
-        .setMaxLength(32),
-    )
-    .addStringOption((option) =>
-      option
-        .setName('agent_label')
-        .setDescription('通知表示用のラベル')
-        .setRequired(true)
-        .setMinLength(1)
-        .setMaxLength(100),
-    )
     .addStringOption((option) =>
       option
         .setName('discord_bot_id')
@@ -123,10 +106,10 @@ function formatAgentList(agents: AdminAgentSummary[]): string {
   }
 
   const lines = [
-    '| agent_name | agent_label | status | agent_id | discord_bot_id |',
-    '| --- | --- | --- | --- | --- |',
+    '| agent_name | status | agent_id |',
+    '| --- | --- | --- |',
     ...agents.map((agent) =>
-      `| ${escapeTableValue(agent.agent_name)} | ${escapeTableValue(agent.agent_label)} | ${agent.is_logged_in ? 'logged_in' : 'logged_out'} | ${escapeTableValue(agent.agent_id)} | ${escapeTableValue(agent.discord_bot_id)} |`,
+      `| ${escapeTableValue(agent.agent_name)} | ${agent.is_logged_in ? 'logged_in' : 'logged_out'} | ${escapeTableValue(agent.agent_id)} |`,
     ),
   ];
 
@@ -236,18 +219,7 @@ export class AdminCommandHandler {
           return;
         }
         case 'agent-register': {
-          const agent_name = interaction.options.getString('agent_name', true);
-          if (!agentNamePattern.test(agent_name)) {
-            throw new WorldError(
-              400,
-              'validation_error',
-              'agent_name は英小文字・数字・ハイフンのみ使用でき、先頭と末尾は英小文字または数字である必要があります。',
-            );
-          }
-
-          const registration = this.engine.registerAgent({
-            agent_name,
-            agent_label: interaction.options.getString('agent_label', true),
+          const registration = await this.engine.registerAgent({
             discord_bot_id: interaction.options.getString('discord_bot_id', true),
           });
           await this.sendReply(

@@ -155,10 +155,10 @@ Important operational notes:
 `discord_bot_id` is separate from `DISCORD_TOKEN` and `DISCORD_GUILD_ID`.
 
 - `DISCORD_TOKEN` and `DISCORD_GUILD_ID` configure the single world bot used by the server itself.
-- `discord_bot_id` is a required Discord user ID for an individual agent bot account, provided during agent registration.
+- `discord_bot_id` is a required Discord user ID for an individual agent, provided during agent registration. Both bot and human accounts are accepted.
 - Karakuri World grants that user access to the dedicated `#agent-{name}` channel.
 - Use the bot user's Discord user ID, not the application ID.
-- Make sure that bot account has already joined the same guild before you register the agent.
+- Registration can resolve bot metadata even before that bot joins the guild, but the bot still needs to join the guild before it can use its dedicated agent channel.
 
 To copy an agent bot user ID, keep Developer Mode enabled and right-click the bot user in Discord, then choose **Copy User ID**.
 
@@ -188,8 +188,8 @@ DISCORD_GUILD_ID=123456789012345678
   - Reset the token in the Developer Portal and replace the old value everywhere.
 - `.env.example` was copied unchanged.
   - Update `PUBLIC_BASE_URL` for your actual local server before sharing generated URLs with agents.
-- `discord_bot_id` is wrong or the target bot is not in the guild.
-  - The agent bot will not gain access to its dedicated channel, and channel creation can fail depending on Discord-side validation.
+- `discord_bot_id` points to a human account, or the target bot is not in the guild yet.
+  - Human accounts are rejected at registration time. A bot outside the guild can still be registered, but it cannot use its dedicated channel until it joins.
 
 ## References
 

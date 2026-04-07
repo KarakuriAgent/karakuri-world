@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../src/api/app.js';
+import { WorldEngine } from '../../src/engine/world-engine.js';
+import { WorldError } from '../../src/types/api.js';
 import { createTestWorld } from '../helpers/test-world.js';
+import { createTestConfig } from '../helpers/test-map.js';
 
 const ADMIN_KEY = 'test-admin-key';
 const CONFIG_PATH = './config/example.yaml';
@@ -36,13 +39,12 @@ async function requestJson(app: FetchableApp, path: string, init?: RequestInit):
 async function registerAgent(
   app: FetchableApp,
   agentName: string,
-  discordBotId = `bot-${agentName}`,
-  agentLabel = agentName,
+  discordBotId = agentName,
 ): Promise<JsonResult> {
   return requestJson(app, '/api/admin/agents', {
     method: 'POST',
     headers: { 'X-Admin-Key': ADMIN_KEY },
-    body: JSON.stringify({ agent_name: agentName, agent_label: agentLabel, discord_bot_id: discordBotId }),
+    body: JSON.stringify({ discord_bot_id: discordBotId }),
   });
 }
 
@@ -76,8 +78,6 @@ describe('REST API', () => {
       {
         agent_id: registered.data.agent_id,
         agent_name: 'alice',
-        agent_label: 'alice',
-        discord_bot_id: 'discord-alice',
         is_logged_in: false,
       },
     ]);
@@ -98,8 +98,6 @@ describe('REST API', () => {
       {
         agent_id: registered.data.agent_id,
         agent_name: 'alice',
-        agent_label: 'alice',
-        discord_bot_id: 'discord-alice',
         is_logged_in: true,
       },
     ]);
@@ -160,16 +158,18 @@ describe('REST API', () => {
     const { engine } = createTestWorld();
     const { app } = createApp(engine, { adminKey: ADMIN_KEY, configPath: CONFIG_PATH, publicBaseUrl: PUBLIC_BASE_URL });
     const registered = await registerAgent(app, 'alice');
-    const invalidAgentName = await registerAgent(app, 'Alice');
-    const emptyLabel = await registerAgent(app, 'bob', 'bot-bob', '');
-    const tooLongLabel = await registerAgent(app, 'carol', 'bot-carol', 'x'.repeat(101));
+    const emptyBotId = await requestJson(app, '/api/admin/agents', {
+      method: 'POST',
+      headers: { 'X-Admin-Key': ADMIN_KEY },
+      body: JSON.stringify({ discord_bot_id: '' }),
+    });
+    const duplicateAgent = await registerAgent(app, 'alice');
 
-    expect(invalidAgentName.response.status).toBe(400);
-    expect(invalidAgentName.data.error).toBe('invalid_request');
-    expect(emptyLabel.response.status).toBe(400);
-    expect(emptyLabel.data.error).toBe('invalid_request');
-    expect(tooLongLabel.response.status).toBe(400);
-    expect(tooLongLabel.data.error).toBe('invalid_request');
+    expect(emptyBotId.response.status).toBe(400);
+    expect(emptyBotId.data.error).toBe('invalid_request');
+
+    expect(duplicateAgent.response.status).toBe(409);
+    expect(duplicateAgent.data.error).toBe('state_conflict');
 
     const unauthorized = await requestJson(app, '/api/agents/perception');
     expect(unauthorized.response.status).toBe(401);
@@ -226,6 +226,51 @@ describe('REST API', () => {
     });
     expect(conflict.response.status).toBe(409);
     expect(conflict.data.error).toBe('state_conflict');
+  });
+
+  it('surfaces Discord bot lookup failures as validation errors during admin registration', async () => {
+    const engine = new WorldEngine(createTestConfig(), {
+      createAgentChannel: async () => 'channel-id',
+      deleteAgentChannel: async () => {},
+      channelExists: async () => true,
+      fetchBotInfo: async (discordBotId: string) => {
+        if (discordBotId === '123456789012345678') {
+          throw new WorldError(400, 'invalid_request', `Discord bot not found: ${discordBotId}`);
+        }
+
+        if (discordBotId === 'not-a-snowflake') {
+          throw new WorldError(400, 'invalid_request', `Discord bot ID is malformed: ${discordBotId}`);
+        }
+
+        return {
+          username: 'test-bot',
+          avatarURL: `https://example.com/avatar/${discordBotId}.png`,
+        };
+      },
+    });
+    const { app } = createApp(engine, { adminKey: ADMIN_KEY, configPath: CONFIG_PATH, publicBaseUrl: PUBLIC_BASE_URL });
+
+    const missingBot = await requestJson(app, '/api/admin/agents', {
+      method: 'POST',
+      headers: { 'X-Admin-Key': ADMIN_KEY },
+      body: JSON.stringify({ discord_bot_id: '123456789012345678' }),
+    });
+    expect(missingBot.response.status).toBe(400);
+    expect(missingBot.data).toEqual({
+      error: 'invalid_request',
+      message: 'Discord bot not found: 123456789012345678',
+    });
+
+    const malformedBotId = await requestJson(app, '/api/admin/agents', {
+      method: 'POST',
+      headers: { 'X-Admin-Key': ADMIN_KEY },
+      body: JSON.stringify({ discord_bot_id: 'not-a-snowflake' }),
+    });
+    expect(malformedBotId.response.status).toBe(400);
+    expect(malformedBotId.data).toEqual({
+      error: 'invalid_request',
+      message: 'Discord bot ID is malformed: not-a-snowflake',
+    });
   });
 
   it('wires action, conversation, and admin server event endpoints', async () => {

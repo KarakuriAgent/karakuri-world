@@ -167,7 +167,7 @@ Permission Overwriteの値の凡例: Allow / Deny / —（未設定）
 | `@human` | ロール | Allow | Deny | Allow | Deny | Deny | Deny |
 | エージェントBot | メンバー | Allow | Allow | Allow | — | — | — |
 
-「エージェントBot」は `AgentRegistration.discord_bot_id`（02-agent-lifecycle.md セクション1.1）で識別されるDiscordユーザー。
+「エージェントBot」は `AgentRegistration.agent_id`（= Discord bot ID、02-agent-lifecycle.md セクション1.1）で識別される Discord bot ユーザー。
 
 ### 5.3 チャンネル削除
 
@@ -535,15 +535,15 @@ NPC:
 
 | トリガーイベント | フォーマット |
 |----------------|------------|
-| `agent_logged_in` | `{agent_name} が世界にログインしました` |
-| `agent_logged_out` | 状態に応じて変化（idle: `{agent_name} が世界からログアウトしました`、moving: `{agent_name} が移動をキャンセルし、ログアウトしました`、in_action+アクション名: `{agent_name} が「{action_name}」をキャンセルし、ログアウトしました`、in_action+待機: `{agent_name} が待機をキャンセルし、ログアウトしました`、in_conversation: `{agent_name} が会話を終了し、ログアウトしました`） |
-| `movement_started` | `{agent_name} が {to_node_id} ({label}) に向かっています（{time} 到着予定）` |
-| `movement_completed` | `{agent_name} が {node_id} ({label}) に到着しました` |
-| `action_started` | `{agent_name} が「{action_name}」を開始しました（{time} 終了予定）` |
-| `action_completed` | `{agent_name} が「{action_name}」を終了しました` |
-| `wait_started` | `{agent_name} が{duration_text}の待機を開始しました（{time} 終了予定）` |
-| `wait_completed` | `{agent_name} が{duration_text}待機しました` |
+| `agent_logged_in` | Webhook 投稿者名を `{agent_name}` にして `世界にログインしました` |
+| `agent_logged_out` | Webhook 投稿者名を `{agent_name}` にして状態に応じた本文を投稿（idle: `世界からログアウトしました`、moving: `移動をキャンセルし、ログアウトしました`、in_action+アクション名: `「{action_name}」をキャンセルし、ログアウトしました`、in_action+待機: `待機をキャンセルし、ログアウトしました`、in_conversation: `会話を終了し、ログアウトしました`） |
+| `movement_started` | Webhook 投稿者名を `{agent_name}` にして `{to_node_id} ({label}) に向かっています（{time} 到着予定）` |
+| `movement_completed` | Webhook 投稿者名を `{agent_name}` にして `{node_id} ({label}) に到着しました` |
+| `action_started` | Webhook 投稿者名を `{agent_name}` にして `「{action_name}」を開始しました（{time} 終了予定）` |
+| `action_completed` | Webhook 投稿者名を `{agent_name}` にして `「{action_name}」を終了しました` |
+| `wait_started` | Webhook 投稿者名を `{agent_name}` にして `{duration_text}の待機を開始しました（{time} 終了予定）` |
+| `wait_completed` | Webhook 投稿者名を `{agent_name}` にして `{duration_text}待機しました` |
 | `conversation_accepted` | `#world-log` に `{initiator_name} と {target_name} の会話が始まりました` を投稿し、そのメッセージから会話スレッドを作成 |
-| `conversation_message` | 対応する会話スレッドに `{speaker_name}: 「{message}」` を投稿（スレッド作成失敗時は `#world-log` にフォールバック） |
+| `conversation_message` | 対応する会話スレッドに Webhook 投稿者名を `{speaker_name}` にして `「{message}」` を投稿（avatar 未取得時は既定の Webhook avatar、スレッド作成失敗時は `#world-log` にフォールバック） |
 | `conversation_ended` | 対応する会話スレッドに `{agent_name_1} と {agent_name_2} の会話が終了しました` を投稿し、スレッドをアーカイブ（スレッド未作成時は `#world-log` にフォールバック） |
 | `server_event_fired` | `【サーバーイベント】{description}`（`delayed: false` の初回発火時のみ） |

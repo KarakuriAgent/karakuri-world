@@ -7,8 +7,7 @@ import { createTestMapConfig } from '../../helpers/test-map.js';
 const loggedInAgents: LoggedInAgent[] = [
   {
     agent_id: 'agent-alice',
-    agent_name: 'Alice',
-    agent_label: 'Alice',
+    agent_name: 'alice',
     node_id: '2-1',
     state: 'idle',
     discord_channel_id: 'channel-alice',
@@ -22,8 +21,7 @@ const loggedInAgents: LoggedInAgent[] = [
   },
   {
     agent_id: 'agent-bob',
-    agent_name: 'Bob',
-    agent_label: 'Bob',
+    agent_name: 'bob',
     node_id: '3-2',
     state: 'idle',
     discord_channel_id: 'channel-bob',
@@ -38,7 +36,7 @@ const loggedInAgents: LoggedInAgent[] = [
 ];
 
 describe('perception', () => {
-  it('builds structured perception data', () => {
+  it('builds structured perception data', async () => {
     const data = buildPerceptionData(loggedInAgents[0], loggedInAgents, createTestMapConfig(), 3, {
       timezone: 'Asia/Tokyo',
       now: new Date('2026-01-01T00:00:00Z'),
@@ -49,7 +47,7 @@ describe('perception', () => {
     expect(data.agents).toEqual([
       {
         agent_id: 'agent-bob',
-        agent_name: 'Bob',
+        agent_name: 'bob',
         node_id: '3-2',
       },
     ]);
@@ -69,7 +67,7 @@ describe('perception', () => {
     ]);
   });
 
-  it('builds readable perception text', () => {
+  it('builds readable perception text', async () => {
     const data = buildPerceptionData(loggedInAgents[0], loggedInAgents, createTestMapConfig(), 3, {
       timezone: 'Asia/Tokyo',
       now: new Date('2026-01-01T00:00:00Z'),
@@ -80,7 +78,7 @@ describe('perception', () => {
     expect(text).toContain('現在時刻: 2026-01-01 09:00 (Asia/Tokyo)');
     expect(text).toContain('現在地: 2-1');
     expect(text).toContain('近くのノード:');
-    expect(text).toContain('Bob@3-2');
+    expect(text).toContain('bob@3-2');
     expect(text).toContain('Gatekeeper@1-2');
     expect(text).toContain('Clockwork Workshop');
     expect(text).toContain('所持金: 1,000円');

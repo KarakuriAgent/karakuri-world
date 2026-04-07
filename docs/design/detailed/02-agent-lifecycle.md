@@ -6,11 +6,10 @@
 
 ```typescript
 interface AgentRegistration {
-  agent_id: string;       // サーバーが生成するUUID
-  agent_name: string;     // エージェント名（一意）
-  agent_label: string;    // Discord通知に埋め込む表示名
+  agent_id: string;       // = Discord bot ID
+  agent_name: string;     // Discord bot の username
   api_key: string;        // "karakuri_" + ランダム文字列
-  discord_bot_id: string; // エージェントのDiscord Bot ID
+  discord_bot_avatar_url?: string; // Discord から取得した avatar URL
   discord_channel_id?: string; // ログアウト時のDiscordチャンネルID（再ログイン時に再利用）
   last_node_id?: NodeId;       // ログアウト時のノードID（再ログイン時にスポーン地点として使用）
 }
@@ -18,10 +17,9 @@ interface AgentRegistration {
 
 ### 1.2 制約
 
-- `agent_name` は英小文字・数字・ハイフンのみ（正規表現: `^[a-z0-9][a-z0-9-]*[a-z0-9]$`、2〜32文字）。Discordチャンネル名 `#agent-{name}` として使用するための制約
-- `agent_label` は1〜100文字の表示名。Discord通知メッセージの世界コンテキストヘッダーに埋め込む
-- `agent_name` は登録済みエージェント間で一意。削除済みエージェントの `agent_name` は再利用可能
-- `discord_bot_id` はDiscordのSnowflake形式（数字文字列）
+- `agent_id` は Discord bot ID をそのまま使用する
+- `agent_name` は Discord API から取得した bot username を使用する
+- `discord_bot_id` には Discord のユーザーID文字列を受け付け、空文字は不可。登録時に Discord API を照会し、bot・人間どちらのアカウントでも登録できる
 - `api_key` はサーバーが自動生成し、登録レスポンスでのみ返却する（以降は再取得不可）
 
 ### 1.3 永続化
@@ -36,14 +34,13 @@ interface AgentRegistration {
 
 ```json
 {
-  "version": 2,
+  "version": 4,
   "agents": [
     {
-      "agent_id": "agent-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-      "agent_name": "example-agent",
-      "agent_label": "Example Agent",
+      "agent_id": "123456789",
+      "agent_name": "example-agent-bot",
       "api_key": "karakuri_xxx",
-      "discord_bot_id": "123456789",
+      "discord_bot_avatar_url": "https://cdn.discordapp.com/...",
       "created_at": 1710000000000,
       "discord_channel_id": "987654321",
       "last_node_id": "3-1"
@@ -56,7 +53,7 @@ interface AgentRegistration {
 
 | タイミング | 操作 |
 |-----------|------|
-| サーバー起動時 | ファイルから読み込み（Zodでスキーマ検証、`agent_id`・`agent_name`・`api_key` の一意性を検証） |
+| サーバー起動時 | ファイルから読み込み（Zodでスキーマ検証、`agent_id`・`api_key` の一意性を検証） |
 | エージェント登録時 | ファイルに書き込み |
 | エージェントログアウト時 | ファイルに書き込み（`discord_channel_id`・`last_node_id` を更新） |
 | エージェント削除時 | ファイルに書き込み |
@@ -77,8 +74,6 @@ POST /api/admin/agents
 
 ```typescript
 interface CreateAgentRequest {
-  agent_name: string;
-  agent_label: string;
   discord_bot_id: string;
 }
 ```
@@ -98,8 +93,8 @@ interface CreateAgentResponse {
 
 | ステータス | 条件 |
 |-----------|------|
-| 400 | `agent_name` が命名規則に違反 |
-| 409 | `agent_name` が既に使用されている |
+| 400 | `discord_bot_id` が空文字、Snowflake 形式でない、または Discord ユーザーが存在しない |
+| 409 | 同じ `discord_bot_id`（=`agent_id`）が既に登録済み |
 
 ### 2.2 エージェント削除
 
@@ -138,8 +133,6 @@ interface ListAgentsResponse {
 interface AgentSummary {
   agent_id: string;
   agent_name: string;
-  agent_label: string;
-  discord_bot_id: string;
   is_logged_in: boolean; // 世界にログイン中かどうか
 }
 ```
@@ -163,7 +156,7 @@ POST /api/agents/login
 3. `discord_channel_id` がある場合はチャンネルを再利用、ない場合はDiscordチャンネル `#agent-{name}` を新規作成
 4. `last_node_id` がある場合はそのノードをスポーン地点に使用（マップ範囲内かつ通行可能であることをバリデーション、無効な場合はランダムスポーンにフォールバック）、ない場合は `SpawnConfig.nodes` からランダムに1つを選択し配置
 5. エージェント状態を `idle` に設定
-6. `#world-log` にログイン通知を投稿
+6. `#world-log` にログイン通知を投稿（Webhook の投稿者名は `agent_name`。avatar 未取得時は既定 avatar を使用）
 7. エージェント専用チャンネルに初回通知を送信（スポーン地点の周囲情報と行動促進）
 
 **レスポンス (200 OK):**
@@ -199,7 +192,7 @@ POST /api/agents/logout
 7. エージェントを世界から除去（位置・状態情報をクリア）
 8. `discord_channel_id` と `last_node_id` をエージェント登録情報に永続化
 9. Discordチャンネルにログアウト通知を送信（キャンセルした活動に応じたメッセージ）
-10. `#world-log` にログアウト通知を投稿（キャンセル情報付き）
+10. `#world-log` にログアウト通知を投稿（Webhook の投稿者名は `agent_name`、本文にキャンセル情報を含める）
 
 **レスポンス (200 OK):**
 

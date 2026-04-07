@@ -22,7 +22,7 @@ describe('server event domain', () => {
 
   it('fires events with runtime descriptions and clears stored events when there are no pending agents', async () => {
     const { engine } = createTestWorld();
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice' });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
     await engine.loginAgent(alice.agent_id);
 
     const fired = engine.fireServerEvent('Dark clouds gather.');
@@ -34,7 +34,7 @@ describe('server event domain', () => {
 
   it('delays delivery while moving and keeps the event window open through arrival', async () => {
     const { engine } = createTestWorld();
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice' });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
     await engine.loginAgent(alice.agent_id);
     engine.state.setNode(alice.agent_id, '3-1');
     const eventTypes: string[] = [];
@@ -67,7 +67,7 @@ describe('server event domain', () => {
 
   it('delivers delayed server events in fire order after movement completes', async () => {
     const { engine } = createTestWorld();
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice' });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
     await engine.loginAgent(alice.agent_id);
     engine.state.setNode(alice.agent_id, '3-1');
 
@@ -91,7 +91,7 @@ describe('server event domain', () => {
 
   it('clears the active server event when the next completion notification arrives', async () => {
     const { engine } = createTestWorld();
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice' });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
     await engine.loginAgent(alice.agent_id);
     engine.state.setNode(alice.agent_id, '1-1');
 
@@ -137,7 +137,7 @@ describe('server event domain', () => {
     },
   ])('keeps the server-event window open after $title fires until delivery clears it', async ({ prepare, complete, config }) => {
     const { engine } = createTestWorld({ config });
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice' });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
     await engine.loginAgent(alice.agent_id);
 
     prepare(engine, alice.agent_id);
@@ -149,7 +149,7 @@ describe('server event domain', () => {
 
   it('interrupts an in-action agent when they start a new command during the event window', async () => {
     const { engine } = createTestWorld();
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice' });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
     await engine.loginAgent(alice.agent_id);
     engine.state.setNode(alice.agent_id, '1-1');
 
@@ -188,7 +188,7 @@ describe('server event domain', () => {
     },
   ])('does not interrupt the current action when an invalid $title replacement is rejected', async ({ execute, code, status }) => {
     const { engine } = createTestWorld();
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice' });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
     await engine.loginAgent(alice.agent_id);
     engine.state.setNode(alice.agent_id, '1-1');
 
@@ -220,8 +220,8 @@ describe('server event domain', () => {
         },
       },
     });
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice' });
-    const bob = engine.registerAgent({ agent_name: 'bob', agent_label: 'bob', discord_bot_id: 'bot-bob' });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
     await engine.loginAgent(alice.agent_id);
     await engine.loginAgent(bob.agent_id);
     engine.state.setNode(alice.agent_id, '3-1');
@@ -256,8 +256,8 @@ describe('server event domain', () => {
         },
       },
     });
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice' });
-    const bob = engine.registerAgent({ agent_name: 'bob', agent_label: 'bob', discord_bot_id: 'bot-bob' });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
     await engine.loginAgent(alice.agent_id);
     await engine.loginAgent(bob.agent_id);
     engine.state.setNode(alice.agent_id, '3-1');
@@ -284,8 +284,8 @@ describe('server event domain', () => {
     'cancels a pending conversation with server_event semantics when the %s interrupts during the event window',
     async (_role, interrupterName) => {
       const { engine } = createTestWorld();
-      const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice' });
-      const bob = engine.registerAgent({ agent_name: 'bob', agent_label: 'bob', discord_bot_id: 'bot-bob' });
+      const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+      const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
       await engine.loginAgent(alice.agent_id);
       await engine.loginAgent(bob.agent_id);
       engine.state.setNode(alice.agent_id, '3-1');
@@ -337,8 +337,8 @@ describe('server event domain', () => {
         },
       },
     });
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice' });
-    const bob = engine.registerAgent({ agent_name: 'bob', agent_label: 'bob', discord_bot_id: 'bot-bob' });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
     await engine.loginAgent(alice.agent_id);
     await engine.loginAgent(bob.agent_id);
     engine.state.setNode(alice.agent_id, '3-1');
@@ -373,8 +373,8 @@ describe('server event domain', () => {
         },
       },
     });
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice' });
-    const bob = engine.registerAgent({ agent_name: 'bob', agent_label: 'bob', discord_bot_id: 'bot-bob' });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
     await engine.loginAgent(alice.agent_id);
     await engine.loginAgent(bob.agent_id);
     engine.state.setNode(alice.agent_id, '3-1');
@@ -424,8 +424,8 @@ describe('server event domain', () => {
         },
       },
     });
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice' });
-    const bob = engine.registerAgent({ agent_name: 'bob', agent_label: 'bob', discord_bot_id: 'bot-bob' });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
     await engine.loginAgent(alice.agent_id);
     await engine.loginAgent(bob.agent_id);
     engine.state.setNode(alice.agent_id, '3-1');
@@ -462,9 +462,9 @@ describe('server event domain', () => {
         },
       },
     });
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice' });
-    const bob = engine.registerAgent({ agent_name: 'bob', agent_label: 'bob', discord_bot_id: 'bot-bob' });
-    const charlie = engine.registerAgent({ agent_name: 'charlie', agent_label: 'charlie', discord_bot_id: 'bot-charlie' });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    const charlie = await engine.registerAgent({ discord_bot_id: 'bot-charlie' });
     await engine.loginAgent(alice.agent_id);
     await engine.loginAgent(bob.agent_id);
     await engine.loginAgent(charlie.agent_id);

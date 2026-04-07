@@ -61,7 +61,6 @@ export class AgentStateStore {
     const loggedInAgent: LoggedInAgent = {
       agent_id: registration.agent_id,
       agent_name: registration.agent_name,
-      agent_label: registration.agent_label,
       node_id: params.node_id,
       state: 'idle',
       discord_channel_id: params.discord_channel_id,

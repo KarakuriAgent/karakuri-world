@@ -44,7 +44,7 @@ describe('movement domain', () => {
         spawn: { nodes: ['3-1'] },
       },
     });
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice', });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice', });
     await engine.loginAgent(alice.agent_id);
 
     const response = engine.move(alice.agent_id, { target_node_id: '2-4' });
@@ -81,7 +81,7 @@ describe('movement domain', () => {
         map: isolatedMap,
       },
     });
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice', });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice', });
     await engine.loginAgent(alice.agent_id);
 
     try {
@@ -106,7 +106,7 @@ describe('movement domain', () => {
         spawn: { nodes: ['3-1'] },
       },
     });
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice', });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice', });
     await engine.loginAgent(alice.agent_id);
 
     const events: Array<{ type: string; node_id?: string }> = [];
@@ -126,7 +126,7 @@ describe('movement domain', () => {
     });
   });
 
-  it('computes current movement positions from timer data', () => {
+  it('computes current movement positions from timer data', async () => {
     const timer = {
       timer_id: 'timer-1',
       type: 'movement',
@@ -146,7 +146,7 @@ describe('movement domain', () => {
 
   it('rejects impassable moves and moves while a conversation is pending', async () => {
     const { engine } = createTestWorld();
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice', });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice', });
     await engine.loginAgent(alice.agent_id);
     engine.state.setNode(alice.agent_id, '1-1');
 

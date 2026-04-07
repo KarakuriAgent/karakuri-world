@@ -6,8 +6,8 @@ import { createTestWorld } from '../../helpers/test-world.js';
 describe('choices domain', () => {
   it('builds action, movement, conversation, and info choices', async () => {
     const { engine } = createTestWorld();
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'Alice', discord_bot_id: 'bot-alice' });
-    const bob = engine.registerAgent({ agent_name: 'bob', agent_label: 'Bob', discord_bot_id: 'bot-bob' });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
     await engine.loginAgent(alice.agent_id);
     await engine.loginAgent(bob.agent_id);
 
@@ -37,8 +37,8 @@ describe('choices domain', () => {
 
   it('excludes candidates with pending conversations', async () => {
     const { engine } = createTestWorld();
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'Alice', discord_bot_id: 'bot-alice' });
-    const bob = engine.registerAgent({ agent_name: 'bob', agent_label: 'Bob', discord_bot_id: 'bot-bob' });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
     await engine.loginAgent(alice.agent_id);
     await engine.loginAgent(bob.agent_id);
 
@@ -53,8 +53,8 @@ describe('choices domain', () => {
 
   it('omits unavailable conversation targets', async () => {
     const { engine } = createTestWorld();
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'Alice', discord_bot_id: 'bot-alice' });
-    const bob = engine.registerAgent({ agent_name: 'bob', agent_label: 'Bob', discord_bot_id: 'bot-bob' });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
     await engine.loginAgent(alice.agent_id);
     await engine.loginAgent(bob.agent_id);
 
@@ -68,8 +68,8 @@ describe('choices domain', () => {
 
   it('omits state-conflicting commands while moving', async () => {
     const { engine } = createTestWorld();
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'Alice', discord_bot_id: 'bot-alice' });
-    const bob = engine.registerAgent({ agent_name: 'bob', agent_label: 'Bob', discord_bot_id: 'bot-bob' });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
     await engine.loginAgent(alice.agent_id);
     await engine.loginAgent(bob.agent_id);
 
@@ -89,8 +89,8 @@ describe('choices domain', () => {
 
   it('omits state-conflicting commands while a conversation is pending', async () => {
     const { engine } = createTestWorld();
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'Alice', discord_bot_id: 'bot-alice' });
-    const bob = engine.registerAgent({ agent_name: 'bob', agent_label: 'Bob', discord_bot_id: 'bot-bob' });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
     await engine.loginAgent(alice.agent_id);
     await engine.loginAgent(bob.agent_id);
 
@@ -112,8 +112,8 @@ describe('choices domain', () => {
     'suppresses conversation_start in forced choices while %s',
     async (state) => {
       const { engine } = createTestWorld();
-      const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'Alice', discord_bot_id: 'bot-alice' });
-      const bob = engine.registerAgent({ agent_name: 'bob', agent_label: 'Bob', discord_bot_id: 'bot-bob' });
+      const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+      const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
       await engine.loginAgent(alice.agent_id);
       await engine.loginAgent(bob.agent_id);
 

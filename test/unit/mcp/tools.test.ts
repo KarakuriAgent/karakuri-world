@@ -19,9 +19,9 @@ function parseToolText(result: CallToolResult): unknown {
 }
 
 describe('MCP tools', () => {
-  it('exposes the documented tool set', () => {
+  it('exposes the documented tool set', async () => {
     const { engine } = createTestWorld();
-    const agent = engine.registerAgent({ agent_name: 'Alice', agent_label: 'Alice', discord_bot_id: 'bot-alice', });
+    const agent = await engine.registerAgent({ discord_bot_id: 'bot-alice', });
 
     const definitions = createMcpToolDefinitions(engine, agent.agent_id);
 
@@ -44,7 +44,7 @@ describe('MCP tools', () => {
 
   it('returns tool errors for not_logged_in and successful JSON payloads after engine login', async () => {
     const { engine } = createTestWorld();
-    const agent = engine.registerAgent({ agent_name: 'Alice', agent_label: 'Alice', discord_bot_id: 'bot-alice', });
+    const agent = await engine.registerAgent({ discord_bot_id: 'bot-alice', });
     const definitions = createMcpToolDefinitions(engine, agent.agent_id);
     const getPerception = definitions.find((definition) => definition.name === 'get_perception');
 
@@ -62,7 +62,7 @@ describe('MCP tools', () => {
     const loginResponse = await engine.loginAgent(agent.agent_id);
     expect(loginResponse).toEqual(
       expect.objectContaining({
-        channel_id: 'channel-Alice',
+        channel_id: 'channel-alice',
         node_id: expect.stringMatching(/3-[12]/),
       }),
     );
@@ -87,7 +87,7 @@ describe('MCP tools', () => {
         spawn: { nodes: ['3-1'] },
       },
     });
-    const agent = engine.registerAgent({ agent_name: 'Alice', agent_label: 'Alice', discord_bot_id: 'bot-alice', });
+    const agent = await engine.registerAgent({ discord_bot_id: 'bot-alice', });
     const definitions = createMcpToolDefinitions(engine, agent.agent_id);
     const move = definitions.find((definition) => definition.name === 'move');
 
@@ -110,7 +110,7 @@ describe('MCP tools', () => {
 
   it('returns tool errors for invalid move inputs', async () => {
     const { engine } = createTestWorld();
-    const agent = engine.registerAgent({ agent_name: 'Alice', agent_label: 'Alice', discord_bot_id: 'bot-alice', });
+    const agent = await engine.registerAgent({ discord_bot_id: 'bot-alice', });
     const definitions = createMcpToolDefinitions(engine, agent.agent_id);
     const move = definitions.find((definition) => definition.name === 'move');
 
@@ -125,9 +125,9 @@ describe('MCP tools', () => {
     );
   });
 
-  it('authenticates bearer tokens for MCP requests', () => {
+  it('authenticates bearer tokens for MCP requests', async () => {
     const { engine } = createTestWorld();
-    const agent = engine.registerAgent({ agent_name: 'Alice', agent_label: 'Alice', discord_bot_id: 'bot-alice', });
+    const agent = await engine.registerAgent({ discord_bot_id: 'bot-alice', });
 
     expect(authenticateMcpRequest(engine, `Bearer ${agent.api_key}`)).toMatchObject({
       agent_id: agent.agent_id,

@@ -159,7 +159,7 @@ World Bot は起動時に `@admin` を自動付与される。人間メンバー
 | `@everyone` | ❌ | ❌ | チャンネル自体を非表示 |
 | `@admin` | ✅ | ✅ | World Bot もこのロール経由でアクセス |
 | `@human` | ✅ | ❌ | 履歴閲覧のみ。thread / reaction 不可 |
-| 対象エージェントBot | ✅ | ✅ | `discord_bot_id` で指定したメンバー |
+| 対象エージェントBot | ✅ | ✅ | `agent_id`（= Discord bot ID）で指定した bot メンバー |
 
 ※ エージェントBotの投稿権限は人間向け表示用。世界システムはこれを読まない。
 
@@ -178,13 +178,13 @@ sequenceDiagram
     WS->>Bot: チャンネル作成指示
     Bot->>DC: #agent-{name} 作成
     Bot->>DC: 権限設定（@admin + @human + エージェントBot）
-    Bot->>DC: #world-log に「{name}がログイン」投稿
+    Bot->>DC: #world-log にWebhook投稿（username={name}, 本文「世界にログインしました」）
     WS-->>User: { channel_id }
 
     Note over User, DC: ログアウト（logoutリクエスト）
     User->>WS: POST /api/agents/logout<br/>Authorization: Bearer {api_key}
     WS->>WS: 状態更新・通知停止
-    Bot->>DC: #world-log に「{name}がログアウト」投稿
+    Bot->>DC: #world-log にWebhook投稿（username={name}, 本文は状態に応じたログアウト文）
     WS-->>User: 200 OK
 ```
 
@@ -203,14 +203,12 @@ sequenceDiagram
 ```json
 // Request
 {
-  "agent_name": "alice",
-  "agent_label": "Alice",
   "discord_bot_id": "123456789"
 }
 
 // Response
 {
-  "agent_id": "agent-alice-uuid",
+  "agent_id": "123456789",
   "api_key": "karakuri_xxx...",
   "api_base_url": "https://karakuri.example.com/api",
   "mcp_endpoint": "https://karakuri.example.com/mcp"
@@ -266,5 +264,5 @@ sequenceDiagram
     Note over WE: 状態更新（API経由で反映済み）
 
     WE->>Bot: ログ投稿指示
-    Bot->>DC: #world-log "aliceが北へ移動"
+    Bot->>DC: #world-log にWebhook投稿（username=alice, 本文「北へ移動中」）
 ```

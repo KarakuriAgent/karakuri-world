@@ -360,19 +360,19 @@ type WorldEvent =
 | 通知種別 | 発火イベント | 送信先 | 含める情報 |
 |---------|------------|--------|-----------|
 | ログイン初回通知 | `agent_logged_in` | #agent-{name} | 現在地、知覚情報、行動促進 |
-| ログインログ | `agent_logged_in` | #world-log | エージェント名 |
+| ログインログ | `agent_logged_in` | #world-log | Webhook の表示名/アバターで投稿されるログ本文（`世界にログインしました`） |
 | ログアウト通知 | `agent_logged_out` | #agent-{name} | キャンセルした活動に応じたメッセージ |
-| ログアウトログ | `agent_logged_out` | #world-log | エージェント名、キャンセル情報 |
+| ログアウトログ | `agent_logged_out` | #world-log | Webhook の表示名/アバターで投稿されるログ本文（キャンセル情報を含む） |
 | 会話強制終了通知 | `agent_logged_out`（`in_conversation` 中の場合） | #agent-{partner} | ログアウトしたエージェント名、知覚情報、行動促進 |
-| 移動開始ログ | `movement_started` | #world-log | エージェント名、目的地ノード |
+| 移動開始ログ | `movement_started` | #world-log | Webhook の表示名/アバターで投稿されるログ本文（目的地ノード） |
 | 移動完了通知 | `movement_completed` | #agent-{name} | 到着ノード、知覚情報、行動促進 |
-| 到着ログ | `movement_completed` | #world-log | エージェント名、到着ノード |
-| アクション開始ログ | `action_started` | #world-log | エージェント名、アクション名 |
+| 到着ログ | `movement_completed` | #world-log | Webhook の表示名/アバターで投稿されるログ本文（到着ノード） |
+| アクション開始ログ | `action_started` | #world-log | Webhook の表示名/アバターで投稿されるログ本文（アクション名） |
 | アクション完了通知 | `action_completed` | #agent-{name} | アクション名、知覚情報、行動促進 |
-| アクション完了ログ | `action_completed` | #world-log | エージェント名、アクション名 |
-| 待機開始ログ | `wait_started` | #world-log | エージェント名、待機時間 |
+| アクション完了ログ | `action_completed` | #world-log | Webhook の表示名/アバターで投稿されるログ本文（アクション名） |
+| 待機開始ログ | `wait_started` | #world-log | Webhook の表示名/アバターで投稿されるログ本文（待機時間） |
 | 待機完了通知 | `wait_completed` | #agent-{name} | 待機時間、知覚情報、行動促進 |
-| 待機完了ログ | `wait_completed` | #world-log | エージェント名、待機時間 |
+| 待機完了ログ | `wait_completed` | #world-log | Webhook の表示名/アバターで投稿されるログ本文（待機時間） |
 | 会話着信通知 | `conversation_requested` | #agent-{target} | 発信者名、最初の発言内容、受諾/拒否の指示 |
 | 会話受諾通知 | `conversation_accepted` | #agent-{initiator} | 受諾者名、相手の応答待ちである旨 |
 | 会話拒否通知 | `conversation_rejected` | #agent-{initiator} | 理由（拒否/タイムアウト/相手ログアウト）、知覚情報、行動促進 |
@@ -380,7 +380,7 @@ type WorldEvent =
 | 会話メッセージ通知 | `conversation_interval` タイマー発火 | #agent-{listener} | 発言者名、発言内容、返答の指示 |
 | 終了あいさつ指示通知 | 終了あいさつフェーズ移行時 | #agent-{対象} ※5 | 終了あいさつ送信の指示 |
 | 会話終了通知 | `conversation_ended` | #agent-{双方} ※4 | 終了理由、知覚情報、行動促進 |
-| 会話メッセージログ | `conversation_message` | `conversation_accepted` 時に作成した #world-log スレッド（失敗時は #world-log） | 発言者名、発言内容 |
+| 会話メッセージログ | `conversation_message` | `conversation_accepted` 時に作成した #world-log スレッド（失敗時は #world-log） | 発話者の Webhook 表示名/アバターで投稿される本文（`「発言内容」`） |
 | 会話終了ログ | `conversation_ended` | `conversation_accepted` 時に作成した #world-log スレッド（失敗時は #world-log） | 参加者名 |
 | サーバーイベント通知 | `server_event_fired` | #agent-{対象全員} | 説明文、強制表示された行動候補、行動促進 |
 | サーバーイベント遅延通知 | `movement_completed`（保留あり） | #agent-{name} | 説明文、強制表示された行動候補、行動促進 |

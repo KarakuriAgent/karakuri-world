@@ -10,9 +10,8 @@ export interface AgentItem {
 export interface AgentRegistration {
   agent_id: string;
   agent_name: string;
-  agent_label: string;
   api_key: string;
-  discord_bot_id: string;
+  discord_bot_avatar_url?: string;
   created_at: number;
   discord_channel_id?: string;
   last_node_id?: NodeId;
@@ -23,7 +22,6 @@ export interface AgentRegistration {
 export interface LoggedInAgent {
   agent_id: string;
   agent_name: string;
-  agent_label: string;
   node_id: NodeId;
   state: AgentState;
   discord_channel_id: string;

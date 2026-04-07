@@ -28,10 +28,15 @@ const discordBotMocks = vi.hoisted(() => {
   const getAdminRoleId = vi.fn(() => 'admin-role');
   const getWorldAdminChannelId = vi.fn(() => 'world-admin');
   const close = vi.fn(async () => {});
+  const fetchBotInfo = vi.fn(async (discordBotId: string) => ({
+    username: discordBotId.replace(/^(bot-|discord-)/, ''),
+    avatarURL: `https://example.com/avatar/${discordBotId}.png`,
+  }));
   const bot = {
     createAgentChannel,
     deleteAgentChannel,
     channelExists,
+    fetchBotInfo,
     sendAgentMessage,
     sendWorldLog,
     getStatusBoardChannel,
@@ -47,6 +52,10 @@ const discordBotMocks = vi.hoisted(() => {
     createAgentChannel.mockReset().mockResolvedValue('channel-mock');
     deleteAgentChannel.mockReset().mockResolvedValue(undefined);
     channelExists.mockReset().mockResolvedValue(true);
+    fetchBotInfo.mockReset().mockImplementation(async (discordBotId: string) => ({
+      username: discordBotId.replace(/^(bot-|discord-)/, ''),
+      avatarURL: `https://example.com/avatar/${discordBotId}.png`,
+    }));
     sendAgentMessage.mockReset().mockResolvedValue(undefined);
     sendWorldLog.mockReset().mockResolvedValue(undefined);
     getStatusBoardChannel.mockReset().mockResolvedValue(statusBoardChannel);
@@ -115,13 +124,11 @@ vi.mock('../../src/discord/status-board.js', () => {
 
 function createRegistration(overrides: Partial<AgentRegistration> = {}): AgentRegistration {
   const agentName = overrides.agent_name ?? 'alice';
-  const discordBotId = overrides.discord_bot_id ?? `bot-${agentName}`;
+  const agentId = overrides.agent_id ?? `bot-${agentName}`;
   return {
-    agent_id: 'agent-1',
+    agent_id: agentId,
     agent_name: agentName,
-    agent_label: overrides.agent_label ?? agentName,
     api_key: 'karakuri_deadbeef',
-    discord_bot_id: discordBotId,
     created_at: 1,
     items: [],
     ...overrides,
@@ -147,10 +154,9 @@ describe('runtime startup', () => {
 
     saveAgents(join(dataDir, 'agents.json'), [
       createRegistration({
-        agent_id: 'agent-2',
+        agent_id: 'bot-bob',
         agent_name: 'bob',
         api_key: 'karakuri_feedface',
-        discord_bot_id: 'bot-bob',
         created_at: 2,
       }),
       createRegistration(),
@@ -171,10 +177,9 @@ describe('runtime startup', () => {
       expect(runtime.engine.listAgents()).toEqual([
         createRegistration(),
         createRegistration({
-          agent_id: 'agent-2',
+          agent_id: 'bot-bob',
           agent_name: 'bob',
           api_key: 'karakuri_feedface',
-          discord_bot_id: 'bot-bob',
           created_at: 2,
         }),
       ]);

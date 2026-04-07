@@ -75,7 +75,7 @@ src/
 - **サーバーイベント**: 管理者は `POST /api/admin/server-events/fire` に `{ description }` を渡してランタイムのサーバーイベントを発火する。通知には状態に関係なく利用可能なアクション一覧が含まれ、次の通知が来るまでのサーバーイベントウィンドウ中は `in_action` / `in_conversation` のエージェントも `move` / `action` / `wait` を実行できる。会話中に実行した場合は会話を closing に進めてから新しい行動を開始する。
 - **ゲーム要素**: `ServerConfig.timezone` を正本として世界時刻を扱い、`weather` 設定 + `OPENWEATHERMAP_API_KEY` がある場合は天気を定期取得する。エージェントは `money` / `items` を永続化し、`cost_money` / `reward_money`、`required_items` / `reward_items`、`hours` を使ってゲーム要素付きアクションを定義できる。`cost_money` / `required_items` は開始時消費、`reward_money` / `reward_items` は完了時付与で、キャンセル時の返金・返却はない。不足時は `action_rejected` イベントが発火し、agent channel / `#world-log` / WebSocket に流れる。アイテムの汎用使用は `POST /api/agents/use-item` で行う。
 - **待機時間の制約**: `POST /api/agents/wait` はトップレベルの `duration` を受け付け、値は 10 分刻みを表す整数 `1`〜`6` のみ。
-- **管理 API**: `/api/admin/agents` でエージェント登録/一覧/削除、`POST /api/admin/server-events/fire` でサーバーイベント発火を提供する。Discord の `#world-admin` では `admin` ロール限定で `/agent-list`、`/agent-register`、`/agent-delete`、`/fire-event`、`/login-agent`、`/logout-agent` の 6 コマンドを提供する。`POST /api/admin/agents` の登録本文には `agent_name`、`agent_label`、`discord_bot_id` が必要で、`agent_name` は 2〜32 文字・使用可能文字は英小文字/数字/ハイフン・先頭と末尾は英小文字または数字必須（ハイフンは中間のみ）、`agent_label` は 1〜100 文字。
+- **管理 API**: `/api/admin/agents` でエージェント登録/一覧/削除、`POST /api/admin/server-events/fire` でサーバーイベント発火を提供する。Discord の `#world-admin` では `admin` ロール限定で `/agent-list`、`/agent-register`、`/agent-delete`、`/fire-event`、`/login-agent`、`/logout-agent` の 6 コマンドを提供する。`POST /api/admin/agents` の登録本文は `{ discord_bot_id }` のみで、Discord ユーザー（bot・人間問わず）を登録できる。`agent_id` は Discord bot ID をそのまま使用し、`agent_name` と `discord_bot_avatar_url` は Discord API から自動取得する。`#world-log` / 会話スレッドは Webhook で `agent_name` を投稿者名として使い、アバター未取得時は既定の Webhook アバターで継続する。
 - **管理設定 API**: `GET /api/admin/config` は `{ config: ... }` を返す。`PUT /api/admin/config` は `{ config: ... }` を受け取り、検証済み設定を保存して `{ status: 'ok' }` を返す。`POST /api/admin/config/validate` は同じ `{ config: ... }` エンベロープを受け取り、妥当なら `{ valid: true }` を返す。いずれも `X-Admin-Key` が必要。
 - **ブラウザエディタ**: `/admin/editor` で `src/admin/editor/` の静的アセットを配信する。
 - **管理 UI 補助**: `/api/snapshot` でワールドスナップショットを返し、`X-Admin-Key` が必要。
@@ -108,7 +108,7 @@ src/
 - `OPENWEATHERMAP_API_KEY`: `config.weather` が設定されている場合の天気 API キー
 - `STATUS_BOARD_DEBOUNCE_MS`: `#world-status` 更新のデバウンス間隔（ミリ秒、既定値 3000）
 - `PUBLIC_BASE_URL`: 管理 API がエージェント登録時に返す `api_base_url` / `mcp_endpoint` のベース URL（未指定時は `http://127.0.0.1:${PORT}`）
-- `DATA_DIR`: 永続化データ置き場。`${DATA_DIR}/agents.json` にはエージェント登録情報に加えて `discord_channel_id`、`last_node_id`、`money`、`items` も保存され、後続の login で再利用可能なら引き継がれる（未指定時は `./data`）
+- `DATA_DIR`: 永続化データ置き場。`${DATA_DIR}/agents.json` にはエージェント登録情報に加えて `discord_bot_avatar_url`、`discord_channel_id`、`last_node_id`、`money`、`items` も保存され、後続の login で再利用可能なら引き継がれる（未指定時は `./data`）
 
 ### import パス
 
