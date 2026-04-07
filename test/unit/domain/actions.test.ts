@@ -8,7 +8,7 @@ import { createTestMapConfig } from '../../helpers/test-map.js';
 import { createTestWorld } from '../../helpers/test-world.js';
 
 async function createLoggedInAgent(engine: WorldEngine, agentName = 'alice') {
-  const agent = engine.registerAgent({ agent_name: agentName, agent_label: agentName, discord_bot_id: `bot-${agentName}` });
+  const agent = await engine.registerAgent({ discord_bot_id: `bot-${agentName}` });
   await engine.loginAgent(agent.agent_id);
   return agent;
 }
@@ -52,7 +52,7 @@ describe('actions domain', () => {
 
   it('lists and executes building actions', async () => {
     const { engine } = createTestWorld();
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice', });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice', });
     await engine.loginAgent(alice.agent_id);
     engine.state.setNode(alice.agent_id, '2-4');
 
@@ -80,7 +80,7 @@ describe('actions domain', () => {
 
   it('supports NPC actions and rejects invalid/unavailable actions', async () => {
     const { engine } = createTestWorld();
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice', });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice', });
     await engine.loginAgent(alice.agent_id);
     engine.state.setNode(alice.agent_id, '1-1');
 

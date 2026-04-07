@@ -9,7 +9,7 @@ import type { ItemType, NodeId } from '../types/data-model.js';
 import type { ConversationRejectionReason } from '../types/conversation.js';
 import type { WorldEvent } from '../types/event.js';
 import type { ConversationIntervalTimer, IdleReminderTimer } from '../types/timer.js';
-import { WorldLogThreadCreationError, type DiscordNotificationAdapter } from './bot.js';
+import { WorldLogThreadCreationError, type DiscordNotificationAdapter, type WebhookIdentity } from './bot.js';
 import {
   formatActionCompletedMessage,
   formatActionRejectedMessage,
@@ -134,22 +134,22 @@ export class DiscordEventHandler {
         await this.handleActionCompleted(event);
         return;
       case 'action_rejected':
-        await this.handleActionRejected(event.agent_id, event.agent_name, event.action_name, event.rejection_reason);
+        await this.handleActionRejected(event.agent_id, event.action_name, event.rejection_reason);
         return;
       case 'wait_completed':
-        await this.handleWaitCompleted(event.agent_id, event.agent_name, event.duration_ms);
+        await this.handleWaitCompleted(event.agent_id, event.duration_ms);
         return;
       case 'wait_started':
-        await this.handleWaitStarted(event.agent_name, event.duration_ms, event.completes_at);
+        await this.handleWaitStarted(event.agent_id, event.duration_ms, event.completes_at);
         return;
       case 'item_use_started':
-        await this.handleItemUseStarted(event.agent_name, event.item_name, event.completes_at);
+        await this.handleItemUseStarted(event.agent_id, event.item_name, event.completes_at);
         return;
       case 'item_use_completed':
-        await this.handleItemUseCompleted(event.agent_id, event.agent_name, event.item_name, event.item_type);
+        await this.handleItemUseCompleted(event.agent_id, event.item_name, event.item_type);
         return;
       case 'item_use_venue_rejected':
-        await this.handleItemUseVenueRejected(event.agent_id, event.agent_name, event.item_name, event.venue_hints);
+        await this.handleItemUseVenueRejected(event.agent_id, event.item_name, event.venue_hints);
         return;
       case 'conversation_requested':
         await this.handleConversationRequested(
@@ -177,14 +177,14 @@ export class DiscordEventHandler {
         );
         return;
       case 'conversation_message': {
-        const content = formatWorldLogConversationMessage(this.getAgentName(event.speaker_agent_id), event.message);
+        const content = formatWorldLogConversationMessage(event.message);
         const threadPromise = this.conversationThreads.get(event.conversation_id);
         await this.enqueueConversationLog(event.conversation_id, async () => {
           if (threadPromise) {
             const threadId = await threadPromise;
             if (threadId) {
               try {
-                await this.bot.sendToThread(threadId, content);
+                await this.sendToThreadForAgent(threadId, event.speaker_agent_id, content);
                 return;
               } catch (error) {
                 console.warn(`Failed to send conversation message to thread ${threadId}, falling back to world log.`, error);
@@ -193,7 +193,7 @@ export class DiscordEventHandler {
           }
 
           try {
-            await this.bot.sendWorldLog(content);
+            await this.sendWorldLogForAgent(event.speaker_agent_id, content);
           } catch (error) {
             console.error('Failed to send conversation message to both thread and world log. Message lost.', error);
           }
@@ -210,10 +210,10 @@ export class DiscordEventHandler {
         await this.handleServerEventFired(event);
         return;
       case 'movement_started':
-        await this.handleMovementStarted(event.agent_name, event.to_node_id, event.arrives_at);
+        await this.handleMovementStarted(event.agent_id, event.to_node_id, event.arrives_at);
         return;
       case 'action_started':
-        await this.handleActionStarted(event.agent_name, event.action_name, event.completes_at);
+        await this.handleActionStarted(event.agent_id, event.action_name, event.completes_at);
         return;
       case 'map_info_requested':
         await this.handleMapInfoRequested(event.agent_id);
@@ -264,7 +264,7 @@ export class DiscordEventHandler {
     );
   }
 
-  private async handleAgentLoggedIn(agentId: string, agentName: string, _nodeId: NodeId): Promise<void> {
+  private async handleAgentLoggedIn(agentId: string, _agentName: string, _nodeId: NodeId): Promise<void> {
     const perceptionText = this.getPerceptionText(agentId);
     if (perceptionText) {
       const choicesText = this.getChoicesText(agentId);
@@ -274,7 +274,7 @@ export class DiscordEventHandler {
       );
     }
 
-    await this.bot.sendWorldLog(formatWorldLogLoggedIn(agentName));
+    await this.sendWorldLogForAgent(agentId, formatWorldLogLoggedIn());
   }
 
   private async handleAgentLoggedOut(event: Extract<WorldEvent, { type: 'agent_logged_out' }>): Promise<void> {
@@ -299,17 +299,18 @@ export class DiscordEventHandler {
     }
 
     await this.sendLogoutWorldLog(
+      event.agent_id,
       forcedConversationPartners.map(({ conversationId }) => conversationId),
-      formatWorldLogLoggedOut(event.agent_name, event.cancelled_state, event.cancelled_action_name),
+      formatWorldLogLoggedOut(event.cancelled_state, event.cancelled_action_name),
     );
   }
 
-  private async handleMovementStarted(agentName: string, toNodeId: NodeId, arrivesAt: number): Promise<void> {
+  private async handleMovementStarted(agentId: string, toNodeId: NodeId, arrivesAt: number): Promise<void> {
     const label = this.engine.getMap().nodes[toNodeId]?.label;
-    await this.bot.sendWorldLog(formatWorldLogMovementStarted(agentName, toNodeId, arrivesAt, this.engine.config.timezone, label));
+    await this.sendWorldLogForAgent(agentId, formatWorldLogMovementStarted(toNodeId, arrivesAt, this.engine.config.timezone, label));
   }
 
-  private async handleMovementCompleted(agentId: string, agentName: string, toNodeId: NodeId): Promise<void> {
+  private async handleMovementCompleted(agentId: string, _agentName: string, toNodeId: NodeId): Promise<void> {
     const perceptionText = this.getPerceptionText(agentId);
     if (perceptionText) {
       const label = this.engine.getMap().nodes[toNodeId]?.label;
@@ -325,12 +326,12 @@ export class DiscordEventHandler {
           choicesText,
         ),
       );
-      await this.bot.sendWorldLog(formatWorldLogMovement(agentName, toNodeId, label));
+      await this.sendWorldLogForAgent(agentId, formatWorldLogMovement(toNodeId, label));
     }
   }
 
-  private async handleActionStarted(agentName: string, actionName: string, completesAt: number): Promise<void> {
-    await this.bot.sendWorldLog(formatWorldLogActionStarted(agentName, actionName, completesAt, this.engine.config.timezone));
+  private async handleActionStarted(agentId: string, actionName: string, completesAt: number): Promise<void> {
+    await this.sendWorldLogForAgent(agentId, formatWorldLogActionStarted(actionName, completesAt, this.engine.config.timezone));
   }
 
   private buildActionEffectText(event: Extract<WorldEvent, { type: 'action_completed' }>): string {
@@ -370,12 +371,11 @@ export class DiscordEventHandler {
       );
     }
 
-    await this.bot.sendWorldLog(formatWorldLogAction(event.agent_name, event.action_name));
+    await this.sendWorldLogForAgent(event.agent_id, formatWorldLogAction(event.action_name));
   }
 
   private async handleActionRejected(
     agentId: string,
-    agentName: string,
     actionName: string,
     rejectionReason: string,
   ): Promise<void> {
@@ -401,14 +401,14 @@ export class DiscordEventHandler {
       );
     }
 
-    await this.bot.sendWorldLog(formatWorldLogActionRejected(agentName, actionName, rejectionReason));
+    await this.sendWorldLogForAgent(agentId, formatWorldLogActionRejected(actionName, rejectionReason));
   }
 
-  private async handleWaitStarted(agentName: string, durationMs: number, completesAt: number): Promise<void> {
-    await this.bot.sendWorldLog(formatWorldLogWaitStarted(agentName, durationMs, completesAt, this.engine.config.timezone));
+  private async handleWaitStarted(agentId: string, durationMs: number, completesAt: number): Promise<void> {
+    await this.sendWorldLogForAgent(agentId, formatWorldLogWaitStarted(durationMs, completesAt, this.engine.config.timezone));
   }
 
-  private async handleWaitCompleted(agentId: string, agentName: string, durationMs: number): Promise<void> {
+  private async handleWaitCompleted(agentId: string, durationMs: number): Promise<void> {
     const perceptionText = this.getPerceptionText(agentId);
     if (perceptionText) {
       const choicesText = this.getChoicesText(agentId);
@@ -418,14 +418,14 @@ export class DiscordEventHandler {
       );
     }
 
-    await this.bot.sendWorldLog(formatWorldLogWait(agentName, durationMs));
+    await this.sendWorldLogForAgent(agentId, formatWorldLogWait(durationMs));
   }
 
-  private async handleItemUseStarted(agentName: string, itemName: string, completesAt: number): Promise<void> {
-    await this.bot.sendWorldLog(formatWorldLogItemUseStarted(agentName, itemName, completesAt, this.engine.config.timezone));
+  private async handleItemUseStarted(agentId: string, itemName: string, completesAt: number): Promise<void> {
+    await this.sendWorldLogForAgent(agentId, formatWorldLogItemUseStarted(itemName, completesAt, this.engine.config.timezone));
   }
 
-  private async handleItemUseCompleted(agentId: string, agentName: string, itemName: string, itemType: ItemType): Promise<void> {
+  private async handleItemUseCompleted(agentId: string, itemName: string, itemType: ItemType): Promise<void> {
     const perceptionText = this.getPerceptionText(agentId);
     if (perceptionText) {
       const choicesText = this.getChoicesText(agentId);
@@ -435,10 +435,10 @@ export class DiscordEventHandler {
       );
     }
 
-    await this.bot.sendWorldLog(formatWorldLogItemUseCompleted(agentName, itemName));
+    await this.sendWorldLogForAgent(agentId, formatWorldLogItemUseCompleted(itemName));
   }
 
-  private async handleItemUseVenueRejected(agentId: string, agentName: string, itemName: string, venueHints: string[]): Promise<void> {
+  private async handleItemUseVenueRejected(agentId: string, itemName: string, venueHints: string[]): Promise<void> {
     const perceptionText = this.getPerceptionText(agentId);
     if (perceptionText) {
       const choicesText = this.getChoicesText(agentId);
@@ -455,7 +455,7 @@ export class DiscordEventHandler {
       );
     }
 
-    await this.bot.sendWorldLog(formatWorldLogItemUseVenueRejected(agentName, itemName));
+    await this.sendWorldLogForAgent(agentId, formatWorldLogItemUseVenueRejected(itemName));
   }
 
   private async handleConversationRequested(
@@ -627,10 +627,10 @@ export class DiscordEventHandler {
     });
   }
 
-  private async sendLogoutWorldLog(conversationIds: string[], content: string): Promise<void> {
+  private async sendLogoutWorldLog(agentId: string, conversationIds: string[], content: string): Promise<void> {
     const uniqueConversationIds = [...new Set(conversationIds)];
     if (uniqueConversationIds.length === 0) {
-      await this.bot.sendWorldLog(content);
+      await this.sendWorldLogForAgent(agentId, content);
       return;
     }
 
@@ -641,7 +641,7 @@ export class DiscordEventHandler {
       precedingConversationIds.map((conversationId) => this.enqueueConversationLog(conversationId, async () => undefined)),
     );
     await this.enqueueConversationLog(trailingConversationId, async () => {
-      await this.bot.sendWorldLog(content);
+      await this.sendWorldLogForAgent(agentId, content);
     });
   }
 
@@ -765,17 +765,44 @@ export class DiscordEventHandler {
     return this.engine.getAgentById(agentId)?.agent_name ?? agentId;
   }
 
-  private getAgentLabel(agentId: string): string {
-    const agent = this.engine.state.getLoggedIn(agentId) ?? this.engine.getAgentById(agentId);
-    return agent?.agent_label ?? this.getAgentName(agentId);
-  }
-
   private getWorldContext(agentId: string): WorldContext {
     return {
       worldName: this.engine.config.world.name,
       worldDescription: this.engine.config.world.description,
-      agentLabel: this.getAgentLabel(agentId),
+      agentName: this.getAgentName(agentId),
     };
+  }
+
+  private getWebhookIdentity(agentId: string): WebhookIdentity | null {
+    const agent = this.engine.getAgentById(agentId);
+    if (!agent) {
+      return null;
+    }
+
+    return {
+      username: agent.agent_name,
+      ...(agent.discord_bot_avatar_url ? { avatarURL: agent.discord_bot_avatar_url } : {}),
+    };
+  }
+
+  private async sendWorldLogForAgent(agentId: string, content: string): Promise<void> {
+    const identity = this.getWebhookIdentity(agentId);
+    if (identity) {
+      await this.bot.sendWorldLogAsAgent(content, identity);
+      return;
+    }
+
+    await this.bot.sendWorldLog(content);
+  }
+
+  private async sendToThreadForAgent(threadId: string, agentId: string, content: string): Promise<void> {
+    const identity = this.getWebhookIdentity(agentId);
+    if (identity) {
+      await this.bot.sendToThreadAsAgent(threadId, content, identity);
+      return;
+    }
+
+    await this.bot.sendToThread(threadId, content);
   }
 
   private async sendToAgent(agentId: string, content: string): Promise<void> {

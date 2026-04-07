@@ -1,7 +1,6 @@
 import type { Hono } from 'hono';
 import { z } from 'zod';
 
-import { agentNamePattern } from '../../domain/agent-validation.js';
 import type { WorldEngine } from '../../engine/world-engine.js';
 import { WorldError } from '../../types/api.js';
 import type { ApiEnv } from '../context.js';
@@ -10,8 +9,6 @@ import { validateBody } from '../middleware/validate.js';
 
 
 const registerAgentSchema = z.object({
-  agent_name: z.string().min(2).max(32).regex(agentNamePattern),
-  agent_label: z.string().min(1).max(100),
   discord_bot_id: z.string().min(1),
 });
 
@@ -32,7 +29,7 @@ export function registerAdminRoutes(
 
   app.post('/api/admin/agents', adminAuth(options.adminKey), validateBody(registerAgentSchema), async (c) => {
     const body = c.get('validatedBody') as z.infer<typeof registerAgentSchema>;
-    const registration = engine.registerAgent(body);
+    const registration = await engine.registerAgent(body);
     return c.json(
       {
         agent_id: registration.agent_id,

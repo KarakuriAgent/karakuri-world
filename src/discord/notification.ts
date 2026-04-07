@@ -7,7 +7,7 @@ import type { ItemType } from '../types/data-model.js';
 export interface WorldContext {
   worldName: string;
   worldDescription: string;
-  agentLabel: string;
+  agentName: string;
 }
 
 export function formatActionPrompt(skillName: string, choicesText?: string): string {
@@ -57,7 +57,7 @@ function formatClosureReason(reason: Exclude<ConversationClosureReason, 'partner
 }
 
 function formatWorldContextHeader(ctx: WorldContext): string {
-  return `あなた (${ctx.agentLabel}) は仮想世界「${ctx.worldName}」にログインしています。\n${ctx.worldDescription}`;
+  return `あなた (${ctx.agentName}) は仮想世界「${ctx.worldName}」にログインしています。\n${ctx.worldDescription}`;
 }
 
 export function formatPerceptionMessage(perception: PerceptionResponse): string {
@@ -342,8 +342,8 @@ export function formatAvailableActionsInfoMessage(
   return joinSections(formatWorldContextHeader(ctx), actionsText, formatActionPrompt(skillName, choicesText));
 }
 
-export function formatWorldLogLoggedIn(agentName: string): string {
-  return `${agentName} が世界にログインしました`;
+export function formatWorldLogLoggedIn(): string {
+  return '世界にログインしました';
 }
 
 export function formatAgentLoggedOutMessage(cancelledState: AgentState, cancelledActionName?: string): string {
@@ -361,80 +361,80 @@ export function formatAgentLoggedOutMessage(cancelledState: AgentState, cancelle
   }
 }
 
-export function formatWorldLogLoggedOut(agentName: string, cancelledState: AgentState, cancelledActionName?: string): string {
+export function formatWorldLogLoggedOut(cancelledState: AgentState, cancelledActionName?: string): string {
   switch (cancelledState) {
     case 'in_action':
       if (cancelledActionName) {
-        return `${agentName} が「${cancelledActionName}」をキャンセルし、ログアウトしました`;
+        return `「${cancelledActionName}」をキャンセルし、ログアウトしました`;
       }
-      return `${agentName} が待機をキャンセルし、ログアウトしました`;
+      return '待機をキャンセルし、ログアウトしました';
     case 'moving':
-      return `${agentName} が移動をキャンセルし、ログアウトしました`;
+      return '移動をキャンセルし、ログアウトしました';
     case 'in_conversation':
-      return `${agentName} が会話を終了し、ログアウトしました`;
+      return '会話を終了し、ログアウトしました';
     case 'idle':
-      return `${agentName} が世界からログアウトしました`;
+      return '世界からログアウトしました';
   }
 }
 
-export function formatWorldLogMovementStarted(agentName: string, nodeId: string, arrivesAt: number, timezone: string, label?: string): string {
+export function formatWorldLogMovementStarted(nodeId: string, arrivesAt: number, timezone: string, label?: string): string {
   const destination = label ? `${nodeId} (${label})` : nodeId;
-  return `${agentName} が ${destination} に向かっています（${formatTime(arrivesAt, timezone)} 到着予定）`;
+  return `${destination} に向かっています（${formatTime(arrivesAt, timezone)} 到着予定）`;
 }
 
-export function formatWorldLogMovement(agentName: string, nodeId: string, label?: string): string {
+export function formatWorldLogMovement(nodeId: string, label?: string): string {
   const destination = label ? `${nodeId} (${label})` : nodeId;
-  return `${agentName} が ${destination} に到着しました`;
+  return `${destination} に到着しました`;
 }
 
-export function formatWorldLogActionStarted(agentName: string, actionName: string, completesAt: number, timezone: string): string {
-  return `${agentName} が「${actionName}」を開始しました（${formatTime(completesAt, timezone)} 終了予定）`;
+export function formatWorldLogActionStarted(actionName: string, completesAt: number, timezone: string): string {
+  return `「${actionName}」を開始しました（${formatTime(completesAt, timezone)} 終了予定）`;
 }
 
-export function formatWorldLogAction(agentName: string, actionName: string): string {
-  return `${agentName} が「${actionName}」を終了しました`;
+export function formatWorldLogAction(actionName: string): string {
+  return `「${actionName}」を終了しました`;
 }
 
-export function formatWorldLogActionRejected(agentName: string, actionName: string, rejectionReason: string): string {
+export function formatWorldLogActionRejected(actionName: string, rejectionReason: string): string {
   if (rejectionReason.includes('所持金')) {
-    return `${agentName} が「${actionName}」を試みたが、所持金が足りなかった`;
+    return `「${actionName}」を試みたが、所持金が足りなかった`;
   }
   if (rejectionReason.includes('アイテム')) {
-    return `${agentName} が「${actionName}」を試みたが、必要なアイテムが足りなかった`;
+    return `「${actionName}」を試みたが、必要なアイテムが足りなかった`;
   }
-  return `${agentName} が「${actionName}」を試みたが、実行できなかった`;
+  return `「${actionName}」を試みたが、実行できなかった`;
 }
 
-export function formatWorldLogWaitStarted(agentName: string, durationMs: number, completesAt: number, timezone: string): string {
+export function formatWorldLogWaitStarted(durationMs: number, completesAt: number, timezone: string): string {
   const minutes = Math.floor(durationMs / 60000);
   const durationText = minutes >= 1 ? `${minutes}分間` : `${Math.floor(durationMs / 1000)}秒間`;
-  return `${agentName} が${durationText}の待機を開始しました（${formatTime(completesAt, timezone)} 終了予定）`;
+  return `${durationText}の待機を開始しました（${formatTime(completesAt, timezone)} 終了予定）`;
 }
 
-export function formatWorldLogWait(agentName: string, durationMs: number): string {
+export function formatWorldLogWait(durationMs: number): string {
   const minutes = Math.floor(durationMs / 60000);
   const durationText = minutes >= 1 ? `${minutes}分間` : `${Math.floor(durationMs / 1000)}秒間`;
-  return `${agentName} が${durationText}待機しました`;
+  return `${durationText}待機しました`;
 }
 
-export function formatWorldLogItemUseStarted(agentName: string, itemName: string, completesAt: number, timezone: string): string {
-  return `${agentName} が「${itemName}」の使用を開始しました（${formatTime(completesAt, timezone)} 終了予定）`;
+export function formatWorldLogItemUseStarted(itemName: string, completesAt: number, timezone: string): string {
+  return `「${itemName}」の使用を開始しました（${formatTime(completesAt, timezone)} 終了予定）`;
 }
 
-export function formatWorldLogItemUseCompleted(agentName: string, itemName: string): string {
-  return `${agentName} が「${itemName}」を使用しました`;
+export function formatWorldLogItemUseCompleted(itemName: string): string {
+  return `「${itemName}」を使用しました`;
 }
 
-export function formatWorldLogItemUseVenueRejected(agentName: string, itemName: string): string {
-  return `${agentName} が「${itemName}」を使おうとしたが、ここでは利用できなかった`;
+export function formatWorldLogItemUseVenueRejected(itemName: string): string {
+  return `「${itemName}」を使おうとしたが、ここでは利用できなかった`;
 }
 
 export function formatWorldLogConversationStarted(initiatorName: string, targetName: string): string {
   return `${initiatorName} と ${targetName} の会話が始まりました`;
 }
 
-export function formatWorldLogConversationMessage(speakerName: string, message: string): string {
-  return `${speakerName}: 「${message}」`;
+export function formatWorldLogConversationMessage(message: string): string {
+  return `「${message}」`;
 }
 
 export function formatWorldLogConversationEnded(initiatorName: string, targetName: string): string {

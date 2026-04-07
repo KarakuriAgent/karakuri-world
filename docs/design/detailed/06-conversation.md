@@ -429,7 +429,7 @@ interface ConversationSpeakResponse {
 - 会話終了時: 終了ログを対応スレッドへ投稿し、スレッドをアーカイブ
 - スレッド作成に失敗した場合: 開始ログ・会話中の発言・終了ログをフラットな `#world-log` 投稿にフォールバック
 
-発言のフォーマット: `{speaker_name}: 「{message}」`
+発言のフォーマット: Webhook 投稿者名を `{speaker_name}` にした `「{message}」`（avatar 未取得時は既定の Webhook avatar）
 
 ## 8. 会話中の割り込み（サーバーイベントウィンドウ）
 

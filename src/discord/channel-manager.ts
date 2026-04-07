@@ -30,6 +30,7 @@ const fullChannelAccess = combinePermissions(
   PermissionFlagsBits.CreatePrivateThreads,
   PermissionFlagsBits.SendMessagesInThreads,
   PermissionFlagsBits.AddReactions,
+  PermissionFlagsBits.ManageWebhooks,
 );
 
 const memberChannelAccess = combinePermissions(
@@ -92,14 +93,7 @@ function buildAdminOnlyOverwrites(guild: Guild, adminRoleId: string): OverwriteR
 }
 
 export function sanitizeAgentChannelName(agentName: string): string {
-  const normalized = agentName
-    .trim()
-    .toLowerCase()
-    .replace(/[^\p{Letter}\p{Number}-]+/gu, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-
-  return `agent-${normalized || 'agent'}`;
+  return agentName.trim();
 }
 
 export class ChannelManager {
@@ -214,14 +208,14 @@ export class ChannelManager {
     return this.staticChannels.world_admin_id;
   }
 
-  async createAgentChannel(agentName: string, discordBotId: string): Promise<string> {
+  async createAgentChannel(agentName: string, agentId: string): Promise<string> {
     const staticChannels = await this.ensureStaticChannels();
     const permissionOverwrites: OverwriteResolvable[] = [
       ...buildRestrictedOverwrites(this.guild, staticChannels.admin_role_id, staticChannels.human_role_id),
     ];
 
     permissionOverwrites.push({
-      id: discordBotId,
+      id: agentId,
       type: OverwriteType.Member,
       allow: memberChannelAccess,
     });

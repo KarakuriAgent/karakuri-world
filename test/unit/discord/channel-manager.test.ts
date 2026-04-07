@@ -15,6 +15,7 @@ const adminChannelAccess = combinePermissions(
   PermissionFlagsBits.CreatePrivateThreads,
   PermissionFlagsBits.SendMessagesInThreads,
   PermissionFlagsBits.AddReactions,
+  PermissionFlagsBits.ManageWebhooks,
 );
 
 const humanReadAccess = combinePermissions(
@@ -137,7 +138,7 @@ describe('ChannelManager', () => {
     expect(channelId).toBe('created-channel-1');
     expect(createdChannelOptions).toHaveLength(1);
     expect(createdChannelOptions[0]).toMatchObject({
-      name: 'agent-alice-example',
+      name: 'Alice Example',
       type: ChannelType.GuildText,
       parent: 'agents',
     });

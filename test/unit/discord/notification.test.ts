@@ -27,7 +27,7 @@ import {
 const worldContext: WorldContext = {
   worldName: '桜木町',
   worldDescription: '歯車と蒸気が行き交う町です。',
-  agentLabel: '時計守アリス',
+  agentName: '時計守アリス',
 };
 
 function expectWorldContextHeader(message: string): void {
@@ -90,11 +90,11 @@ describe('discord notifications', () => {
   });
 
   it('formats world log logout messages based on cancelled state', () => {
-    expect(formatWorldLogLoggedOut('Alice', 'idle')).toBe('Alice が世界からログアウトしました');
-    expect(formatWorldLogLoggedOut('Alice', 'moving')).toBe('Alice が移動をキャンセルし、ログアウトしました');
-    expect(formatWorldLogLoggedOut('Alice', 'in_action', '調べる')).toBe('Alice が「調べる」をキャンセルし、ログアウトしました');
-    expect(formatWorldLogLoggedOut('Alice', 'in_action')).toBe('Alice が待機をキャンセルし、ログアウトしました');
-    expect(formatWorldLogLoggedOut('Alice', 'in_conversation')).toBe('Alice が会話を終了し、ログアウトしました');
+    expect(formatWorldLogLoggedOut('idle')).toBe('世界からログアウトしました');
+    expect(formatWorldLogLoggedOut('moving')).toBe('移動をキャンセルし、ログアウトしました');
+    expect(formatWorldLogLoggedOut('in_action', '調べる')).toBe('「調べる」をキャンセルし、ログアウトしました');
+    expect(formatWorldLogLoggedOut('in_action')).toBe('待機をキャンセルし、ログアウトしました');
+    expect(formatWorldLogLoggedOut('in_conversation')).toBe('会話を終了し、ログアウトしました');
   });
 
   it('formats conversation prompts with choices', () => {
@@ -159,6 +159,6 @@ describe('discord notifications', () => {
   });
 
   it('formats world log conversation messages', () => {
-    expect(formatWorldLogConversationMessage('Alice', 'こんにちは。')).toBe('Alice: 「こんにちは。」');
+    expect(formatWorldLogConversationMessage('こんにちは。')).toBe('「こんにちは。」');
   });
 });

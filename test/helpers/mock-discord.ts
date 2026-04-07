@@ -1,12 +1,12 @@
 import type { DiscordRuntimeAdapter } from '../../src/engine/world-engine.js';
 
 export class MockDiscordBot implements DiscordRuntimeAdapter {
-  readonly createdChannels: Array<{ agentName: string; discordBotId: string; channelId: string }> = [];
+  readonly createdChannels: Array<{ agentName: string; agentId: string; channelId: string }> = [];
   readonly deletedChannels: string[] = [];
 
-  async createAgentChannel(agentName: string, discordBotId: string): Promise<string> {
+  async createAgentChannel(agentName: string, agentId: string): Promise<string> {
     const channelId = `channel-${agentName}`;
-    this.createdChannels.push({ agentName, discordBotId, channelId });
+    this.createdChannels.push({ agentName, agentId, channelId });
     return channelId;
   }
 
@@ -16,5 +16,12 @@ export class MockDiscordBot implements DiscordRuntimeAdapter {
 
   async channelExists(_channelId: string): Promise<boolean> {
     return true;
+  }
+
+  async fetchBotInfo(discordBotId: string): Promise<{ username: string; avatarURL: string }> {
+    return {
+      username: discordBotId.replace(/^(bot-|discord-)/, ''),
+      avatarURL: `https://example.com/avatar/${discordBotId}.png`,
+    };
   }
 }

@@ -25,8 +25,8 @@ describe('conversation integration', () => {
         },
       },
     });
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice', });
-    const bob = engine.registerAgent({ agent_name: 'bob', agent_label: 'bob', discord_bot_id: 'bot-bob', });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice', });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob', });
     await engine.loginAgent(alice.agent_id);
     await engine.loginAgent(bob.agent_id);
 

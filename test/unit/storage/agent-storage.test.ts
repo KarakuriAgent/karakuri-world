@@ -9,13 +9,11 @@ import type { AgentRegistration } from '../../../src/types/agent.js';
 
 function createRegistration(overrides: Partial<AgentRegistration> = {}): AgentRegistration {
   const agentName = overrides.agent_name ?? 'alice';
-  const discordBotId = overrides.discord_bot_id ?? `bot-${agentName}`;
+  const agentId = overrides.agent_id ?? `bot-${agentName}`;
   return {
-    agent_id: 'agent-1',
+    agent_id: agentId,
     agent_name: agentName,
-    agent_label: overrides.agent_label ?? agentName,
     api_key: 'karakuri_deadbeef',
-    discord_bot_id: discordBotId,
     created_at: 1,
     items: [],
     ...overrides,
@@ -97,7 +95,7 @@ describe('agent storage', () => {
         agents: [
           createRegistration(),
           createRegistration({
-            agent_id: 'agent-2',
+            agent_id: 'bot-alice',
             api_key: 'karakuri_feedface',
           }),
         ],
@@ -105,7 +103,7 @@ describe('agent storage', () => {
       'utf8',
     );
 
-    expect(() => loadAgents(filePath)).toThrowError('Duplicate agent_name: alice');
+    expect(() => loadAgents(filePath)).toThrowError('Duplicate agent_id: bot-alice');
   });
 
   it('persists and loads optional discord_channel_id and last_node_id', () => {
@@ -119,64 +117,20 @@ describe('agent storage', () => {
     expect(loaded[0].last_node_id).toBe('3-1');
   });
 
-  it('migrates v1 data to v2 automatically', () => {
+  it('rejects legacy v1 data', () => {
     const filePath = createTempPath('agents.json');
 
-    writeFileSync(
-      filePath,
-      JSON.stringify({
-        version: 1,
-        agents: [
-          {
-            agent_id: 'agent-1',
-            agent_name: 'alice',
-            api_key: 'karakuri_deadbeef',
-            discord_bot_id: 'bot-alice',
-            created_at: 1,
-          },
-        ],
-      }),
-      'utf8',
-    );
+    writeFileSync(filePath, JSON.stringify({ version: 1, agents: [] }), 'utf8');
 
-    const loaded = loadAgents(filePath);
-    expect(loaded).toHaveLength(1);
-    expect(loaded[0].agent_label).toBe('alice');
-    expect(loaded[0].discord_channel_id).toBeUndefined();
-    expect(loaded[0].last_node_id).toBeUndefined();
-
-    const persisted = JSON.parse(readFileSync(filePath, 'utf8'));
-    expect(persisted.version).toBe(CURRENT_VERSION);
-    expect(persisted.agents[0].agent_label).toBe('alice');
+    expect(() => loadAgents(filePath)).toThrowError('Unsupported agents file version: 1');
   });
 
-  it('migrates v2 data to v3 automatically', () => {
+  it('rejects legacy v2 data', () => {
     const filePath = createTempPath('agents.json');
 
-    writeFileSync(
-      filePath,
-      JSON.stringify({
-        version: 2,
-        agents: [
-          {
-            agent_id: 'agent-1',
-            agent_name: 'alice',
-            agent_label: 'alice',
-            api_key: 'karakuri_deadbeef',
-            discord_bot_id: 'bot-alice',
-            created_at: 1,
-          },
-        ],
-      }),
-      'utf8',
-    );
+    writeFileSync(filePath, JSON.stringify({ version: 2, agents: [] }), 'utf8');
 
-    const loaded = loadAgents(filePath);
-    expect(loaded[0].items).toEqual([]);
-
-    const persisted = JSON.parse(readFileSync(filePath, 'utf8'));
-    expect(persisted.version).toBe(CURRENT_VERSION);
-    expect(persisted.agents[0].items).toEqual([]);
+    expect(() => loadAgents(filePath)).toThrowError('Unsupported agents file version: 2');
   });
 
   it('writes sorted JSON without leaving a tmp file behind', () => {

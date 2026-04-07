@@ -7,10 +7,14 @@ import {
   type Guild,
   type GuildMember,
   type Interaction,
+  RESTJSONErrorCodes,
   type RESTPostAPIChatInputApplicationCommandsJSONBody,
+  type User,
+  type Webhook,
 } from 'discord.js';
 
 import type { DiscordRuntimeAdapter } from '../engine/world-engine.js';
+import { WorldError } from '../types/api.js';
 import { ChannelManager, type StaticChannels } from './channel-manager.js';
 import type { StatusBoardChannel, StatusBoardMessage } from './status-board.js';
 
@@ -20,13 +24,20 @@ export interface DiscordBotOptions {
 }
 
 export interface DiscordNotificationAdapter extends DiscordRuntimeAdapter {
+  sendWorldLogAsAgent(content: string, identity: WebhookIdentity): Promise<void>;
   sendAgentMessage(channelId: string, content: string): Promise<void>;
   sendWorldLog(content: string): Promise<void>;
   sendErrorReport(message: string): Promise<void>;
   createWorldLogThread(content: string, threadName: string): Promise<string>;
+  sendToThreadAsAgent(threadId: string, content: string, identity: WebhookIdentity): Promise<void>;
   sendToThread(threadId: string, content: string): Promise<void>;
   archiveThread(threadId: string): Promise<void>;
   close(): Promise<void>;
+}
+
+export interface WebhookIdentity {
+  username: string;
+  avatarURL?: string;
 }
 
 export class WorldLogThreadCreationError extends Error {
@@ -36,6 +47,23 @@ export class WorldLogThreadCreationError extends Error {
   ) {
     super('Failed to create world log thread.', { cause });
     this.name = 'WorldLogThreadCreationError';
+  }
+}
+
+const discordSnowflakePattern = /^\d{17,20}$/;
+
+function getDiscordRestErrorCode(error: unknown): number | null {
+  if (!error || typeof error !== 'object' || !('code' in error)) {
+    return null;
+  }
+
+  const code = error.code;
+  return typeof code === 'number' ? code : null;
+}
+
+function ensureDiscordBotIdIsSnowflake(discordBotId: string): void {
+  if (!discordSnowflakePattern.test(discordBotId)) {
+    throw new WorldError(400, 'invalid_request', `Discord bot ID is malformed: ${discordBotId}`);
   }
 }
 
@@ -156,8 +184,8 @@ export class DiscordBot implements DiscordNotificationAdapter {
     return this.channelManager.getWorldAdminChannelId();
   }
 
-  async createAgentChannel(agentName: string, discordBotId: string): Promise<string> {
-    return this.channelManager.createAgentChannel(agentName, discordBotId);
+  async createAgentChannel(agentName: string, agentId: string): Promise<string> {
+    return this.channelManager.createAgentChannel(agentName, agentId);
   }
 
   async deleteAgentChannel(channelId: string): Promise<void> {
@@ -180,6 +208,22 @@ export class DiscordBot implements DiscordNotificationAdapter {
   async sendWorldLog(content: string): Promise<void> {
     const channel = await this.channelManager.getWorldLogChannel();
     await channel.send(content);
+  }
+
+  async sendWorldLogAsAgent(content: string, identity: WebhookIdentity): Promise<void> {
+    const webhook = await this.getOrCreateWorldLogWebhook();
+    try {
+      await webhook.send({
+        content,
+        username: identity.username,
+        ...(identity.avatarURL ? { avatarURL: identity.avatarURL } : {}),
+      });
+    } catch (error) {
+      if (getDiscordRestErrorCode(error) === RESTJSONErrorCodes.UnknownWebhook) {
+        this.worldLogWebhookPromise = null;
+      }
+      throw error;
+    }
   }
 
   async sendErrorReport(message: string): Promise<void> {
@@ -259,6 +303,23 @@ export class DiscordBot implements DiscordNotificationAdapter {
     }
   }
 
+  async sendToThreadAsAgent(threadId: string, content: string, identity: WebhookIdentity): Promise<void> {
+    const webhook = await this.getOrCreateWorldLogWebhook();
+    try {
+      await webhook.send({
+        content,
+        username: identity.username,
+        ...(identity.avatarURL ? { avatarURL: identity.avatarURL } : {}),
+        threadId,
+      });
+    } catch (error) {
+      if (getDiscordRestErrorCode(error) === RESTJSONErrorCodes.UnknownWebhook) {
+        this.worldLogWebhookPromise = null;
+      }
+      throw error;
+    }
+  }
+
   async sendToThread(threadId: string, content: string): Promise<void> {
     const channel = await this.guild.channels.fetch(threadId);
     if (!channel || !channel.isThread()) {
@@ -276,6 +337,69 @@ export class DiscordBot implements DiscordNotificationAdapter {
     }
 
     await channel.setArchived(true);
+  }
+
+  async fetchBotInfo(discordBotId: string): Promise<{ username: string; avatarURL: string }> {
+    ensureDiscordBotIdIsSnowflake(discordBotId);
+
+    try {
+      const member = await this.guild.members.fetch(discordBotId);
+      return this.toUserInfo(member.user);
+    } catch (error) {
+      if (error instanceof WorldError) {
+        throw error;
+      }
+      console.warn(`Guild member fetch failed for ${discordBotId}, falling back to user fetch.`, error);
+    }
+
+    try {
+      const user = await this.client.users.fetch(discordBotId);
+      return this.toUserInfo(user);
+    } catch (error) {
+      if (error instanceof WorldError) {
+        throw error;
+      }
+
+      const errorCode = getDiscordRestErrorCode(error);
+      if (errorCode === RESTJSONErrorCodes.UnknownUser || errorCode === RESTJSONErrorCodes.UnknownMember) {
+        throw new WorldError(400, 'invalid_request', `Discord bot not found: ${discordBotId}`);
+      }
+
+      if (errorCode === RESTJSONErrorCodes.InvalidFormBodyOrContentType) {
+        throw new WorldError(400, 'invalid_request', `Discord bot ID is malformed: ${discordBotId}`);
+      }
+
+      throw error;
+    }
+  }
+
+  private toUserInfo(user: User): { username: string; avatarURL: string } {
+    return {
+      username: user.username,
+      avatarURL: user.displayAvatarURL(),
+    };
+  }
+
+  private worldLogWebhookPromise: Promise<Webhook> | null = null;
+
+  private getOrCreateWorldLogWebhook(): Promise<Webhook> {
+    if (!this.worldLogWebhookPromise) {
+      this.worldLogWebhookPromise = this.resolveWorldLogWebhook().catch((error) => {
+        this.worldLogWebhookPromise = null;
+        throw error;
+      });
+    }
+    return this.worldLogWebhookPromise;
+  }
+
+  private async resolveWorldLogWebhook(): Promise<Webhook> {
+    const channel = await this.channelManager.getWorldLogChannel();
+    const existing = (await channel.fetchWebhooks()).find((webhook) => webhook.owner?.id === this.client.user?.id);
+    if (existing) {
+      return existing;
+    }
+
+    return channel.createWebhook({ name: 'karakuri-world-log' });
   }
 
   async close(): Promise<void> {

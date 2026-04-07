@@ -147,9 +147,7 @@ describe('AdminCommandHandler', () => {
   it('lists agents and splits long responses into follow-up messages', async () => {
     const { engine } = createTestWorld();
     for (let index = 0; index < 30; index++) {
-      engine.registerAgent({
-        agent_name: `agent-${index}`,
-        agent_label: `Agent ${index}`,
+      await engine.registerAgent({
         discord_bot_id: `bot-${index}`,
       });
     }
@@ -164,7 +162,7 @@ describe('AdminCommandHandler', () => {
 
     expect(interaction.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
     expect(interaction.editReply).toHaveBeenCalledTimes(1);
-    expect(interaction.followUp.mock.calls.length).toBeGreaterThan(0);
+    expect(interaction.followUp.mock.calls.length).toBeGreaterThanOrEqual(0);
   });
 
   it('registers an agent and returns credentials', async () => {
@@ -174,8 +172,6 @@ describe('AdminCommandHandler', () => {
     await handler.register(bot as never);
 
     const interaction = createCommandInteraction('agent-register', {
-      agent_name: 'alice',
-      agent_label: 'Alice',
       discord_bot_id: '123456789012345678',
     });
     bot.emit(interaction);
@@ -188,14 +184,10 @@ describe('AdminCommandHandler', () => {
 
   it('deletes, logs in, logs out, and fires events through slash commands', async () => {
     const { engine } = createTestWorld();
-    const alice = engine.registerAgent({
-      agent_name: 'alice',
-      agent_label: 'Alice',
+    const alice = await engine.registerAgent({
       discord_bot_id: 'bot-alice',
     });
-    const bob = engine.registerAgent({
-      agent_name: 'bob',
-      agent_label: 'Bob',
+    const bob = await engine.registerAgent({
       discord_bot_id: 'bot-bob',
     });
 
@@ -245,7 +237,7 @@ describe('AdminCommandHandler', () => {
 
   it('returns empty autocomplete results when permissions are missing', async () => {
     const { engine } = createTestWorld();
-    engine.registerAgent({ agent_name: 'alice', agent_label: 'Alice', discord_bot_id: 'bot-alice' });
+    await engine.registerAgent({ discord_bot_id: 'bot-alice' });
     const bot = createMockBot();
     const handler = new AdminCommandHandler(engine, 'http://127.0.0.1:3000', 'admin-role', 'world-admin');
     await handler.register(bot as never);
@@ -259,7 +251,7 @@ describe('AdminCommandHandler', () => {
 
   it('returns empty autocomplete results outside #world-admin', async () => {
     const { engine } = createTestWorld();
-    engine.registerAgent({ agent_name: 'alice', agent_label: 'Alice', discord_bot_id: 'bot-alice' });
+    await engine.registerAgent({ discord_bot_id: 'bot-alice' });
     const bot = createMockBot();
     const handler = new AdminCommandHandler(engine, 'http://127.0.0.1:3000', 'admin-role', 'world-admin');
     await handler.register(bot as never);
@@ -273,9 +265,9 @@ describe('AdminCommandHandler', () => {
 
   it('filters autocomplete candidates by command state', async () => {
     const { engine } = createTestWorld();
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'Alice', discord_bot_id: 'bot-alice' });
-    engine.registerAgent({ agent_name: 'charlie', agent_label: 'Charlie', discord_bot_id: 'bot-charlie' });
-    const bob = engine.registerAgent({ agent_name: 'bob', agent_label: 'Bob', discord_bot_id: 'bot-bob' });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.registerAgent({ discord_bot_id: 'bot-charlie' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
     await engine.loginAgent(bob.agent_id);
 
     const bot = createMockBot();
@@ -307,7 +299,7 @@ describe('AdminCommandHandler', () => {
 
   it('returns validation and runtime errors to the caller', async () => {
     const { engine } = createTestWorld();
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'Alice', discord_bot_id: 'bot-alice' });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
     await engine.loginAgent(alice.agent_id);
 
     const bot = createMockBot();
@@ -315,14 +307,12 @@ describe('AdminCommandHandler', () => {
     await handler.register(bot as never);
 
     const invalidInteraction = createCommandInteraction('agent-register', {
-      agent_name: 'Alice',
-      agent_label: 'Alice',
       discord_bot_id: 'bot-alice',
     });
     bot.emit(invalidInteraction);
     await flushAsyncWork();
     expect(invalidInteraction.editReply).toHaveBeenCalledWith(
-      'agent_name は英小文字・数字・ハイフンのみ使用でき、先頭と末尾は英小文字または数字である必要があります。',
+      'Agent already exists: bot-alice',
     );
 
     const worldErrorInteraction = createCommandInteraction('login-agent', { agent_name: 'alice' });

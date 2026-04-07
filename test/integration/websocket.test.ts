@@ -126,7 +126,7 @@ describe('websocket integration', () => {
     expect(snapshotMessage.type).toBe('snapshot');
     expect(snapshotMessage.data.agents).toEqual([]);
 
-    const registration = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice', });
+    const registration = await engine.registerAgent({ discord_bot_id: 'bot-alice', });
     await engine.loginAgent(registration.agent_id);
 
     const joinedMessage = await waitForMessage(
@@ -231,7 +231,7 @@ describe('websocket integration', () => {
       throw new Error('Server failed to start.');
     }
 
-    const alice = engine.registerAgent({ agent_name: 'alice', agent_label: 'alice', discord_bot_id: 'bot-alice' });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
     await engine.loginAgent(alice.agent_id);
 
     const ws = new WebSocket(`ws://127.0.0.1:${serverInfo.port}/ws`, {

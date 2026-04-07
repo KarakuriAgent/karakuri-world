@@ -56,14 +56,10 @@ export function toErrorResponse(error: WorldError): ErrorResponse {
 export interface AdminAgentSummary {
   agent_id: string;
   agent_name: string;
-  agent_label: string;
-  discord_bot_id: string;
   is_logged_in: boolean;
 }
 
 export interface AdminRegisterAgentRequest {
-  agent_name: string;
-  agent_label: string;
   discord_bot_id: string;
 }
 

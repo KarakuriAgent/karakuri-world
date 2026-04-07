@@ -5,7 +5,7 @@ import type { WorldEvent } from '../../../src/types/event.js';
 import { createTestWorld } from '../../helpers/test-world.js';
 
 async function createLoggedInAgent(engine: WorldEngine, agentName = 'alice') {
-  const agent = engine.registerAgent({ agent_name: agentName, agent_label: agentName, discord_bot_id: `bot-${agentName}` });
+  const agent = await engine.registerAgent({ discord_bot_id: `bot-${agentName}` });
   await engine.loginAgent(agent.agent_id);
   return agent;
 }
