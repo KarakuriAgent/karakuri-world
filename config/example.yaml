@@ -852,7 +852,7 @@ map:
   buildings:
     - building_id: building-shrine
       name: 神社
-      description: 赤い鳥居が立つ小さな神社。境内には古い桜の木があり、石畳の参道が本殿へと続いている。
+      description: 赤い鳥居が立つ小さな神社。
       wall_nodes:
         - 1-1
         - 1-2
@@ -886,7 +886,7 @@ map:
               quantity: 1
     - building_id: building-house-a
       name: 住宅A
-      description: 瓦屋根の小さな一軒家。庭に洗濯物が干してある。
+      description: 瓦屋根の小さな一軒家。
       wall_nodes:
         - 1-8
         - 1-9
@@ -910,7 +910,7 @@ map:
           duration_ms: 28800000
     - building_id: building-house-b
       name: 住宅B
-      description: 古い木造の家。玄関先に鉢植えが並んでいる。
+      description: 古い木造の家。
       wall_nodes:
         - 1-13
         - 1-14
@@ -934,7 +934,7 @@ map:
           duration_ms: 28800000
     - building_id: building-school
       name: 学校
-      description: 二階建ての小さな学校。校庭には桜の木が植えられ、チャイムの音が時折聞こえる。
+      description: 二階建ての小さな学校。
       wall_nodes:
         - 1-19
         - 1-20
@@ -973,7 +973,7 @@ map:
         close: '18:00'
     - building_id: building-house-c
       name: 住宅C
-      description: 二階建ての家。ベランダに布団が干してある。
+      description: 二階建ての家。
       wall_nodes:
         - 1-28
         - 1-29
@@ -1067,7 +1067,7 @@ map:
         close: '20:00'
     - building_id: building-cafe
       name: 喫茶店「さくら」
-      description: 昔ながらの喫茶店。カウンターにはマスターが立ち、コーヒーの香りが漂っている。
+      description: 昔ながらの喫茶店。
       wall_nodes:
         - 5-10
         - 5-11
@@ -1096,7 +1096,7 @@ map:
         close: '21:00'
     - building_id: building-konbini
       name: コンビニ
-      description: 24時間営業のコンビニ。明るい照明が通りを照らしている。
+      description: 24時間営業のコンビニ。
       wall_nodes:
         - 5-15
         - 5-16
@@ -1136,7 +1136,7 @@ map:
               quantity: 1
     - building_id: building-ramen
       name: ラーメン屋「一番星」
-      description: 湯気の立つ暖簾をくぐると、豚骨スープの香りが広がる。
+      description: 豚骨ラーメンの店。
       wall_nodes:
         - 5-20
         - 5-21
@@ -1168,7 +1168,7 @@ map:
         close: '23:00'
     - building_id: building-florist
       name: 花屋
-      description: 色とりどりの花が並ぶ小さな花屋。甘い香りが漂う。
+      description: 色とりどりの花が並ぶ小さな花屋。
       wall_nodes:
         - 5-25
         - 5-26
@@ -1195,7 +1195,7 @@ map:
         close: '19:00'
     - building_id: building-sento
       name: 銭湯「松の湯」
-      description: 煙突から湯気が立ち上る昔ながらの銭湯。のれんが風に揺れている。
+      description: 昔ながらの銭湯。
       wall_nodes:
         - 9-1
         - 9-3
@@ -1215,7 +1215,7 @@ map:
           duration_ms: 3600000
     - building_id: building-koban
       name: 交番
-      description: 町の安全を守る小さな交番。掲示板には迷い猫のチラシが貼ってある。
+      description: 町の小さな交番。
       wall_nodes:
         - 9-5
         - 9-7
@@ -1255,7 +1255,7 @@ map:
           duration_ms: 3600000
     - building_id: building-community
       name: 公民館
-      description: 町の集会やイベントに使われる公民館。玄関には今月の予定表が貼られている。
+      description: 町の集会やイベントに使われる公民館。
       wall_nodes:
         - 9-15
         - 9-16
@@ -1285,7 +1285,7 @@ map:
           duration_ms: 3600000
     - building_id: building-sakaya
       name: 酒屋
-      description: 地酒や焼酎が並ぶ老舗の酒屋。店主のおすすめが壁に貼ってある。
+      description: 地酒や焼酎が並ぶ老舗の酒屋。
       wall_nodes:
         - 9-25
         - 9-27
@@ -1309,7 +1309,7 @@ map:
               quantity: 1
     - building_id: building-house-d
       name: 住宅D
-      description: 生垣に囲まれた平屋の家。郵便受けに新聞が刺さっている。
+      description: 生垣に囲まれた平屋の家。
       wall_nodes:
         - 13-1
         - 13-2
@@ -1333,7 +1333,7 @@ map:
           duration_ms: 28800000
     - building_id: building-house-e
       name: 住宅E
-      description: 白い壁の家。窓辺に猫がいるのが見える。
+      description: 白い壁の家。
       wall_nodes:
         - 13-5
         - 13-6
@@ -1357,7 +1357,7 @@ map:
           duration_ms: 28800000
     - building_id: building-cinema
       name: 映画館「星空座」
-      description: 昔ながらの小さな映画館。レトロな看板とポスターが並び、ポップコーンの香りが漂っている。
+      description: 昔ながらの小さな映画館。
       wall_nodes:
         - 13-12
         - 13-13
@@ -1427,7 +1427,7 @@ map:
         close: '23:00'
     - building_id: building-house-f
       name: 住宅F
-      description: 築年数の長い二階建て。庭に柿の木がある。
+      description: 築年数の長い二階建て。
       wall_nodes:
         - 13-25
         - 13-26
@@ -1451,7 +1451,7 @@ map:
           duration_ms: 28800000
     - building_id: building-house-g
       name: 住宅G
-      description: 小さな平屋。玄関に傘立てがある。
+      description: 小さな平屋。
       wall_nodes:
         - 17-1
         - 17-2
@@ -1475,7 +1475,7 @@ map:
           duration_ms: 28800000
     - building_id: building-house-h
       name: 住宅H
-      description: 瓦屋根の家。軒先に風鈴が揺れている。
+      description: 瓦屋根の家。
       wall_nodes:
         - 17-5
         - 17-6
@@ -1499,7 +1499,7 @@ map:
           duration_ms: 28800000
     - building_id: building-park
       name: 町民公園
-      description: 大きな木と花壇のある町の公園。ベンチや公衆トイレ、充電スポットがある。
+      description: 大きな木と花壇のある町の公園。
       wall_nodes:
         - 17-12
         - 17-13
