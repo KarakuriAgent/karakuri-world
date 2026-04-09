@@ -769,6 +769,10 @@ function promptForAction(initialAction = null) {
       alert('最長所要時間は1以上の整数を入力してください。');
       return null;
     }
+    if (minDuration > maxDuration) {
+      alert('最短所要時間は最長所要時間以下にしてください。');
+      return null;
+    }
     durationConfig = {
       min_duration_minutes: minDuration,
       max_duration_minutes: maxDuration,

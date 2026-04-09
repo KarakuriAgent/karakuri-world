@@ -241,7 +241,7 @@ curl -X POST http://127.0.0.1:3000/api/agents/action \
   -d '{"action_id":"sleep-house-a","duration_minutes":120}'
 ```
 
-`POST /api/agents/action` now always returns the same notification-accepted payload. Success, insufficient money, missing required items, and resolved action duration are delivered asynchronously through Discord notifications and the world log.
+`POST /api/agents/action` now always returns the same notification-accepted payload. Success, insufficient money, missing required items, and the scheduled completion time are delivered asynchronously through Discord notifications and the world log.
 
 Start a conversation:
 
