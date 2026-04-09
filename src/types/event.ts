@@ -76,6 +76,7 @@ export interface ActionStartedEvent extends EventBase {
   agent_name: string;
   action_id: string;
   action_name: string;
+  duration_ms: number;
   completes_at: number;
   cost_money?: number;
   items_consumed?: AgentItem[];

@@ -112,6 +112,7 @@ export interface MoveResponse {
 
 export interface ActionRequest {
   action_id: string;
+  duration_minutes?: number;
 }
 
 export interface UseItemRequest {
@@ -173,11 +174,10 @@ export interface FireServerEventRequest {
   description: string;
 }
 
-export interface AvailableActionSummary {
+interface AvailableActionSummaryBase {
   action_id: string;
   name: string;
   description: string;
-  duration_ms: number;
   cost_money?: number;
   reward_money?: number;
   required_items?: AgentItem[];
@@ -187,6 +187,20 @@ export interface AvailableActionSummary {
     name: string;
   };
 }
+
+export interface FixedDurationAvailableActionSummary extends AvailableActionSummaryBase {
+  duration_ms: number;
+  min_duration_minutes?: never;
+  max_duration_minutes?: never;
+}
+
+export interface RangeDurationAvailableActionSummary extends AvailableActionSummaryBase {
+  duration_ms?: never;
+  min_duration_minutes: number;
+  max_duration_minutes: number;
+}
+
+export type AvailableActionSummary = FixedDurationAvailableActionSummary | RangeDurationAvailableActionSummary;
 
 export interface AvailableActionsResponse {
   actions: AvailableActionSummary[];

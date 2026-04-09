@@ -907,7 +907,8 @@ map:
         - action_id: sleep-house-a
           name: 寝る
           description: 布団を敷いて眠る。
-          duration_ms: 28800000
+          min_duration_minutes: 30
+          max_duration_minutes: 480
     - building_id: building-house-b
       name: 住宅B
       description: 古い木造の家。
@@ -931,7 +932,8 @@ map:
         - action_id: sleep-house-b
           name: 寝る
           description: 布団を敷いて眠る。
-          duration_ms: 28800000
+          min_duration_minutes: 30
+          max_duration_minutes: 480
     - building_id: building-school
       name: 学校
       description: 二階建ての小さな学校。
@@ -994,7 +996,8 @@ map:
         - action_id: sleep-house-c
           name: 寝る
           description: 布団を敷いて眠る。
-          duration_ms: 28800000
+          min_duration_minutes: 30
+          max_duration_minutes: 480
     - building_id: building-bakery
       name: パン屋「小麦の風」
       description: 焼きたてパンの香ばしい香りが漂う小さなパン屋。
@@ -1330,7 +1333,8 @@ map:
         - action_id: sleep-house-d
           name: 寝る
           description: 布団を敷いて眠る。
-          duration_ms: 28800000
+          min_duration_minutes: 30
+          max_duration_minutes: 480
     - building_id: building-house-e
       name: 住宅E
       description: 白い壁の家。
@@ -1354,7 +1358,8 @@ map:
         - action_id: sleep-house-e
           name: 寝る
           description: 布団を敷いて眠る。
-          duration_ms: 28800000
+          min_duration_minutes: 30
+          max_duration_minutes: 480
     - building_id: building-cinema
       name: 映画館「星空座」
       description: 昔ながらの小さな映画館。
@@ -1448,7 +1453,8 @@ map:
         - action_id: sleep-house-f
           name: 寝る
           description: 布団を敷いて眠る。
-          duration_ms: 28800000
+          min_duration_minutes: 30
+          max_duration_minutes: 480
     - building_id: building-house-g
       name: 住宅G
       description: 小さな平屋。
@@ -1472,7 +1478,8 @@ map:
         - action_id: sleep-house-g
           name: 寝る
           description: 布団を敷いて眠る。
-          duration_ms: 28800000
+          min_duration_minutes: 30
+          max_duration_minutes: 480
     - building_id: building-house-h
       name: 住宅H
       description: 瓦屋根の家。
@@ -1496,7 +1503,8 @@ map:
         - action_id: sleep-house-h
           name: 寝る
           description: 布団を敷いて眠る。
-          duration_ms: 28800000
+          min_duration_minutes: 30
+          max_duration_minutes: 480
     - building_id: building-park
       name: 町民公園
       description: 大きな木と花壇のある町の公園。

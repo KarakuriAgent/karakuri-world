@@ -26,17 +26,30 @@ export interface ItemRequirement {
   quantity: number;
 }
 
-export interface ActionConfig {
+interface ActionConfigBase {
   action_id: string;
   name: string;
   description: string;
-  duration_ms: number;
   hours?: Hours;
   cost_money?: number;
   reward_money?: number;
   required_items?: ItemRequirement[];
   reward_items?: ItemRequirement[];
 }
+
+export interface FixedDurationActionConfig extends ActionConfigBase {
+  duration_ms: number;
+  min_duration_minutes?: never;
+  max_duration_minutes?: never;
+}
+
+export interface RangeDurationActionConfig extends ActionConfigBase {
+  duration_ms?: never;
+  min_duration_minutes: number;
+  max_duration_minutes: number;
+}
+
+export type ActionConfig = FixedDurationActionConfig | RangeDurationActionConfig;
 
 export interface BuildingConfig {
   building_id: string;

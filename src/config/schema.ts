@@ -24,14 +24,35 @@ export const actionConfigSchema = z
     action_id: z.string().min(1),
     name: z.string().min(1),
     description: z.string().min(1),
-    duration_ms: positiveIntSchema,
     hours: hoursSchema.optional(),
     cost_money: nonNegativeIntSchema.optional(),
     reward_money: nonNegativeIntSchema.optional(),
     required_items: z.array(itemRequirementSchema).optional(),
     reward_items: z.array(itemRequirementSchema).optional(),
+    duration_ms: positiveIntSchema.optional(),
+    min_duration_minutes: positiveIntSchema.optional(),
+    max_duration_minutes: positiveIntSchema.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((data, ctx) => {
+    const hasFixed = data.duration_ms !== undefined;
+    const hasRange = data.min_duration_minutes !== undefined || data.max_duration_minutes !== undefined;
+    if (hasFixed && hasRange) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Cannot specify both duration_ms and min/max_duration_minutes.' });
+    } else if (!hasFixed && !hasRange) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Either duration_ms or both min_duration_minutes and max_duration_minutes must be specified.' });
+    } else if (hasRange) {
+      if (data.min_duration_minutes === undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['min_duration_minutes'], message: 'min_duration_minutes is required when using range duration.' });
+      }
+      if (data.max_duration_minutes === undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['max_duration_minutes'], message: 'max_duration_minutes is required when using range duration.' });
+      }
+      if (data.min_duration_minutes !== undefined && data.max_duration_minutes !== undefined && data.min_duration_minutes > data.max_duration_minutes) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'min_duration_minutes must be <= max_duration_minutes.' });
+      }
+    }
+  });
 
 export const nodeConfigSchema = z
   .object({

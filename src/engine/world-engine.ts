@@ -343,7 +343,7 @@ export class WorldEngine {
     }
 
     handleServerEventInterruption(this, agentId);
-    return executeValidatedAction(this, result.agent, result.source);
+    return executeValidatedAction(this, result.agent, result.source, result.duration_ms);
   }
 
   executeWait(agentId: string, request: WaitRequest): WaitResponse {
@@ -469,6 +469,7 @@ export class WorldEngine {
                   type: 'action' as const,
                   action_id: actionTimer.action_id,
                   action_name: actionTimer.action_name,
+                  duration_ms: actionTimer.duration_ms,
                   completes_at: actionTimer.fires_at,
                 },
               }

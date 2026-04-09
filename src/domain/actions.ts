@@ -1,5 +1,11 @@
 import type { WorldEngine } from '../engine/world-engine.js';
-import type { ActionRequest, AvailableActionSummary, NotificationAcceptedResponse } from '../types/api.js';
+import type {
+  ActionRequest,
+  AvailableActionSummary,
+  FixedDurationAvailableActionSummary,
+  NotificationAcceptedResponse,
+  RangeDurationAvailableActionSummary,
+} from '../types/api.js';
 import { WorldError, createNotificationAcceptedResponse } from '../types/api.js';
 import type { AgentItem, LoggedInAgent } from '../types/agent.js';
 import type { ActionConfig, BuildingConfig, ItemConfig, NpcConfig } from '../types/data-model.js';
@@ -45,12 +51,50 @@ function toAgentItems(items: ActionConfig['required_items'] | undefined): AgentI
   return items?.map((item) => ({ item_id: item.item_id, quantity: item.quantity }));
 }
 
+function mapActionDurationFields(
+  action: ActionConfig,
+): Pick<FixedDurationAvailableActionSummary, 'duration_ms'>
+  | Pick<RangeDurationAvailableActionSummary, 'min_duration_minutes' | 'max_duration_minutes'> {
+  if (action.duration_ms !== undefined) {
+    return { duration_ms: action.duration_ms };
+  }
+
+  return {
+    min_duration_minutes: action.min_duration_minutes,
+    max_duration_minutes: action.max_duration_minutes,
+  };
+}
+
+function resolveDurationMs(action: ActionConfig, durationMinutes?: number): number {
+  if (action.duration_ms !== undefined) {
+    return action.duration_ms;
+  }
+
+  if (durationMinutes === undefined || !Number.isInteger(durationMinutes)) {
+    throw new WorldError(
+      400,
+      'invalid_request',
+      `duration_minutes is required for action "${action.action_id}" and must be an integer.`,
+    );
+  }
+
+  if (durationMinutes < action.min_duration_minutes || durationMinutes > action.max_duration_minutes) {
+    throw new WorldError(
+      400,
+      'invalid_request',
+      `duration_minutes must be between ${action.min_duration_minutes} and ${action.max_duration_minutes}.`,
+    );
+  }
+
+  return durationMinutes * 60_000;
+}
+
 function mapActionSource(source: ActionSource): AvailableActionSummary {
   return {
     action_id: source.action.action_id,
     name: source.action.name,
     description: source.action.description,
-    duration_ms: source.action.duration_ms,
+    ...mapActionDurationFields(source.action),
     cost_money: source.action.cost_money,
     reward_money: source.action.reward_money,
     required_items: toAgentItems(source.action.required_items),
@@ -74,7 +118,11 @@ function formatRequiredItems(items: ReadonlyArray<AgentItem> | undefined, itemCo
 }
 
 export function formatActionSourceLine(source: ActionSource, itemConfigs: ReadonlyArray<ItemConfig> = []): string {
-  const details = [`action_id: ${source.action.action_id}`, `${Math.floor(source.action.duration_ms / 1000)}秒`];
+  const durationText =
+    source.action.duration_ms !== undefined
+      ? `${Math.floor(source.action.duration_ms / 1000)}秒`
+      : `${source.action.min_duration_minutes}〜${source.action.max_duration_minutes}分, duration_minutes: 分数を指定`;
+  const details = [`action_id: ${source.action.action_id}`, durationText];
   if (source.action.cost_money !== undefined) {
     details.push(`${source.action.cost_money.toLocaleString('ja-JP')}円`);
   }
@@ -187,6 +235,7 @@ export function validateAction(
   | {
       agent: LoggedInAgent;
       source: ActionSource;
+      duration_ms: number;
       rejected?: false;
     }
   | {
@@ -207,6 +256,8 @@ export function validateAction(
   if (!availableAction) {
     throw new WorldError(400, 'action_not_available', `Action is not currently available: ${request.action_id}`);
   }
+
+  const durationMs = resolveDurationMs(availableAction.action, request.duration_minutes);
 
   if ((availableAction.action.cost_money ?? 0) > agent.money) {
     return {
@@ -230,6 +281,7 @@ export function validateAction(
   return {
     agent,
     source: availableAction,
+    duration_ms: durationMs,
   };
 }
 
@@ -237,8 +289,9 @@ export function executeValidatedAction(
   engine: WorldEngine,
   agent: LoggedInAgent,
   source: ActionSource,
+  durationMs: number,
 ): NotificationAcceptedResponse {
-  const completesAt = Date.now() + source.action.duration_ms;
+  const completesAt = Date.now() + durationMs;
   const costMoney = source.action.cost_money ?? 0;
   const itemsConsumed = toAgentItems(source.action.required_items) ?? [];
 
@@ -261,6 +314,7 @@ export function executeValidatedAction(
     agent_id: agent.agent_id,
     action_id: source.action.action_id,
     action_name: source.action.name,
+    duration_ms: durationMs,
     fires_at: completesAt,
   });
   engine.state.setLastAction(agent.agent_id, source.action.action_id);
@@ -271,6 +325,7 @@ export function executeValidatedAction(
     agent_name: agent.agent_name,
     action_id: source.action.action_id,
     action_name: source.action.name,
+    duration_ms: durationMs,
     completes_at: completesAt,
     ...(costMoney > 0 ? { cost_money: costMoney } : {}),
     ...(itemsConsumed.length > 0 ? { items_consumed: itemsConsumed } : {}),

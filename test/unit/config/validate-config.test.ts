@@ -119,10 +119,10 @@ describe('validateConfig', () => {
     if (!result.success) {
       expect(result.issues).toEqual(
         expect.arrayContaining([
-          {
-            path: 'map.buildings[0].actions[1].required_items[0].item_id',
+          expect.objectContaining({
+            path: 'map.buildings[0].actions[2].required_items[0].item_id',
             message: 'Unknown item id "missing-item".',
-          },
+          }),
         ]),
       );
     }

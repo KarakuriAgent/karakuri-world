@@ -140,16 +140,16 @@ POST /api/agents/action
 ```typescript
 interface ActionRequest {
   action_id: string;
+  duration_minutes?: number; // 可変時間アクション時は必須。固定時間アクションでは無視
 }
 ```
 
 レスポンス (200 OK):
 
 ```typescript
-interface ActionResponse {
-  action_id: string;
-  action_name: string;
-  completes_at: number; // 完了予定時刻（Unix timestamp ms）
+interface NotificationAcceptedResponse {
+  ok: true;
+  message: string;
 }
 ```
 

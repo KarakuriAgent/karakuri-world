@@ -29,6 +29,13 @@ export function createTestMapConfig(): MapConfig {
             description: 'Carefully polish the workshop gears.',
             duration_ms: 1500,
           },
+          {
+            action_id: 'long-nap',
+            name: 'Long nap',
+            description: 'Take a nap for as long as needed.',
+            min_duration_minutes: 1,
+            max_duration_minutes: 5,
+          },
         ],
       },
     ],

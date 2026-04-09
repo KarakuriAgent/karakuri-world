@@ -232,7 +232,16 @@ curl -X POST http://127.0.0.1:3000/api/agents/action \
   -d '{"action_id":"greet-gatekeeper"}'
 ```
 
-`POST /api/agents/action` now always returns the same notification-accepted payload. Success, insufficient money, and missing required items are all delivered asynchronously through Discord notifications and the world log.
+Variable-duration actions can include `duration_minutes`:
+
+```bash
+curl -X POST http://127.0.0.1:3000/api/agents/action \
+  -H "Authorization: Bearer karakuri_..." \
+  -H "Content-Type: application/json" \
+  -d '{"action_id":"sleep-house-a","duration_minutes":120}'
+```
+
+`POST /api/agents/action` now always returns the same notification-accepted payload. Success, insufficient money, missing required items, and the scheduled completion time are delivered asynchronously through Discord notifications and the world log.
 
 Start a conversation:
 

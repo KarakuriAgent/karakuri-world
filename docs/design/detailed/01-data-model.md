@@ -120,13 +120,30 @@ interface NpcConfig {
 ### 5.1 アクション定義
 
 ```typescript
-interface ActionConfig {
+interface ActionConfigBase {
   action_id: string; // 一意なアクションID（MapConfig内で一意）
   name: string; // アクション名（例: "武器を鍛造する"）
   description: string; // アクションの説明
-  duration_ms: number; // 所要時間（ミリ秒）
 }
+
+interface FixedDurationActionConfig extends ActionConfigBase {
+  duration_ms: number; // 固定所要時間（ミリ秒）
+  min_duration_minutes?: never;
+  max_duration_minutes?: never;
+}
+
+interface RangeDurationActionConfig extends ActionConfigBase {
+  duration_ms?: never;
+  min_duration_minutes: number; // 実行時に選べる最小所要時間（分）
+  max_duration_minutes: number; // 実行時に選べる最大所要時間（分）
+}
+
+type ActionConfig = FixedDurationActionConfig | RangeDurationActionConfig;
 ```
+
+- **固定時間アクション**: `duration_ms` を持つ。実行時に追加の時間指定は不要
+- **可変時間アクション**: `min_duration_minutes` / `max_duration_minutes` を持つ。エージェントは実行時にこの範囲内の `duration_minutes` を指定する
+- 上記の2形式は排他的であり、`duration_ms` と `min/max_duration_minutes` を同時に持つことはできない
 
 ### 5.2 実行条件
 
@@ -137,7 +154,15 @@ interface ActionConfig {
 
 設定ファイル上のアクション定義には実行条件フィールドを持たない。サーバーが所属先から自動的に判定する。
 
-### 5.3 アクション結果
+### 5.3 実行時の所要時間決定
+
+- 固定時間アクションでは設定済みの `duration_ms` がそのまま使われる
+- 可変時間アクションでは、エージェントが `ActionRequest.duration_minutes` に分単位の値を指定し、サーバーが `duration_ms` に解決して実行する
+- 固定時間アクションに `duration_minutes` が渡された場合は無視される
+- 可変時間アクションで `duration_minutes` が未指定、または範囲外の場合は `invalid_request` になる
+- 解決済みの `duration_ms` はイベント・タイマー・スナップショットに保持される
+
+### 5.4 アクション結果
 
 アクション完了時、アクション名を含む完了通知がエージェントに送られる。結果の解釈はエージェントに委ねられる。世界の状態を変更する副作用は持たない。
 

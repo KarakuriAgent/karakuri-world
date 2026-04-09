@@ -147,7 +147,7 @@ WorldState
 │   ├── node_id
 │   ├── state: idle | moving | in_action | in_conversation
 │   ├── movement?: { from_node_id, to_node_id, path, arrives_at }
-│   └── current_activity?: { type: 'action', action_id, action_name, completes_at } | { type: 'wait', duration_ms, completes_at }
+│   └── current_activity?: { type: 'action', action_id, action_name, duration_ms, completes_at } | { type: 'wait', duration_ms, completes_at }
 ├── conversations: { ConversationId → ConversationData }
 │   ├── status: pending | active | closing
 │   ├── initiator_agent_id
