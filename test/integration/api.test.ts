@@ -7,7 +7,6 @@ import { createTestWorld } from '../helpers/test-world.js';
 import { createTestConfig } from '../helpers/test-map.js';
 
 const ADMIN_KEY = 'test-admin-key';
-const CONFIG_PATH = './config/example.yaml';
 const PUBLIC_BASE_URL = 'http://localhost:3000';
 
 type JsonResult = {
@@ -63,7 +62,7 @@ describe('REST API', () => {
 
   it('supports admin registration, lifecycle routes, info routes, and deletion', async () => {
     const { engine } = createTestWorld();
-    const { app } = createApp(engine, { adminKey: ADMIN_KEY, configPath: CONFIG_PATH, publicBaseUrl: PUBLIC_BASE_URL });
+    const { app } = createApp(engine, { adminKey: ADMIN_KEY, publicBaseUrl: PUBLIC_BASE_URL });
 
     const registered = await registerAgent(app, 'alice', 'discord-alice');
     expect(registered.response.status).toBe(201);
@@ -156,7 +155,7 @@ describe('REST API', () => {
 
   it('returns 401, 403, 400, and 409 errors in representative cases', async () => {
     const { engine } = createTestWorld();
-    const { app } = createApp(engine, { adminKey: ADMIN_KEY, configPath: CONFIG_PATH, publicBaseUrl: PUBLIC_BASE_URL });
+    const { app } = createApp(engine, { adminKey: ADMIN_KEY, publicBaseUrl: PUBLIC_BASE_URL });
     const registered = await registerAgent(app, 'alice');
     const emptyBotId = await requestJson(app, '/api/admin/agents', {
       method: 'POST',
@@ -248,7 +247,7 @@ describe('REST API', () => {
         };
       },
     });
-    const { app } = createApp(engine, { adminKey: ADMIN_KEY, configPath: CONFIG_PATH, publicBaseUrl: PUBLIC_BASE_URL });
+    const { app } = createApp(engine, { adminKey: ADMIN_KEY, publicBaseUrl: PUBLIC_BASE_URL });
 
     const missingBot = await requestJson(app, '/api/admin/agents', {
       method: 'POST',
@@ -275,7 +274,7 @@ describe('REST API', () => {
 
   it('wires action, conversation, and admin server event endpoints', async () => {
     const { engine } = createTestWorld();
-    const { app } = createApp(engine, { adminKey: ADMIN_KEY, configPath: CONFIG_PATH, publicBaseUrl: PUBLIC_BASE_URL });
+    const { app } = createApp(engine, { adminKey: ADMIN_KEY, publicBaseUrl: PUBLIC_BASE_URL });
 
     const alice = await registerAgent(app, 'alice');
     const bob = await registerAgent(app, 'bob');
@@ -354,7 +353,7 @@ describe('REST API', () => {
 
   it('emits info-request events for notification-based read endpoints', async () => {
     const { engine } = createTestWorld();
-    const { app } = createApp(engine, { adminKey: ADMIN_KEY, configPath: CONFIG_PATH, publicBaseUrl: PUBLIC_BASE_URL });
+    const { app } = createApp(engine, { adminKey: ADMIN_KEY, publicBaseUrl: PUBLIC_BASE_URL });
     const registered = await registerAgent(app, 'alice');
     await requestJson(app, '/api/agents/login', {
       method: 'POST',

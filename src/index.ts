@@ -128,7 +128,6 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
     });
     const { app, injectWebSocket, websocketManager: createdWebsocketManager } = createApp(engine, {
       adminKey: options.adminKey,
-      configPath: options.configPath,
       publicBaseUrl: options.publicBaseUrl,
     });
     websocketManager = createdWebsocketManager;

@@ -1,6 +1,4 @@
-import { randomUUID } from 'node:crypto';
-import { readFile, rename, rm, writeFile } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+import { readFile } from 'node:fs/promises';
 
 import type { ZodIssue } from 'zod';
 import yaml from 'js-yaml';
@@ -69,21 +67,6 @@ export function parseConfig(rawConfig: unknown): ServerConfig {
 export async function loadConfigFromFile(configPath: string): Promise<ServerConfig> {
   const configText = await readFile(configPath, 'utf8');
   return parseConfig(yaml.load(configText));
-}
-
-export async function saveConfigToFile(configPath: string, config: ServerConfig): Promise<void> {
-  const yamlText = yaml.dump(config, {
-    noRefs: true,
-  });
-  const tempPath = join(dirname(configPath), `${basename(configPath)}.${randomUUID()}.tmp`);
-
-  try {
-    await writeFile(tempPath, yamlText, { encoding: 'utf8', mode: 0o600 });
-    await rename(tempPath, configPath);
-  } catch (error) {
-    await rm(tempPath, { force: true });
-    throw error;
-  }
 }
 
 export const loadConfig = loadConfigFromFile;

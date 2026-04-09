@@ -504,9 +504,5 @@ WebSocket接続を確立する。接続確立後、サーバーは `WorldSnapsho
 | GET | /api/agents/perception | Agent | ✅ | 知覚情報取得 |
 | GET | /api/agents/map | Agent | ✅ | マップ全体取得 |
 | GET | /api/agents/world-agents | Agent | ✅ | ログイン中エージェント一覧 |
-| GET | /api/admin/config | Admin | - | 設定取得（12-map-editor.md） |
-| PUT | /api/admin/config | Admin | - | 設定更新（12-map-editor.md） |
-| POST | /api/admin/config/validate | Admin | - | 設定バリデーション（12-map-editor.md） |
 | GET | /api/snapshot | Admin | - | 世界スナップショット |
 | GET | /ws | Admin | - | WebSocket接続 |
-| GET | /admin/editor | なし | - | マップエディタWeb UI（12-map-editor.md） |
