@@ -1,6 +1,5 @@
 import type { AgentItem, AgentState } from './agent.js';
-import type { NodeId, NodeType, ServerConfig } from './data-model.js';
-import type { ConfigValidationIssue } from '../config/validation.js';
+import type { NodeId, NodeType } from './data-model.js';
 import type { WorldSnapshot } from './snapshot.js';
 
 export type ApiErrorCode =
@@ -72,23 +71,6 @@ export interface AdminRegisterAgentResponse {
 
 export interface AdminAgentsResponse {
   agents: AdminAgentSummary[];
-}
-
-export interface ConfigResponse {
-  config: ServerConfig;
-}
-
-export interface ConfigUpdateRequest {
-  config: unknown;
-}
-
-export interface ConfigValidateResponse {
-  valid: true;
-}
-
-export interface ConfigValidationErrorResponse extends ErrorResponse {
-  error: 'validation_error';
-  details: ConfigValidationIssue[];
 }
 
 export interface LoginResponse {

@@ -6,7 +6,6 @@ import { createTestMapConfig } from '../helpers/test-map.js';
 import { createTestWorld } from '../helpers/test-world.js';
 
 const ADMIN_KEY = 'admin';
-const CONFIG_PATH = './config/example.yaml';
 
 type FetchableApp = {
   fetch: (request: Request) => Response | Promise<Response>;
@@ -69,7 +68,6 @@ describe('movement integration', () => {
     });
     const { app } = createApp(engine, {
       adminKey: ADMIN_KEY,
-      configPath: CONFIG_PATH,
       publicBaseUrl: 'http://localhost:3000',
     });
     const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice', });

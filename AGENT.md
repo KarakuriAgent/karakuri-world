@@ -4,13 +4,13 @@
 
 ## プロジェクト概要
 
-Karakuri World は、LLM エージェントがログインしてグリッドマップ上で移動・アクション・会話・サーバーイベント応答を行うマルチエージェント仮想世界サーバー。エージェント向け REST API に加えて、管理 API、ブラウザベースのエディタ（`/admin/editor`）、管理用スナップショット API（`/api/snapshot`）、MCP、Discord 通知 / 管理スラッシュコマンド、WebSocket を備える。
+Karakuri World は、LLM エージェントがログインしてグリッドマップ上で移動・アクション・会話・サーバーイベント応答を行うマルチエージェント仮想世界サーバー。エージェント向け REST API に加えて、管理 API、管理用スナップショット API（`/api/snapshot`）、MCP、Discord 通知 / 管理スラッシュコマンド、WebSocket を備える。
 
 ## よく使うコマンド
 
 ```bash
 npm run dev          # 開発サーバー起動（tsx watch、.env 自動読み込み）
-npm run build        # TypeScript コンパイル + アセットコピー → dist/
+npm run build        # TypeScript コンパイル → dist/
 npm start            # ビルド済み dist/src/index.js を実行
 npm run typecheck    # 型チェックのみ（出力なし）
 npm test             # テスト実行（vitest run）
@@ -48,7 +48,6 @@ npm run docker:logs                            # ログ表示
 
 ```
 src/
-├── admin/        # `/admin/editor` で配信するブラウザエディタの静的アセット
 ├── api/          # Hono ルーティング・ミドルウェア・管理/エージェント/UI API・WebSocket
 ├── engine/       # WorldEngine（状態管理・タイマー・EventBus）
 ├── domain/       # WorldEngine を受けて状態更新・タイマー登録・イベント発火まで行うワールド操作ロジック
@@ -76,8 +75,6 @@ src/
 - **ゲーム要素**: `ServerConfig.timezone` を正本として世界時刻を扱い、`weather` 設定 + `OPENWEATHERMAP_API_KEY` がある場合は天気を定期取得する。エージェントは `money` / `items` を永続化し、`cost_money` / `reward_money`、`required_items` / `reward_items`、`hours` を使ってゲーム要素付きアクションを定義できる。`cost_money` / `required_items` は開始時消費、`reward_money` / `reward_items` は完了時付与で、キャンセル時の返金・返却はない。不足時は `action_rejected` イベントが発火し、agent channel / `#world-log` / WebSocket に流れる。アイテムの汎用使用は `POST /api/agents/use-item` で行う。
 - **待機時間の制約**: `POST /api/agents/wait` はトップレベルの `duration` を受け付け、値は 10 分刻みを表す整数 `1`〜`6` のみ。
 - **管理 API**: `/api/admin/agents` でエージェント登録/一覧/削除、`POST /api/admin/server-events/fire` でサーバーイベント発火を提供する。Discord の `#world-admin` では `admin` ロール限定で `/agent-list`、`/agent-register`、`/agent-delete`、`/fire-event`、`/login-agent`、`/logout-agent` の 6 コマンドを提供する。`POST /api/admin/agents` の登録本文は `{ discord_bot_id }` のみで、Discord ユーザー（bot・人間問わず）を登録できる。`agent_id` は Discord bot ID をそのまま使用し、`agent_name` と `discord_bot_avatar_url` は Discord API から自動取得する。`#world-log` / 会話スレッドは Webhook で `agent_name` を投稿者名として使い、アバター未取得時は既定の Webhook アバターで継続する。
-- **管理設定 API**: `GET /api/admin/config` は `{ config: ... }` を返す。`PUT /api/admin/config` は `{ config: ... }` を受け取り、検証済み設定を保存して `{ status: 'ok' }` を返す。`POST /api/admin/config/validate` は同じ `{ config: ... }` エンベロープを受け取り、妥当なら `{ valid: true }` を返す。いずれも `X-Admin-Key` が必要。
-- **ブラウザエディタ**: `/admin/editor` で `src/admin/editor/` の静的アセットを配信する。
 - **管理 UI 補助**: `/api/snapshot` でワールドスナップショットを返し、`X-Admin-Key` が必要。
 - **リアルタイム配信**: `/ws` は管理キー必須の WebSocket、`/health` はヘルスチェック、`/mcp` は MCP エンドポイント。
 
@@ -98,7 +95,7 @@ src/
 
 ### 設定ファイル
 
-ワールド定義は `config/example.yaml`（マップ・NPC・建物・サーバーイベント・タイミング設定）。`CONFIG_PATH` 環境変数で差し替え可能。`/api/admin/config` から保存された内容も実体は設定ファイルに書き戻されるが、実行中プロセスは起動時に読み込んだ設定を使い続けるため、反映には再起動が必要。
+ワールド定義は `config/example.yaml`（マップ・NPC・建物・サーバーイベント・タイミング設定）。`CONFIG_PATH` 環境変数で差し替え可能。
 
 ### 環境変数（主要）
 

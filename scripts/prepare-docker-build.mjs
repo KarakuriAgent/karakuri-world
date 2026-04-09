@@ -16,8 +16,7 @@ import { fileURLToPath } from 'node:url';
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, '..');
 const stageDir = join(repoRoot, '.docker-build');
-// 'scripts' is needed because 'npm run build' invokes scripts/copy-assets.mjs
-const stageInputs = ['package.json', 'package-lock.json', 'tsconfig.json', 'src', 'scripts'];
+const stageInputs = ['package.json', 'package-lock.json', 'tsconfig.json', 'src'];
 
 function stageInput(inputPath) {
   const sourcePath = join(repoRoot, inputPath);

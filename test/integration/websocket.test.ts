@@ -9,7 +9,6 @@ import { createApp } from '../../src/api/app.js';
 import { createTestWorld } from '../helpers/test-world.js';
 
 const ADMIN_KEY = 'admin';
-const CONFIG_PATH = './config/example.yaml';
 
 async function waitForCondition(predicate: () => boolean): Promise<void> {
   const startedAt = Date.now();
@@ -40,7 +39,6 @@ describe('websocket integration', () => {
     const { engine } = createTestWorld();
     const { app, injectWebSocket, websocketManager } = createApp(engine, {
       adminKey: ADMIN_KEY,
-      configPath: CONFIG_PATH,
       publicBaseUrl: 'http://localhost:3000',
     });
 
@@ -92,7 +90,6 @@ describe('websocket integration', () => {
     });
     const { app, injectWebSocket, websocketManager } = createApp(engine, {
       adminKey: ADMIN_KEY,
-      configPath: CONFIG_PATH,
       publicBaseUrl: 'http://localhost:3000',
     });
 
@@ -214,7 +211,6 @@ describe('websocket integration', () => {
     const { engine } = createTestWorld();
     const { app, injectWebSocket, websocketManager } = createApp(engine, {
       adminKey: ADMIN_KEY,
-      configPath: CONFIG_PATH,
       publicBaseUrl: 'http://localhost:3000',
     });
 
