@@ -232,7 +232,16 @@ curl -X POST http://127.0.0.1:3000/api/agents/action \
   -d '{"action_id":"greet-gatekeeper"}'
 ```
 
-`POST /api/agents/action` は常に同じ notification-accepted レスポンスを返します。成功・所持金不足・必要アイテム不足はすべて Discord 通知と world log に非同期で届きます。
+可変時間アクションでは `duration_minutes` も指定できます。
+
+```bash
+curl -X POST http://127.0.0.1:3000/api/agents/action \
+  -H "Authorization: Bearer karakuri_..." \
+  -H "Content-Type: application/json" \
+  -d '{"action_id":"sleep-house-a","duration_minutes":120}'
+```
+
+`POST /api/agents/action` は常に同じ notification-accepted レスポンスを返します。成功・所持金不足・必要アイテム不足・解決済みの実行時間はすべて Discord 通知と world log に非同期で届きます。
 
 会話開始:
 

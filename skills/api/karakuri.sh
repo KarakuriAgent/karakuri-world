@@ -17,7 +17,7 @@ Commands:
   move <target_node_id>                          Move to a target node
   perception                                     Request refreshed perception via notification
   actions                                        Request available actions via notification
-  action <action_id>                             Execute an action
+  action <action_id> [duration_minutes]          Execute an action
   use-item <item_id>                             Use an item from inventory
   wait <duration>                                 Wait (1-6, in 10-minute units)
   conversation-start <target_agent_id> <message> Start a conversation
@@ -97,8 +97,12 @@ case "${command}" in
     do_notification_get "/agents/actions"
     ;;
   action)
-    [ $# -lt 1 ] && { echo "Usage: karakuri.sh action <action_id>" >&2; exit 1; }
-    do_post "/agents/action" "$(json_obj action_id "$1")"
+    [ $# -lt 1 ] && { echo "Usage: karakuri.sh action <action_id> [duration_minutes]" >&2; exit 1; }
+    if [ $# -ge 2 ]; then
+      do_post "/agents/action" "$(jq -nc --arg action_id "$1" --argjson duration_minutes "$2" '{action_id: $action_id, duration_minutes: $duration_minutes}')"
+    else
+      do_post "/agents/action" "$(json_obj action_id "$1")"
+    fi
     ;;
   use-item)
     [ $# -lt 1 ] && { echo "Usage: karakuri.sh use-item <item_id>" >&2; exit 1; }

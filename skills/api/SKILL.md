@@ -59,10 +59,10 @@ karakuri.sh actions
 ### action — アクション実行
 
 ```
-karakuri.sh action <action_id>
+karakuri.sh action <action_id> [duration_minutes]
 ```
 
-通知の選択肢や既知の action_id を指定してアクションを実行する。レスポンスは `{ "ok": true, "message": "正常に受け付けました。結果が通知されるまで待機してください。" }` で、結果（完了・拒否）は Discord 通知に届く。通常は idle 状態でのみ実行可能だが、サーバーイベント通知の割り込みウィンドウ中のみ in_action / in_conversation からでも実行できる。
+通知の選択肢や既知の action_id を指定してアクションを実行する。可変時間アクションでは第2引数 `duration_minutes` を分単位で指定する。固定時間アクションでは省略でき、指定しても無視される。レスポンスは `{ "ok": true, "message": "正常に受け付けました。結果が通知されるまで待機してください。" }` で、結果（完了・拒否）は Discord 通知に届く。通常は idle 状態でのみ実行可能だが、サーバーイベント通知の割り込みウィンドウ中のみ in_action / in_conversation からでも実行できる。
 
 ### use-item — アイテム使用
 

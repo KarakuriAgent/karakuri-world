@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { WorldEngine } from '../../../src/engine/world-engine.js';
+import { formatActionSourceLine, getAvailableActionSources } from '../../../src/domain/actions.js';
 import { WorldError } from '../../../src/types/api.js';
 import type { NodeId } from '../../../src/types/data-model.js';
 import type { ActionTimer } from '../../../src/types/timer.js';
@@ -58,6 +59,18 @@ describe('actions domain', () => {
 
     expect(engine.getAvailableActions(alice.agent_id).actions).toEqual([
       {
+        action_id: 'long-nap',
+        name: 'Long nap',
+        description: 'Take a nap for as long as needed.',
+        min_duration_minutes: 1,
+        max_duration_minutes: 5,
+        source: {
+          type: 'building',
+          id: 'building-workshop',
+          name: 'Clockwork Workshop',
+        },
+      },
+      {
         action_id: 'polish-gears',
         name: 'Gears polishing',
         description: 'Carefully polish the workshop gears.',
@@ -76,6 +89,127 @@ describe('actions domain', () => {
 
     vi.advanceTimersByTime(1500);
     expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('idle');
+  });
+
+  it('executes a variable-duration action with the requested duration', async () => {
+    const { engine } = createTestWorld();
+    const alice = await createLoggedInAgent(engine);
+    engine.state.setNode(alice.agent_id, '2-4');
+
+    const events: Array<{ type: string; duration_ms?: number }> = [];
+    engine.eventBus.onAny((event) => events.push(event));
+
+    const response = engine.executeAction(alice.agent_id, { action_id: 'long-nap', duration_minutes: 3 });
+    expect(response.ok).toBe(true);
+
+    const actionTimer = engine.timerManager.find(
+      (timer): timer is ActionTimer => timer.type === 'action' && timer.agent_id === alice.agent_id,
+    );
+    expect(actionTimer).toMatchObject({
+      action_id: 'long-nap',
+      duration_ms: 180_000,
+    });
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'action_started',
+        duration_ms: 180_000,
+      }),
+    );
+
+    vi.advanceTimersByTime(179_999);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('in_action');
+    vi.advanceTimersByTime(1);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('idle');
+  });
+
+  it('requires duration_minutes for variable-duration actions', async () => {
+    const { engine } = createTestWorld();
+    const alice = await createLoggedInAgent(engine);
+    engine.state.setNode(alice.agent_id, '2-4');
+
+    expect(() => engine.executeAction(alice.agent_id, { action_id: 'long-nap' })).toThrowError(
+      expect.objectContaining({
+        code: 'invalid_request',
+      }),
+    );
+  });
+
+  it('rejects duration_minutes outside the configured range', async () => {
+    const { engine } = createTestWorld();
+    const alice = await createLoggedInAgent(engine);
+    engine.state.setNode(alice.agent_id, '2-4');
+
+    expect(() => engine.executeAction(alice.agent_id, { action_id: 'long-nap', duration_minutes: 6 })).toThrowError(
+      expect.objectContaining({
+        code: 'invalid_request',
+      }),
+    );
+
+    expect(() => engine.executeAction(alice.agent_id, { action_id: 'long-nap', duration_minutes: 0 })).toThrowError(
+      expect.objectContaining({
+        code: 'invalid_request',
+      }),
+    );
+  });
+
+  it('rejects non-integer duration_minutes', async () => {
+    const { engine } = createTestWorld();
+    const alice = await createLoggedInAgent(engine);
+    engine.state.setNode(alice.agent_id, '2-4');
+
+    expect(() => engine.executeAction(alice.agent_id, { action_id: 'long-nap', duration_minutes: 2.5 })).toThrowError(
+      expect.objectContaining({
+        code: 'invalid_request',
+      }),
+    );
+  });
+
+  it('accepts duration_minutes at exact min and max boundaries', async () => {
+    const { engine } = createTestWorld();
+    const alice = await createLoggedInAgent(engine);
+    engine.state.setNode(alice.agent_id, '2-4');
+
+    engine.executeAction(alice.agent_id, { action_id: 'long-nap', duration_minutes: 1 });
+    let actionTimer = engine.timerManager.find(
+      (timer): timer is ActionTimer => timer.type === 'action' && timer.agent_id === alice.agent_id,
+    );
+    expect(actionTimer?.duration_ms).toBe(60_000);
+
+    vi.advanceTimersByTime(60_000);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('idle');
+
+    // Execute a different action to clear the cooldown on long-nap
+    executeAndCompleteAction(engine, alice.agent_id, 'polish-gears');
+
+    engine.executeAction(alice.agent_id, { action_id: 'long-nap', duration_minutes: 5 });
+    actionTimer = engine.timerManager.find(
+      (timer): timer is ActionTimer => timer.type === 'action' && timer.agent_id === alice.agent_id,
+    );
+    expect(actionTimer?.duration_ms).toBe(300_000);
+  });
+
+  it('ignores duration_minutes for fixed-duration actions', async () => {
+    const { engine } = createTestWorld();
+    const alice = await createLoggedInAgent(engine);
+    engine.state.setNode(alice.agent_id, '2-4');
+
+    engine.executeAction(alice.agent_id, { action_id: 'polish-gears', duration_minutes: 5 });
+    const actionTimer = engine.timerManager.find(
+      (timer): timer is ActionTimer => timer.type === 'action' && timer.agent_id === alice.agent_id,
+    );
+
+    expect(actionTimer?.duration_ms).toBe(1500);
+  });
+
+  it('formats variable-duration actions in choice text', async () => {
+    const { engine } = createTestWorld();
+    const alice = await createLoggedInAgent(engine);
+    engine.state.setNode(alice.agent_id, '2-4');
+
+    const source = getAvailableActionSources(engine, alice.agent_id).find((candidate) => candidate.action.action_id === 'long-nap');
+    expect(source).toBeDefined();
+    expect(formatActionSourceLine(source!)).toContain('1〜5分, duration_minutes: 分数を指定');
   });
 
   it('supports NPC actions and rejects invalid/unavailable actions', async () => {
@@ -154,7 +288,7 @@ describe('actions domain', () => {
     executeAndCompleteAction(engine, alice.agent_id, 'greet-gatekeeper');
     engine.state.setNode(alice.agent_id, '2-4');
 
-    expect(getAvailableActionIds(engine, alice.agent_id)).toEqual(['polish-gears']);
+    expect(getAvailableActionIds(engine, alice.agent_id)).toEqual(['long-nap', 'polish-gears']);
 
     executeAndCompleteAction(engine, alice.agent_id, 'polish-gears');
     engine.state.setNode(alice.agent_id, '1-1');

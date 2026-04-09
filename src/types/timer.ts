@@ -31,6 +31,7 @@ export interface ActionTimer extends TimerBase {
   agent_id: string;
   action_id: string;
   action_name: string;
+  duration_ms: number;
 }
 
 export interface WaitTimer extends TimerBase {

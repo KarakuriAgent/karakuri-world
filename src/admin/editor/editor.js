@@ -586,7 +586,7 @@ function renderBuildingInspector() {
         <div>
           <strong>${action.action_id}</strong><br />
           <span>${action.name}</span><br />
-          <small>${action.duration_ms}ms</small>
+          <small>${formatActionDurationLabel(action)}</small>
         </div>
         <div class="item-actions">
           <button type="button" data-kind="building-action" data-action="edit" data-index="${index}">編集</button>
@@ -620,7 +620,7 @@ function renderNpcInspector() {
         <div>
           <strong>${action.action_id}</strong><br />
           <span>${action.name}</span><br />
-          <small>${action.duration_ms}ms</small>
+          <small>${formatActionDurationLabel(action)}</small>
         </div>
         <div class="item-actions">
           <button type="button" data-kind="npc-action" data-action="edit" data-index="${index}">編集</button>
@@ -704,6 +704,16 @@ function createEmptyNpc() {
   };
 }
 
+function formatActionDurationLabel(action) {
+  if (action.duration_ms !== undefined) {
+    return `${action.duration_ms}ms`;
+  }
+  if (action.min_duration_minutes !== undefined && action.max_duration_minutes !== undefined) {
+    return `${action.min_duration_minutes}〜${action.max_duration_minutes}分`;
+  }
+  return '(未設定)';
+}
+
 function promptForAction(initialAction = null) {
   const actionId = prompt('アクションID', initialAction?.action_id ?? '');
   if (actionId === null) {
@@ -720,16 +730,69 @@ function promptForAction(initialAction = null) {
     return null;
   }
 
-  const durationText = prompt('所要時間(ms)', String(initialAction?.duration_ms ?? 1000));
-  if (durationText === null) {
+  const durationMode = prompt(
+    '所要時間の種類を選択してください (fixed/range)',
+    initialAction ? (initialAction.duration_ms !== undefined ? 'fixed' : 'range') : 'fixed',
+  );
+  if (durationMode === null) {
     return null;
+  }
+
+  const normalizedMode = durationMode.trim().toLowerCase();
+  if (normalizedMode !== 'fixed' && normalizedMode !== 'range') {
+    alert('所要時間の種類は "fixed" または "range" を入力してください。');
+    return null;
+  }
+  let durationConfig;
+  if (normalizedMode === 'range') {
+    const minDurationText = prompt(
+      '最短所要時間(分)',
+      String(initialAction?.min_duration_minutes ?? 30),
+    );
+    if (minDurationText === null) {
+      return null;
+    }
+    const minDuration = Number.parseInt(minDurationText, 10);
+    if (Number.isNaN(minDuration) || minDuration < 1) {
+      alert('最短所要時間は1以上の整数を入力してください。');
+      return null;
+    }
+    const maxDurationText = prompt(
+      '最長所要時間(分)',
+      String(initialAction?.max_duration_minutes ?? 60),
+    );
+    if (maxDurationText === null) {
+      return null;
+    }
+    const maxDuration = Number.parseInt(maxDurationText, 10);
+    if (Number.isNaN(maxDuration) || maxDuration < 1) {
+      alert('最長所要時間は1以上の整数を入力してください。');
+      return null;
+    }
+    durationConfig = {
+      min_duration_minutes: minDuration,
+      max_duration_minutes: maxDuration,
+    };
+  } else {
+    const durationText = prompt('所要時間(ms)', String(initialAction?.duration_ms ?? 1000));
+    if (durationText === null) {
+      return null;
+    }
+    const durationMs = Number.parseInt(durationText, 10);
+    if (Number.isNaN(durationMs) || durationMs < 1) {
+      alert('所要時間は1以上の整数を入力してください。');
+      return null;
+    }
+    durationConfig = {
+      duration_ms: durationMs,
+    };
   }
 
   return {
     action_id: actionId.trim(),
     name: name.trim(),
     description: description.trim(),
-    duration_ms: Number.parseInt(durationText, 10) || 0,
+    ...durationConfig,
   };
 }
 

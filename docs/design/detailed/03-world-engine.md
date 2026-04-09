@@ -7,7 +7,7 @@
 | 種別 | 用途 | 期間の設定元 |
 |------|------|------------|
 | `movement` | 移動完了 | `MovementConfig.duration_ms` |
-| `action` | アクション完了 | `ActionConfig.duration_ms` |
+| `action` | アクション完了 | 固定時間アクションは `ActionConfig.duration_ms`、可変時間アクションは実行時に解決した `duration_minutes * 60_000` |
 | `wait` | 待機完了 | リクエストの `duration`（`duration × WAIT_UNIT_MS` で変換） |
 | `conversation_accept` | 会話受諾タイムアウト | `ConversationConfig.accept_timeout_ms` |
 | `conversation_turn` | ターン応答タイムアウト | `ConversationConfig.turn_timeout_ms` |
@@ -51,6 +51,7 @@ interface ActionTimer extends TimerBase {
   agent_id: string;
   action_id: string;
   action_name: string;
+  duration_ms: number;
 }
 
 interface WaitTimer extends TimerBase {
@@ -125,7 +126,7 @@ type Timer =
 | タイマー種別 | 発火時処理 |
 |------------|-----------|
 | `movement` | エージェント位置を `to_node_id` に確定、状態を `idle` に遷移、`movement_completed` イベント発行。移動時間は `path.length × MovementConfig.duration_ms`。移動中の位置算出は 04-movement.md セクション4.1参照 |
-| `action` | 状態を `idle` に遷移、`action_completed` イベント発行 |
+| `action` | 状態を `idle` に遷移、`action_completed` イベント発行。タイマーには実行開始時に解決した `duration_ms` を保持する |
 | `wait` | 状態を `idle` に遷移、`wait_completed` イベント発行 |
 | `conversation_accept` | 受諾待ちを解除、`conversation_rejected` イベント発行（`reason: "timeout"`） |
 | `conversation_turn` | `active` 状態: 会話を終了、両者を `idle` に遷移、`conversation_ended` イベント発行（`reason: "turn_timeout"`）。`closing` 状態: 終了あいさつ未送信として会話を終了、`conversation_ended` イベント発行（`reason` は終了理由に応じて `"max_turns"`、`"server_event"`、または `"ended_by_agent"`）。詳細は 06-conversation.md セクション5.2、6.2、7.3、8.2 |
@@ -238,6 +239,7 @@ interface ActionStartedEvent extends EventBase {
   agent_name: string;
   action_id: string;
   action_name: string;
+  duration_ms: number; // 実行開始時に解決した所要時間（ms）
   completes_at: number; // 完了予定時刻（Unix timestamp ms）
 }
 
@@ -545,6 +547,7 @@ interface AgentSnapshot {
     type: "action";
     action_id: string;
     action_name: string;
+    duration_ms: number;
     completes_at: number;
   } | {
     type: "wait";

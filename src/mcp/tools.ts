@@ -19,6 +19,12 @@ const moveSchema = z
     target_node_id: nodeIdSchema,
   })
   .strict();
+const actionSchema = z
+  .object({
+    action_id: z.string().min(1),
+    duration_minutes: z.number().int().min(1).max(10080).optional(),
+  })
+  .strict();
 
 function toToolSuccess(payload: unknown): CallToolResult {
   return {
@@ -89,20 +95,9 @@ export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): 
     {
       name: 'action',
       description:
-        'アクションを実行する。所持金が不足していても選択肢には表示されるが、実行結果は通知で届く。必要アイテムが不足しているアクションは選択肢に表示されない。レスポンスは常に notification-accepted。通常はidle状態でのみ実行可能だが、アクティブなサーバーイベント通知の割り込みウィンドウ中のみ in_action / in_conversation からも実行できる。',
-      inputSchema: z
-        .object({
-          action_id: z.string().min(1),
-        })
-        .strict(),
-      execute: wrapTool(
-        z
-          .object({
-            action_id: z.string().min(1),
-          })
-          .strict(),
-        async (arguments_) => engine.executeAction(agentId, arguments_),
-      ),
+        'アクションを実行する。所持金や必要アイテムが不足していても選択肢に表示されるが、実行結果は通知で届く。可変時間アクションでは duration_minutes を指定する。レスポンスは常に notification-accepted。通常はidle状態でのみ実行可能だが、アクティブなサーバーイベント通知の割り込みウィンドウ中のみ in_action / in_conversation からも実行できる。',
+      inputSchema: actionSchema,
+      execute: wrapTool(actionSchema, async (arguments_) => engine.executeAction(agentId, arguments_)),
     },
     {
       name: 'use_item',

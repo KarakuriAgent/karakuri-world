@@ -7,6 +7,7 @@ export type AgentActivitySnapshot =
       type: 'action';
       action_id: string;
       action_name: string;
+      duration_ms: number;
       completes_at: number;
     }
   | {

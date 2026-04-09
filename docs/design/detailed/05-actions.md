@@ -19,6 +19,7 @@
 ```typescript
 interface ActionRequest {
   action_id: string;
+  duration_minutes?: number;
 }
 ```
 
@@ -64,6 +65,12 @@ interface NotificationAcceptedResponse {
 - action: {name} (action_id: {action_id}, {duration_sec}秒) - {source.name}
 ```
 
+可変時間アクションは以下の形式になる:
+
+```text
+- action: {name} (action_id: {action_id}, {min}〜{max}分, duration_minutes: 分数を指定) - {source.name}
+```
+
 フィルタリングロジック:
 
 1. エージェントの現在位置ノードを取得
@@ -81,32 +88,34 @@ interface NotificationAcceptedResponse {
 
 ### 3.1 アクション開始
 
-バリデーション通過後の処理:
+バリデーション（状態チェック、アクション存在チェック、実行条件チェック）通過後、実効所要時間 `duration_ms` を解決する（固定時間アクションは `ActionConfig.duration_ms`、可変時間アクションは `duration_minutes * 60_000`）。`duration_minutes` の検証（必須チェック・範囲チェック）もこの段階で行い、所持金・必要アイテムチェックより先に確定させる。
+
+実行処理:
 
 1. エージェント状態を `in_action` に遷移
-2. `ActionTimer` を生成（03-world-engine.md セクション1.2参照。`fires_at = 現在時刻 + ActionConfig.duration_ms`）
+2. `ActionTimer` を生成（03-world-engine.md セクション1.2参照。`fires_at = 現在時刻 + duration_ms`）
 3. `ActionStartedEvent` を発行（03-world-engine.md セクション2.2参照）。配信先は WebSocket・ログ・Discord #world-log（03-world-engine.md セクション4.2参照）
 4. レスポンスを返却
 
 ```typescript
-interface ActionResponse {
-  action_id: string;
-  action_name: string;
-  completes_at: number; // 完了予定時刻（Unix timestamp ms）
+interface NotificationAcceptedResponse {
+  ok: true;
+  message: string;
 }
 ```
 
 ### 3.2 シーケンス
 
 ```
-Agent → API: POST /api/agents/action { action_id: "forge-weapon" }
-  API: バリデーション（状態チェック、アクション存在チェック、実行条件チェック）
+Agent → API: POST /api/agents/action { action_id: "sleep-house-a", duration_minutes: 120 }
+  API: バリデーション（状態チェック、アクション存在チェック、実行条件チェック、duration_minutes検証）
+  API: 実効 duration_ms を解決
   API: 状態を in_action に遷移
   API: ActionTimer を生成
   API: action_started イベント発行
-API → Agent: 200 OK { action_id, action_name, completes_at }
+API → Agent: 200 OK { ok: true, message }
 
-  ... ActionConfig.duration_ms 経過 ...
+  ... 解決済み duration_ms 経過 ...
 
 Timer 発火:
   Engine: 状態を idle に遷移

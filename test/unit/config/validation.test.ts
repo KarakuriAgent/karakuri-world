@@ -88,4 +88,83 @@ describe('config validation', () => {
 
     expect(() => parseConfig(invalidConfig)).toThrowError(ConfigValidationError);
   });
+
+  it('accepts variable-duration actions', () => {
+    const baseMap = createTestMapConfig();
+    const validConfig = createTestConfig({
+      map: {
+        ...baseMap,
+        buildings: [
+          {
+            ...baseMap.buildings[0],
+            actions: [
+              {
+                action_id: 'long-rest',
+                name: 'Long rest',
+                description: 'Rest for a chosen duration.',
+                min_duration_minutes: 10,
+                max_duration_minutes: 60,
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(() => parseConfig(validConfig)).not.toThrow();
+  });
+
+  it('rejects invalid action duration schemas', () => {
+    const baseMap = createTestMapConfig();
+    const invalidCases = [
+      {
+        action_id: 'min-only',
+        name: 'Min only',
+        description: 'Missing max.',
+        min_duration_minutes: 10,
+      },
+      {
+        action_id: 'max-only',
+        name: 'Max only',
+        description: 'Missing min.',
+        max_duration_minutes: 60,
+      },
+      {
+        action_id: 'both-kinds',
+        name: 'Both kinds',
+        description: 'Mixes fixed and range.',
+        duration_ms: 1000,
+        min_duration_minutes: 10,
+        max_duration_minutes: 60,
+      },
+      {
+        action_id: 'none',
+        name: 'None',
+        description: 'No duration fields.',
+      },
+      {
+        action_id: 'reversed-range',
+        name: 'Reversed range',
+        description: 'min is larger than max.',
+        min_duration_minutes: 61,
+        max_duration_minutes: 60,
+      },
+    ];
+
+    for (const action of invalidCases) {
+      const invalidConfig = createTestConfig({
+        map: {
+          ...baseMap,
+          buildings: [
+            {
+              ...baseMap.buildings[0],
+              actions: [action as never],
+            },
+          ],
+        },
+      });
+
+      expect(() => parseConfig(invalidConfig)).toThrowError(ConfigValidationError);
+    }
+  });
 });

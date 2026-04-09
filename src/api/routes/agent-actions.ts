@@ -15,6 +15,7 @@ const moveSchema = z.object({
 
 const actionSchema = z.object({
   action_id: z.string().min(1),
+  duration_minutes: z.number().int().min(1).max(10080).optional(),
 });
 
 const useItemSchema = z.object({

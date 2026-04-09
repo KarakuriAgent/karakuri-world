@@ -125,6 +125,27 @@ describe('MCP tools', () => {
     );
   });
 
+  it('accepts duration_minutes for action tool input', async () => {
+    const { engine } = createTestWorld();
+    const agent = await engine.registerAgent({ discord_bot_id: 'bot-alice', });
+    const definitions = createMcpToolDefinitions(engine, agent.agent_id);
+    const action = definitions.find((definition) => definition.name === 'action');
+
+    expect(action).toBeDefined();
+    expect(action!.inputSchema.safeParse({ action_id: 'long-nap', duration_minutes: 3 }).success).toBe(true);
+    expect(action!.inputSchema.safeParse({ action_id: 'long-nap', duration_minutes: 0 }).success).toBe(false);
+  });
+
+  it('documents that actions missing money or items can still appear in choices', async () => {
+    const { engine } = createTestWorld();
+    const agent = await engine.registerAgent({ discord_bot_id: 'bot-alice', });
+    const definitions = createMcpToolDefinitions(engine, agent.agent_id);
+    const action = definitions.find((definition) => definition.name === 'action');
+
+    expect(action).toBeDefined();
+    expect(action!.description).toContain('所持金や必要アイテムが不足していても選択肢に表示されるが');
+  });
+
   it('authenticates bearer tokens for MCP requests', async () => {
     const { engine } = createTestWorld();
     const agent = await engine.registerAgent({ discord_bot_id: 'bot-alice', });
