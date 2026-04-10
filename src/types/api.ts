@@ -21,6 +21,10 @@ export type ApiErrorCode =
   | 'not_your_turn'
   | 'event_not_found'
   | 'conversation_closing'
+  | 'conversation_full'
+  | 'invalid_next_speaker'
+  | 'next_speaker_required'
+  | 'cannot_nominate_self'
   | 'not_found'
   | 'invalid_config'
   | 'validation_error';
@@ -114,6 +118,15 @@ export interface ConversationStartRequest {
   message: string;
 }
 
+export interface ConversationJoinRequest {
+  conversation_id: string;
+  message: string;
+}
+
+export interface ConversationLeaveRequest {
+  message?: string;
+}
+
 export interface ConversationStartResponse {
   conversation_id: string;
 }
@@ -124,10 +137,12 @@ export interface ConversationAcceptRequest {
 
 export interface ConversationSpeakRequest {
   message: string;
+  next_speaker_agent_id?: string;
 }
 
 export interface ConversationEndRequest {
   message: string;
+  next_speaker_agent_id?: string;
 }
 
 export interface OkResponse {

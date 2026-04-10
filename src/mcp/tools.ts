@@ -25,6 +25,7 @@ const actionSchema = z
     duration_minutes: z.number().int().min(1).max(10080).optional(),
   })
   .strict();
+const nextSpeakerSchema = z.string().min(1).optional();
 
 function toToolSuccess(payload: unknown): CallToolResult {
   return {
@@ -103,73 +104,44 @@ export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): 
       name: 'use_item',
       description:
         '所持しているアイテムを使用する。アイテムを1つ消費する。アイテムをどう使うかはエージェント次第。通常はidle状態でのみ実行可能だが、アクティブなサーバーイベント通知の割り込みウィンドウ中のみ in_action / in_conversation からも実行できる。',
-      inputSchema: z
-        .object({
-          item_id: z.string().min(1),
-        })
-        .strict(),
-      execute: wrapTool(
-        z
-          .object({
-            item_id: z.string().min(1),
-          })
-          .strict(),
-        async (arguments_) => engine.useItem(agentId, arguments_),
-      ),
+      inputSchema: z.object({ item_id: z.string().min(1) }).strict(),
+      execute: wrapTool(z.object({ item_id: z.string().min(1) }).strict(), async (arguments_) => engine.useItem(agentId, arguments_)),
     },
     {
       name: 'wait',
       description: 'その場で待機する。duration は 10分単位の整数（1=10分, 2=20分, ..., 6=60分）。通常はidle状態でのみ実行可能だが、アクティブなサーバーイベント通知の割り込みウィンドウ中のみ in_action / in_conversation からも実行できる。',
-      inputSchema: z
-        .object({
-          duration: z.number().int().min(1).max(6),
-        })
-        .strict(),
-      execute: wrapTool(
-        z
-          .object({
-            duration: z.number().int().min(1).max(6),
-          })
-          .strict(),
-        async (arguments_) => engine.executeWait(agentId, arguments_),
-      ),
+      inputSchema: z.object({ duration: z.number().int().min(1).max(6) }).strict(),
+      execute: wrapTool(z.object({ duration: z.number().int().min(1).max(6) }).strict(), async (arguments_) => engine.executeWait(agentId, arguments_)),
     },
     {
       name: 'conversation_start',
-      description:
-        '他のエージェントに話しかけて会話を開始する。隣接または同一ノードにいるエージェントが対象。idle状態でのみ実行可能。',
-      inputSchema: z
-        .object({
-          target_agent_id: z.string().min(1),
-          message: z.string().min(1),
-        })
-        .strict(),
-      execute: wrapTool(
-        z
-          .object({
-            target_agent_id: z.string().min(1),
-            message: z.string().min(1),
-          })
-          .strict(),
-        async (arguments_) => engine.startConversation(agentId, arguments_),
-      ),
+      description: '他のエージェントに話しかけて会話を開始する。隣接または同一ノードにいるエージェントが対象。idle状態でのみ実行可能。',
+      inputSchema: z.object({ target_agent_id: z.string().min(1), message: z.string().min(1) }).strict(),
+      execute: wrapTool(z.object({ target_agent_id: z.string().min(1), message: z.string().min(1) }).strict(), async (arguments_) => engine.startConversation(agentId, arguments_)),
     },
     {
       name: 'conversation_accept',
       description: '会話の着信を受諾して返答する。',
-      inputSchema: z
-        .object({
-          message: z.string().min(1),
-        })
-        .strict(),
-      execute: wrapTool(
-        z
-          .object({
-            message: z.string().min(1),
-          })
-          .strict(),
-        async (arguments_) => engine.acceptConversation(agentId, arguments_),
-      ),
+      inputSchema: z.object({ message: z.string().min(1) }).strict(),
+      execute: wrapTool(z.object({ message: z.string().min(1) }).strict(), async (arguments_) => engine.acceptConversation(agentId, arguments_)),
+    },
+    {
+      name: 'conversation_join',
+      description: '近くで進行中の会話に参加する。会話IDと最初のメッセージを指定する。',
+      inputSchema: z.object({ conversation_id: z.string().min(1), message: z.string().min(1) }).strict(),
+      execute: wrapTool(z.object({ conversation_id: z.string().min(1), message: z.string().min(1) }).strict(), async (arguments_) => engine.joinConversation(agentId, arguments_)),
+    },
+    {
+      name: 'conversation_stay',
+      description: 'inactive_check 通知に応答して会話に残る。',
+      inputSchema: emptySchema,
+      execute: wrapTool(emptySchema, async () => engine.stayInConversation(agentId)),
+    },
+    {
+      name: 'conversation_leave',
+      description: 'inactive_check 通知に応答して会話から離脱する。必要ならメッセージも付けられる。',
+      inputSchema: z.object({ message: z.string().min(1).optional() }).strict(),
+      execute: wrapTool(z.object({ message: z.string().min(1).optional() }).strict(), async (arguments_) => engine.leaveConversation(agentId, arguments_)),
     },
     {
       name: 'conversation_reject',
@@ -179,37 +151,15 @@ export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): 
     },
     {
       name: 'conversation_speak',
-      description: '会話中に発言する。in_conversation状態で自分のターンのときのみ実行可能。',
-      inputSchema: z
-        .object({
-          message: z.string().min(1),
-        })
-        .strict(),
-      execute: wrapTool(
-        z
-          .object({
-            message: z.string().min(1),
-          })
-          .strict(),
-        async (arguments_) => engine.speak(agentId, arguments_),
-      ),
+      description: '会話中に発言する。in_conversation状態で自分のターンのときのみ実行可能。3人以上の会話では next_speaker_agent_id の指定が必要。',
+      inputSchema: z.object({ message: z.string().min(1), next_speaker_agent_id: nextSpeakerSchema }).strict(),
+      execute: wrapTool(z.object({ message: z.string().min(1), next_speaker_agent_id: nextSpeakerSchema }).strict(), async (arguments_) => engine.speak(agentId, arguments_)),
     },
     {
       name: 'end_conversation',
-      description: '会話を自発的に終了する。お別れのメッセージを送り、相手の最後の返答を待って会話を終了する。',
-      inputSchema: z
-        .object({
-          message: z.string().min(1),
-        })
-        .strict(),
-      execute: wrapTool(
-        z
-          .object({
-            message: z.string().min(1),
-          })
-          .strict(),
-        async (arguments_) => engine.endConversation(agentId, arguments_),
-      ),
+      description: '会話を自発的に終了または退出する。2人会話ではお別れメッセージを送り、相手の最後の返答を待つ。3人以上の会話では自分だけ退出し、必要に応じて next_speaker_agent_id を指定する。',
+      inputSchema: z.object({ message: z.string().min(1), next_speaker_agent_id: nextSpeakerSchema }).strict(),
+      execute: wrapTool(z.object({ message: z.string().min(1), next_speaker_agent_id: nextSpeakerSchema }).strict(), async (arguments_) => engine.endConversation(agentId, arguments_)),
     },
     {
       name: 'get_available_actions',

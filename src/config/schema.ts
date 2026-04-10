@@ -4,6 +4,7 @@ const nodeIdSchema = z.string().regex(/^\d+-\d+$/);
 const hoursTimeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 const nonNegativeIntSchema = z.number().int().min(0);
 const positiveIntSchema = z.number().int().min(1);
+const minConversationParticipantsSchema = z.number().int().min(2);
 
 export const hoursSchema = z
   .object({
@@ -166,6 +167,8 @@ export const serverConfigSchema = z
     conversation: z
       .object({
         max_turns: positiveIntSchema,
+        max_participants: minConversationParticipantsSchema,
+        inactive_check_turns: positiveIntSchema,
         interval_ms: positiveIntSchema,
         accept_timeout_ms: positiveIntSchema,
         turn_timeout_ms: positiveIntSchema,

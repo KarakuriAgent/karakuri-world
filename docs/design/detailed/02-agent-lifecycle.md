@@ -274,7 +274,7 @@ type AgentState = "idle" | "moving" | "in_action" | "in_conversation";
 - 相手が拒否した場合、受諾待ちが解除され通常の `idle` に戻る
 - `ConversationConfig.accept_timeout_ms` 以内に応答がない場合、タイムアウトとして受諾待ちが解除される
 
-受諾待ちは `AgentState` の値としては `idle` のままであり、新たな状態値は追加しない。受諾待ちかどうかは発信中の会話リクエストの有無で判定する。会話開始の詳細フローは 06-conversation.md で定義する。
+受諾待ちは `AgentState` の値としては `idle` のままであり、新たな状態値は追加しない。受諾待ちかどうかは発信中の会話リクエストの有無で判定する。会話開始〜拒否の詳細フローは 06-conversation.md のセクション4で定義する。
 
 ## 5. 各状態での受付可能操作とバリデーション
 
@@ -292,7 +292,7 @@ type AgentState = "idle" | "moving" | "in_action" | "in_conversation";
 | logout | ✅ | ✅ | ✅ | ✅ |
 
 - `idle` で受諾待ち中（4.4 参照）は、移動・アクション実行・会話開始を受け付けない
-- 会話拒否は状態を変更しないため、すべての状態から実行可能。バリデーションはリクエスト元に pending 状態の会話が存在し、対象側であることの確認のみ（06-conversation.md セクション3.1参照）
+- 会話拒否は状態を変更しないため、すべての状態から実行可能。バリデーションはリクエスト元に pending 状態の会話が存在し、対象側であることの確認のみ（06-conversation.md セクション4.3参照）
 - moving中のサーバーイベントは移動完了後に遅延通知される（詳細は 07-server-events.md）
 - サーバーイベントウィンドウ中のmove/action/waitは、現在の行動をキャンセル（in_conversationの場合はclosingに移行）してから新コマンドを実行する（詳細は 07-server-events.md）
 - ※1 会話が `closing` 状態（終了あいさつフェーズ）の場合、割り込みは実行されるが `beginClosingConversation` の再呼び出しはスキップされる（07-server-events.md セクション4参照）

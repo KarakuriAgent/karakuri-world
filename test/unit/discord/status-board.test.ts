@@ -277,6 +277,77 @@ describe('StatusBoard', () => {
     expect(channel.sendMessage).toHaveBeenCalled();
   });
 
+  it('refreshes when conversation_turn_started is emitted after inactive-check recovery', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        conversation: {
+          max_turns: 10,
+          inactive_check_turns: 1,
+          interval_ms: 500,
+          accept_timeout_ms: 1000,
+          turn_timeout_ms: 1000,
+        },
+      },
+    });
+    const channel = createMockChannel();
+    const board = new StatusBoard(engine, channel, {
+      debounceMs: 10,
+      mapImage: null,
+    });
+
+    const alice = await engine.registerAgent({
+      discord_bot_id: 'discord-bot-a',
+    });
+    const bob = await engine.registerAgent({
+      discord_bot_id: 'discord-bot-b',
+    });
+    const carol = await engine.registerAgent({
+      discord_bot_id: 'discord-bot-c',
+    });
+
+    board.register();
+    await flushAsyncWork();
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    await engine.loginAgent(carol.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
+    engine.state.setNode(bob.agent_id, '3-2');
+    engine.state.setNode(carol.agent_id, '3-2');
+    engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hi' });
+    await vi.advanceTimersByTimeAsync(10);
+    await flushAsyncWork();
+    await vi.advanceTimersByTimeAsync(500);
+    await flushAsyncWork();
+
+    engine.joinConversation(carol.agent_id, {
+      conversation_id: [...engine.state.conversations.list()][0]!.conversation_id,
+      message: 'Can I join?',
+    });
+    await vi.advanceTimersByTimeAsync(10);
+    await flushAsyncWork();
+
+    engine.speak(alice.agent_id, {
+      message: 'Bob, your turn.',
+      next_speaker_agent_id: bob.agent_id,
+    });
+    await vi.advanceTimersByTimeAsync(500);
+    await flushAsyncWork();
+
+    channel.fetchMessages.mockClear();
+    channel.sendMessage.mockClear();
+
+    engine.stayInConversation(carol.agent_id);
+    await vi.advanceTimersByTimeAsync(10);
+    await flushAsyncWork();
+
+    expect(channel.fetchMessages).toHaveBeenCalledTimes(1);
+    expect(channel.sendMessage).toHaveBeenCalled();
+  });
+
   it('refreshes after speaking and re-arms interval-driven conversation updates', async () => {
     const { engine } = createTestWorld({
       config: {

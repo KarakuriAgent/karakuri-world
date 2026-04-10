@@ -245,6 +245,128 @@ describe('server event domain', () => {
     expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_event_id).toBeNull();
   });
 
+  it('detaches the interrupting participant instead of the prompted speaker in group conversations', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        conversation: {
+          max_turns: 6,
+          interval_ms: 500,
+          accept_timeout_ms: 1000,
+          turn_timeout_ms: 1000,
+        },
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    const carol = await engine.registerAgent({ discord_bot_id: 'bot-carol' });
+    const dave = await engine.registerAgent({ discord_bot_id: 'bot-dave' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    await engine.loginAgent(carol.agent_id);
+    await engine.loginAgent(dave.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
+    engine.state.setNode(bob.agent_id, '3-2');
+    engine.state.setNode(carol.agent_id, '3-2');
+    engine.state.setNode(dave.agent_id, '3-2');
+
+    const started = engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hi' });
+    vi.advanceTimersByTime(500);
+    engine.joinConversation(carol.agent_id, {
+      conversation_id: started.conversation_id,
+      message: 'Mind if I join?',
+    });
+    engine.joinConversation(dave.agent_id, {
+      conversation_id: started.conversation_id,
+      message: 'I am here too.',
+    });
+
+    engine.fireServerEvent('Dark clouds gather.');
+    engine.executeWait(dave.agent_id, { duration: 1 });
+
+    const conversation = engine.state.conversations.get(started.conversation_id);
+    expect(conversation?.status).toBe('closing');
+    expect(conversation?.current_speaker_agent_id).toBe(alice.agent_id);
+    expect(conversation?.participant_agent_ids).toEqual([alice.agent_id, bob.agent_id, carol.agent_id]);
+    expect(engine.state.getLoggedIn(dave.agent_id)?.current_conversation_id).toBeNull();
+    expect(engine.state.getLoggedIn(dave.agent_id)?.state).toBe('in_action');
+  });
+
+  it('starts server-event closing from the paused resume speaker successor during inactive checks', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        conversation: {
+          max_turns: 10,
+          inactive_check_turns: 2,
+          interval_ms: 500,
+          accept_timeout_ms: 1000,
+          turn_timeout_ms: 1000,
+        },
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    const carol = await engine.registerAgent({ discord_bot_id: 'bot-carol' });
+    const dave = await engine.registerAgent({ discord_bot_id: 'bot-dave' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    await engine.loginAgent(carol.agent_id);
+    await engine.loginAgent(dave.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
+    engine.state.setNode(bob.agent_id, '3-2');
+    engine.state.setNode(carol.agent_id, '3-2');
+    engine.state.setNode(dave.agent_id, '3-2');
+
+    const started = engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hi' });
+    vi.advanceTimersByTime(500);
+    engine.joinConversation(carol.agent_id, {
+      conversation_id: started.conversation_id,
+      message: 'Mind if I join?',
+    });
+    engine.joinConversation(dave.agent_id, {
+      conversation_id: started.conversation_id,
+      message: 'I am here too.',
+    });
+
+    engine.speak(alice.agent_id, {
+      message: 'Bob, over to you.',
+      next_speaker_agent_id: bob.agent_id,
+    });
+    vi.advanceTimersByTime(500);
+    engine.speak(bob.agent_id, {
+      message: 'Alice, please continue.',
+      next_speaker_agent_id: alice.agent_id,
+    });
+    vi.advanceTimersByTime(500);
+
+    expect(engine.state.conversations.get(started.conversation_id)).toEqual(expect.objectContaining({
+      current_speaker_agent_id: bob.agent_id,
+      resume_speaker_agent_id: alice.agent_id,
+      inactive_check_pending_agent_ids: [carol.agent_id, dave.agent_id],
+    }));
+
+    const fired = engine.fireServerEvent('Dark clouds gather.');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBe(fired.server_event_id);
+
+    engine.executeWait(alice.agent_id, { duration: 1 });
+
+    const conversation = engine.state.conversations.get(started.conversation_id);
+    expect(conversation).toEqual(expect.objectContaining({
+      status: 'closing',
+      current_speaker_agent_id: carol.agent_id,
+      participant_agent_ids: [bob.agent_id, carol.agent_id, dave.agent_id],
+      closing_reason: 'server_event',
+    }));
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('in_action');
+  });
+
   it('keeps the server-event window open for in-conversation agents until a follow-up notification can clear it', async () => {
     const { engine } = createTestWorld({
       config: {
@@ -362,7 +484,7 @@ describe('server event domain', () => {
     expect(() => engine.move(bob.agent_id, { target_node_id: '3-4' })).not.toThrow();
   });
 
-  it('skips beginClosingConversation when the conversation is already closing during the event window', async () => {
+  it('removes later interrupters even when the conversation is already closing during the event window', async () => {
     const { engine } = createTestWorld({
       config: {
         conversation: {
@@ -406,11 +528,54 @@ describe('server event domain', () => {
 
     engine.executeWait(bob.agent_id, { duration: 1 });
 
-    // Conversation should still be closing with the same speaker (no double-closing)
-    const afterConversation = engine.state.conversations.get(conversationId!);
-    expect(afterConversation?.status).toBe('closing');
-    expect(afterConversation?.current_speaker_agent_id).toBe(originalSpeaker);
+    // Bob should be removed cleanly even though the conversation was already closing.
+    expect(engine.state.conversations.get(conversationId!)).toBeNull();
+    expect(originalSpeaker).toBe(alice.agent_id);
+    expect(engine.state.getLoggedIn(bob.agent_id)?.current_conversation_id).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.current_conversation_id).toBeNull();
     expect(engine.state.getLoggedIn(bob.agent_id)?.state).toBe('in_action');
+  });
+
+  it('ends a closing conversation when the farewell speaker interrupts during the event window', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        conversation: {
+          max_turns: 4,
+          interval_ms: 500,
+          accept_timeout_ms: 1000,
+          turn_timeout_ms: 1000,
+        },
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
+    engine.state.setNode(bob.agent_id, '3-2');
+
+    engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hi' });
+
+    vi.advanceTimersByTime(500);
+    engine.speak(alice.agent_id, { message: 'Turn 3' });
+    vi.advanceTimersByTime(500);
+    engine.speak(bob.agent_id, { message: 'Turn 4' });
+    vi.advanceTimersByTime(500);
+
+    const conversationId = engine.state.getLoggedIn(alice.agent_id)?.current_conversation_id;
+    expect(engine.state.conversations.get(conversationId!)?.current_speaker_agent_id).toBe(alice.agent_id);
+
+    engine.fireServerEvent('Dark clouds gather.');
+    engine.executeWait(alice.agent_id, { duration: 1 });
+
+    expect(engine.state.conversations.get(conversationId!)).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.current_conversation_id).toBeNull();
+    expect(engine.state.getLoggedIn(bob.agent_id)?.current_conversation_id).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('in_action');
   });
 
   it('does not prematurely clear the server event window when accept timeout fires on an already-resolved conversation', async () => {

@@ -27,3 +27,28 @@ export function validateBody<TSchema extends ZodTypeAny>(schema: TSchema): Middl
     await next();
   };
 }
+
+export function validateOptionalBody<TSchema extends ZodTypeAny>(schema: TSchema): MiddlewareHandler<ApiEnv> {
+  return async (c, next) => {
+    let payload: unknown = {};
+    try {
+      const raw = await c.req.text();
+      payload = raw.trim() === '' ? {} : JSON.parse(raw);
+    } catch {
+      return c.json(toErrorResponse(new WorldError(400, 'invalid_request', 'Request body must be valid JSON.')), 400);
+    }
+
+    const parsed = schema.safeParse(payload);
+    if (!parsed.success) {
+      return c.json(
+        toErrorResponse(
+          new WorldError(400, 'invalid_request', 'Request validation failed.', parsed.error.flatten()),
+        ),
+        400,
+      );
+    }
+
+    c.set('validatedBody', parsed.data);
+    await next();
+  };
+}

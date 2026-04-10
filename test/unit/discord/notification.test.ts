@@ -7,11 +7,14 @@ import {
   formatAgentLoggedOutMessage,
   formatConversationClosingPromptMessage,
   formatConversationEndedMessage,
+  formatConversationFYIMessage,
   formatConversationForcedEndedMessage,
   formatConversationRejectedMessage,
   formatConversationRequestedMessage,
   formatConversationReplyPromptMessage,
   formatConversationServerEventClosingPromptMessage,
+  formatConversationTurnClosingPromptMessage,
+  formatConversationTurnPromptMessage,
   formatIdleReminderMessage,
   formatMapInfoMessage,
   formatMovementCompletedMessage,
@@ -102,7 +105,13 @@ describe('discord notifications', () => {
     const conversation = formatConversationRequestedMessage(worldContext, 'Alice', 'こんにちは。', skillName);
     const reply = formatConversationReplyPromptMessage(worldContext, 'Alice', 'こんにちは。', skillName);
     const closing = formatConversationClosingPromptMessage(worldContext, 'Alice', 'またね。', skillName);
-    const serverEventClosing = formatConversationServerEventClosingPromptMessage(worldContext, skillName);
+    const turnPrompt = formatConversationTurnPromptMessage(worldContext, skillName, ['Alice', 'Bob', 'Carol']);
+    const closingTurnPrompt = formatConversationTurnClosingPromptMessage(worldContext, skillName, ['Alice', 'Bob', 'Carol']);
+    const serverEventClosing = formatConversationServerEventClosingPromptMessage(
+      worldContext,
+      skillName,
+      ['Alice', 'Bob', 'Carol'],
+    );
 
     expectWorldContextHeader(conversation);
     expect(conversation).toContain('Alice が話しかけています。');
@@ -135,11 +144,30 @@ describe('discord notifications', () => {
     expect(closing).toContain('conversation_speak');
     expect(closing).toContain('karakuri-world スキルで次の行動を選択してください。');
 
+    expectWorldContextHeader(turnPrompt);
+    expect(turnPrompt).toContain('あなたの番です。');
+    expect(turnPrompt).toContain('次の話者ID');
+    expect(turnPrompt).toContain('end_conversation');
+
+    expectWorldContextHeader(closingTurnPrompt);
+    expect(closingTurnPrompt).toContain('あなたが最後のメッセージを送る番です。');
+    expect(closingTurnPrompt).toContain('次の話者ID');
+    expect(closingTurnPrompt).toContain('conversation_speak');
+
     expectWorldContextHeader(serverEventClosing);
     expect(serverEventClosing).toContain('サーバーイベントにより会話が終了します。');
+    expect(serverEventClosing).toContain('参加者: Alice、Bob、Carol');
     expect(serverEventClosing).toContain('選択肢:');
     expect(serverEventClosing).toContain('conversation_speak');
+    expect(serverEventClosing).toContain('次の話者ID');
     expect(serverEventClosing).toContain('karakuri-world スキルで次の行動を選択してください。');
+  });
+
+  it('formats conversation FYI messages for non-speakers', () => {
+    expect(formatConversationFYIMessage('Alice', 'こんにちは。', 'Bob')).toBe(
+      'Alice: 「こんにちは。」\n次は Bob の番です。',
+    );
+    expect(formatConversationFYIMessage('Alice', 'こんにちは。')).toBe('Alice: 「こんにちは。」');
   });
 
   it('formats server event messages with the action prompt', () => {

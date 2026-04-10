@@ -11,12 +11,17 @@ import {
   cancelPendingConversation,
   endConversationByAgent,
   forceEndConversation,
+  getConversationActionableSpeaker,
   handleAcceptTimeout,
   handleConversationInterval,
+  handleInactiveCheckTimeout,
   handleTurnTimeout,
+  joinConversation as joinConversationRequest,
+  leaveConversation as leaveConversationRequest,
   rejectConversation as rejectConversationRequest,
   speak as speakInConversation,
   startConversation as startConversationRequest,
+  stayInConversation as stayInConversationRequest,
 } from '../domain/conversation.js';
 import { handleIdleReminderFired, startIdleReminder } from '../domain/idle-reminder.js';
 import { getNodeConfig, isNodeWithinBounds, isPassable } from '../domain/map-utils.js';
@@ -43,6 +48,8 @@ import type {
   AvailableActionsResponse,
   ConversationAcceptRequest,
   ConversationEndRequest,
+  ConversationJoinRequest,
+  ConversationLeaveRequest,
   ConversationSpeakRequest,
   ConversationSpeakResponse,
   ConversationStartRequest,
@@ -124,6 +131,9 @@ export class WorldEngine {
     });
     this.timerManager.onFire('conversation_interval', (timer) => {
       handleConversationInterval(this, timer);
+    });
+    this.timerManager.onFire('conversation_inactive_check', (timer) => {
+      handleInactiveCheckTimeout(this, timer);
     });
     this.timerManager.onFire('conversation_turn', (timer) => {
       handleTurnTimeout(this, timer);
@@ -369,6 +379,18 @@ export class WorldEngine {
     return acceptConversationRequest(this, agentId, request);
   }
 
+  joinConversation(agentId: string, request: ConversationJoinRequest): OkResponse {
+    return joinConversationRequest(this, agentId, request);
+  }
+
+  stayInConversation(agentId: string): OkResponse {
+    return stayInConversationRequest(this, agentId);
+  }
+
+  leaveConversation(agentId: string, request: ConversationLeaveRequest = {}): OkResponse {
+    return leaveConversationRequest(this, agentId, request);
+  }
+
   rejectConversation(agentId: string): OkResponse {
     return rejectConversationRequest(this, agentId);
   }
@@ -497,10 +519,12 @@ export class WorldEngine {
         conversation_id: conversation.conversation_id,
         status: conversation.status,
         initiator_agent_id: conversation.initiator_agent_id,
-        target_agent_id: conversation.target_agent_id,
+        participant_agent_ids: [...conversation.participant_agent_ids],
         current_turn: conversation.current_turn,
         max_turns: this.config.conversation.max_turns,
+        max_participants: this.config.conversation.max_participants,
         current_speaker_agent_id: conversation.current_speaker_agent_id,
+        actionable_speaker_agent_id: getConversationActionableSpeaker(conversation) ?? conversation.current_speaker_agent_id,
         closing_reason: conversation.closing_reason,
       })),
       server_events: this.state.serverEvents.list().map((serverEvent) => ({

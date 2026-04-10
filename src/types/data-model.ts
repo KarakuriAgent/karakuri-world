@@ -91,6 +91,8 @@ export interface MovementConfig {
 
 export interface ConversationConfig {
   max_turns: number;
+  max_participants: number;
+  inactive_check_turns: number;
   interval_ms: number;
   accept_timeout_ms: number;
   turn_timeout_ms: number;

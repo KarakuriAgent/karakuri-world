@@ -48,10 +48,12 @@ export interface ConversationSnapshot {
   conversation_id: string;
   status: ConversationStatus;
   initiator_agent_id: string;
-  target_agent_id: string;
+  participant_agent_ids: string[];
   current_turn: number;
   max_turns: number;
+  max_participants: number;
   current_speaker_agent_id: string;
+  actionable_speaker_agent_id: string;
   closing_reason?: ConversationClosureReason;
 }
 

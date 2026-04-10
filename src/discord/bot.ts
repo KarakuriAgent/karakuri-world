@@ -31,6 +31,7 @@ export interface DiscordNotificationAdapter extends DiscordRuntimeAdapter {
   createWorldLogThread(content: string, threadName: string): Promise<string>;
   sendToThreadAsAgent(threadId: string, content: string, identity: WebhookIdentity): Promise<void>;
   sendToThread(threadId: string, content: string): Promise<void>;
+  renameThread(threadId: string, newName: string): Promise<void>;
   archiveThread(threadId: string): Promise<void>;
   close(): Promise<void>;
 }
@@ -327,6 +328,15 @@ export class DiscordBot implements DiscordNotificationAdapter {
     }
 
     await channel.send(content);
+  }
+
+  async renameThread(threadId: string, newName: string): Promise<void> {
+    const channel = await this.guild.channels.fetch(threadId);
+    if (!channel || !channel.isThread()) {
+      throw new Error(`Discord thread not found: ${threadId}`);
+    }
+
+    await channel.setName(newName.slice(0, 100));
   }
 
   async archiveThread(threadId: string): Promise<void> {

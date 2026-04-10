@@ -46,15 +46,22 @@ function formatAgentStatus(agent: AgentSnapshot, snapshot: WorldSnapshot): strin
   }
 }
 
-function formatConversation(conversation: ConversationSnapshot, agentNames: Map<string, string>): string {
-  const initiatorName = agentNames.get(conversation.initiator_agent_id) ?? conversation.initiator_agent_id;
-  const targetName = agentNames.get(conversation.target_agent_id) ?? conversation.target_agent_id;
-  const speakerName = agentNames.get(conversation.current_speaker_agent_id) ?? conversation.current_speaker_agent_id;
-  const closingSuffix = conversation.status === 'closing' ? ', 終了処理中' : '';
-  const displayedTurn = Math.min(conversation.current_turn, conversation.max_turns);
-  return `- ${initiatorName} と ${targetName} (ターン ${displayedTurn}/${conversation.max_turns}, ${speakerName}の番${closingSuffix})`;
+function formatParticipantSummary(participantAgentIds: string[], agentNames: Map<string, string>): string {
+  const names = participantAgentIds.map((agentId) => agentNames.get(agentId) ?? agentId);
+  if (names.length <= 2) {
+    return names.join(' と ');
+  }
+  return `${names[0]} と ${names[1]} 他${names.length - 2}名`;
 }
 
+function formatConversation(conversation: ConversationSnapshot, agentNames: Map<string, string>): string {
+  const summary = formatParticipantSummary(conversation.participant_agent_ids, agentNames);
+  const speakerAgentId = conversation.actionable_speaker_agent_id ?? conversation.current_speaker_agent_id;
+  const speakerName = agentNames.get(speakerAgentId) ?? speakerAgentId;
+  const closingSuffix = conversation.status === 'closing' ? ', 終了処理中' : '';
+  const displayedTurn = Math.min(conversation.current_turn, conversation.max_turns);
+  return `- ${summary} (ターン ${displayedTurn}/${conversation.max_turns}, ${speakerName}の番${closingSuffix})`;
+}
 
 function buildSection(title: string, lines: string[]): string {
   return `## ${title}\n\n${lines.join('\n')}`;

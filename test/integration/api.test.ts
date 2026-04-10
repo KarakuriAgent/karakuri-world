@@ -384,4 +384,72 @@ describe('REST API', () => {
     expect(eventTypes).toContain('map_info_requested');
     expect(eventTypes).toContain('world_agents_info_requested');
   });
+
+  it('accepts conversation leave without a request body', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        conversation: {
+          inactive_check_turns: 1,
+        },
+      },
+    });
+    const { app } = createApp(engine, { adminKey: ADMIN_KEY, publicBaseUrl: PUBLIC_BASE_URL });
+
+    const alice = await registerAgent(app, 'alice');
+    const bob = await registerAgent(app, 'bob');
+    const carol = await registerAgent(app, 'carol');
+    await requestJson(app, '/api/agents/login', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${alice.data.api_key}` },
+    });
+    await requestJson(app, '/api/agents/login', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${bob.data.api_key}` },
+    });
+    await requestJson(app, '/api/agents/login', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${carol.data.api_key}` },
+    });
+
+    engine.state.setNode(alice.data.agent_id, '3-1');
+    engine.state.setNode(bob.data.agent_id, '3-2');
+    engine.state.setNode(carol.data.agent_id, '3-2');
+
+    const started = await requestJson(app, '/api/agents/conversation/start', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${alice.data.api_key}` },
+      body: JSON.stringify({ target_agent_id: bob.data.agent_id, message: 'Hello Bob' }),
+    });
+    expect(started.response.status).toBe(200);
+
+    const accepted = await requestJson(app, '/api/agents/conversation/accept', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${bob.data.api_key}` },
+      body: JSON.stringify({ message: 'Hi Alice' }),
+    });
+    expect(accepted.response.status).toBe(200);
+
+    vi.advanceTimersByTime(500);
+    const joined = await requestJson(app, '/api/agents/conversation/join', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${carol.data.api_key}` },
+      body: JSON.stringify({ conversation_id: started.data.conversation_id, message: 'Hi all' }),
+    });
+    expect(joined.response.status).toBe(200);
+
+    const spoke = await requestJson(app, '/api/agents/conversation/speak', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${alice.data.api_key}` },
+      body: JSON.stringify({ message: 'Bob, your turn', next_speaker_agent_id: bob.data.agent_id }),
+    });
+    expect(spoke.response.status).toBe(200);
+
+    vi.advanceTimersByTime(500);
+    const left = await requestJson(app, '/api/agents/conversation/leave', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${carol.data.api_key}` },
+    });
+    expect(left.response.status).toBe(200);
+    expect(left.data).toEqual({ status: 'ok' });
+  });
 });

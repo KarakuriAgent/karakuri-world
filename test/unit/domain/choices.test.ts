@@ -129,4 +129,28 @@ describe('choices domain', () => {
       expect(text).not.toContain('conversation_start: bob');
     },
   );
+
+  it('includes conversation_join in forced choices while in_action', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    const carol = await engine.registerAgent({ discord_bot_id: 'bot-carol' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    await engine.loginAgent(carol.agent_id);
+
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.state.setNode(bob.agent_id, '1-2');
+    engine.state.setNode(carol.agent_id, '1-2');
+    engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello Bob',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hello Alice' });
+    engine.state.setState(carol.agent_id, 'in_action');
+
+    const text = buildChoicesText(engine, carol.agent_id, { forceShowActions: true });
+
+    expect(text).toContain('- conversation_join: alice と bob の会話に参加する');
+  });
 });

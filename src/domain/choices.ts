@@ -2,6 +2,7 @@ import type { WorldEngine } from '../engine/world-engine.js';
 import { WorldError } from '../types/api.js';
 import { manhattanDistance } from './map-utils.js';
 import { formatActionSourceLine, getAvailableActionSources } from './actions.js';
+import { findConversationByAgent } from './conversation.js';
 import { getAgentCurrentNode } from './movement.js';
 
 export function buildChoicesText(
@@ -18,12 +19,14 @@ export function buildChoicesText(
   const currentNodeId = getAgentCurrentNode(engine, agent, now);
   const canStartInterruptibleCommand = options.forceShowActions || (agent.state === 'idle' && agent.pending_conversation_id === null);
   const canStartConversation = agent.state === 'idle' && agent.pending_conversation_id === null;
+  const canJoinConversation = agent.pending_conversation_id === null
+    && (agent.state === 'idle' || (options.forceShowActions && agent.state === 'in_action'));
   const actionLines = canStartInterruptibleCommand
     ? getAvailableActionSources(engine, agentId).map(
         (source) => `- action: ${formatActionSourceLine(source, engine.config.items ?? [])}`,
       )
     : [];
-  const conversationLines = canStartConversation
+  const conversationStartLines = canStartConversation
     ? engine.state
         .listLoggedIn()
         .filter((candidate) => candidate.agent_id !== agentId)
@@ -43,6 +46,27 @@ export function buildChoicesText(
             `- conversation_start: ${candidate.agent_name} に話しかける (target_agent_id: ${candidate.agent_id}, message: 最初のメッセージ)`,
         )
     : [];
+
+  const conversationJoinLines = canJoinConversation
+    ? engine.state.conversations
+        .list()
+        .filter((conversation) => conversation.status === 'active')
+        .filter((conversation) => !conversation.participant_agent_ids.includes(agentId))
+        .filter((conversation) => conversation.participant_agent_ids.length < engine.config.conversation.max_participants)
+        .filter((conversation) => conversation.participant_agent_ids.some((participantId) => {
+          const participant = engine.state.getLoggedIn(participantId);
+          return participant && manhattanDistance(currentNodeId, getAgentCurrentNode(engine, participant, now)) <= 1;
+        }))
+        .sort((left, right) => left.conversation_id.localeCompare(right.conversation_id))
+        .map((conversation) => {
+          const participantNames = conversation.participant_agent_ids
+            .map((participantId) => engine.getAgentById(participantId)?.agent_name ?? participantId)
+            .join(' と ');
+          return `- conversation_join: ${participantNames} の会話に参加する (conversation_id: ${conversation.conversation_id}, message: 最初のメッセージ)`;
+        })
+    : [];
+
+  const conversationLines = [...conversationStartLines, ...conversationJoinLines];
 
   const hasItems = canStartInterruptibleCommand && agent.items.some((item) => item.quantity > 0);
   const useItemLine = hasItems

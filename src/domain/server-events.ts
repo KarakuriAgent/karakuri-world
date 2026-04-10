@@ -4,7 +4,13 @@ import type { WorldEngine } from '../engine/world-engine.js';
 import type { FireServerEventResponse } from '../types/api.js';
 import type { ServerEventInstance } from '../types/server-event.js';
 import { cancelActiveAction } from './actions.js';
-import { beginClosingConversation, cancelPendingConversationForServerEvent, findConversationByAgent } from './conversation.js';
+import {
+  beginClosingConversation,
+  cancelPendingConversationForServerEvent,
+  detachParticipantFromClosingConversation,
+  findConversationByAgent,
+  getConversationActionableSpeaker,
+} from './conversation.js';
 import { cancelActiveItemUse } from './use-item.js';
 import { cancelActiveWait } from './wait.js';
 
@@ -98,6 +104,30 @@ export function clearActiveServerEvent(engine: WorldEngine, agentId: string): vo
   engine.state.clearActiveServerEvent(agentId);
 }
 
+function getNextConversationSpeakerAfterInterruption(
+  participantAgentIds: string[],
+  interruptedAgentId: string,
+  skipAgentId?: string,
+): string | null {
+  if (participantAgentIds.length === 0) {
+    return null;
+  }
+
+  const interruptedIndex = participantAgentIds.indexOf(interruptedAgentId);
+  if (interruptedIndex !== -1) {
+    for (let offset = 1; offset < participantAgentIds.length; offset += 1) {
+      const candidate = participantAgentIds[(interruptedIndex + offset) % participantAgentIds.length];
+      if (candidate && candidate !== interruptedAgentId && candidate !== skipAgentId) {
+        return candidate;
+      }
+    }
+  }
+
+  return participantAgentIds.find((participantId) => participantId !== interruptedAgentId && participantId !== skipAgentId)
+    ?? participantAgentIds.find((participantId) => participantId !== interruptedAgentId)
+    ?? null;
+}
+
 export function handleServerEventInterruption(engine: WorldEngine, agentId: string): void {
   const agent = engine.state.getLoggedIn(agentId);
   if (!agent || agent.active_server_event_id === null) {
@@ -119,14 +149,23 @@ export function handleServerEventInterruption(engine: WorldEngine, agentId: stri
     cancelActiveItemUse(engine, agentId);
   } else if (refreshedAgent.state === 'in_conversation') {
     const conversation = findConversationByAgent(engine, agentId, ['active', 'closing']);
-    if (conversation && conversation.status !== 'closing') {
-      if (refreshedAgent.pending_conversation_id === conversation.conversation_id) {
-        engine.state.setPendingConversation(agentId, null);
+    if (conversation) {
+      const actionableSpeakerAgentId = getConversationActionableSpeaker(conversation);
+      const partnerId = actionableSpeakerAgentId && actionableSpeakerAgentId !== agentId
+        ? actionableSpeakerAgentId
+        : getNextConversationSpeakerAfterInterruption(
+          conversation.participant_agent_ids,
+          agentId,
+          conversation.inactive_check_pending_agent_ids.length > 0 ? conversation.current_speaker_agent_id : undefined,
+        ) ?? conversation.current_speaker_agent_id;
+      if (conversation.status === 'closing') {
+        detachParticipantFromClosingConversation(engine, conversation.conversation_id, agentId);
+      } else {
+        if (refreshedAgent.pending_conversation_id === conversation.conversation_id) {
+          engine.state.setPendingConversation(agentId, null);
+        }
+        beginClosingConversation(engine, conversation.conversation_id, partnerId, 'server_event', agentId);
       }
-      const partnerId = conversation.initiator_agent_id === agentId
-        ? conversation.target_agent_id
-        : conversation.initiator_agent_id;
-      beginClosingConversation(engine, conversation.conversation_id, partnerId, 'server_event');
     }
   }
 

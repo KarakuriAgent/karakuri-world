@@ -167,4 +167,14 @@ describe('config validation', () => {
       expect(() => parseConfig(invalidConfig)).toThrowError(ConfigValidationError);
     }
   });
+
+  it('rejects conversation max_participants below 2', () => {
+    const invalidConfig = createTestConfig({
+      conversation: {
+        max_participants: 1,
+      },
+    });
+
+    expect(() => parseConfig(invalidConfig)).toThrowError(ConfigValidationError);
+  });
 });
