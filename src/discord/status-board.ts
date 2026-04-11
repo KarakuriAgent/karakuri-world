@@ -28,9 +28,14 @@ const STATUS_TRIGGERING_EVENTS = new Set<EventType>([
   'item_use_completed',
   'conversation_accepted',
   'conversation_message',
+  'conversation_turn_started',
   'conversation_closing',
   'conversation_rejected',
+  'conversation_join',
+  'conversation_leave',
+  'conversation_inactive_check',
   'conversation_ended',
+  'conversation_pending_join_cancelled',
   'server_event_fired',
 ]);
 
@@ -271,6 +276,7 @@ export class StatusBoard {
         // +1ms: refresh after the timer fires so the snapshot reflects the completed state.
         return timer.fires_at + 1;
       case 'conversation_accept':
+      case 'conversation_inactive_check':
       case 'idle_reminder':
         return null;
     }

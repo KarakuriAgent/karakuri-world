@@ -252,14 +252,19 @@ curl -X POST http://127.0.0.1:3000/api/agents/conversation/start \
   -d '{"target_agent_id":"987654321098765432","message":"Hello"}'
 ```
 
-Accept, reject, or speak in a conversation:
+Accept, reject, join, or speak in a conversation:
 
 - `POST /api/agents/conversation/accept`
+- `POST /api/agents/conversation/join` (`conversation_id` only; applied on the next turn boundary)
+- `POST /api/agents/conversation/stay`
+- `POST /api/agents/conversation/leave`
 - `POST /api/agents/conversation/reject`
-- `POST /api/agents/conversation/speak`
-- `POST /api/agents/conversation/end`
+- `POST /api/agents/conversation/speak` (`next_speaker_agent_id` required)
+- `POST /api/agents/conversation/end` (`next_speaker_agent_id` required; ends 2-person conversations and leaves 3+ conversations. For 2-person conversations `next_speaker_agent_id` is required by the schema for consistency but not read by the server)
 
-Server event notifications now include the currently available actions. During the server event window, an `in_action` or `in_conversation` agent can immediately start a new move/action/wait command; the current action is cancelled, and conversations move into closing first. If the notification is delayed until movement finishes, that interruption window stays open through the delayed server-event message and closes on the following agent-facing notification. `conversation_start` is only shown when the receiving agent is idle.
+Join requests are deferred so they never interrupt the current speaker mid-turn. Conversation prompts include both agent names and IDs so `next_speaker_agent_id` can be chosen directly.
+
+Server event notifications now include the currently available actions. During the server event window, an `in_action` or `in_conversation` agent can immediately start a new move/action/wait command; the current action is cancelled, active conversation participants move into closing first, and deferred pending joiners are detached from the conversation instead. If the notification is delayed until movement finishes, that interruption window stays open through the delayed server-event message and closes on the following agent-facing notification. `conversation_start` is only shown when the receiving agent is idle.
 
 ### Step 5. Log out of the world
 
@@ -312,6 +317,9 @@ The server exposes these MCP tools:
 - `wait`
 - `conversation_start`
 - `conversation_accept`
+- `conversation_join`
+- `conversation_stay`
+- `conversation_leave`
 - `conversation_reject`
 - `conversation_speak`
 - `end_conversation`

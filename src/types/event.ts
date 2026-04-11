@@ -1,5 +1,5 @@
 import type { AgentItem, AgentState } from './agent.js';
-import type { ConversationClosureReason, ConversationRejectionReason } from './conversation.js';
+import type { ConversationClosureReason, ConversationRejectionReason, PendingJoinCancelReason } from './conversation.js';
 import type { ItemType, NodeId } from './data-model.js';
 
 export type EventType =
@@ -19,8 +19,14 @@ export type EventType =
   | 'conversation_accepted'
   | 'conversation_rejected'
   | 'conversation_message'
+  | 'conversation_join'
+  | 'conversation_leave'
+  | 'conversation_inactive_check'
+  | 'conversation_interval_interrupted'
+  | 'conversation_turn_started'
   | 'conversation_closing'
   | 'conversation_ended'
+  | 'conversation_pending_join_cancelled'
   | 'server_event_fired'
   | 'idle_reminder_fired'
   | 'map_info_requested'
@@ -158,7 +164,7 @@ export interface ConversationAcceptedEvent extends EventBase {
   type: 'conversation_accepted';
   conversation_id: string;
   initiator_agent_id: string;
-  target_agent_id: string;
+  participant_agent_ids: string[];
 }
 
 export interface ConversationRejectedEvent extends EventBase {
@@ -173,16 +179,58 @@ export interface ConversationMessageEvent extends EventBase {
   type: 'conversation_message';
   conversation_id: string;
   speaker_agent_id: string;
-  listener_agent_id: string;
+  listener_agent_ids: string[];
   turn: number;
   message: string;
+}
+
+export interface ConversationJoinEvent extends EventBase {
+  type: 'conversation_join';
+  conversation_id: string;
+  agent_id: string;
+  agent_name: string;
+  participant_agent_ids: string[];
+}
+
+export interface ConversationLeaveEvent extends EventBase {
+  type: 'conversation_leave';
+  conversation_id: string;
+  agent_id: string;
+  agent_name: string;
+  reason: 'voluntary' | 'inactive' | 'logged_out' | 'server_event';
+  participant_agent_ids: string[];
+  message?: string;
+  next_speaker_agent_id?: string;
+}
+
+export interface ConversationInactiveCheckEvent extends EventBase {
+  type: 'conversation_inactive_check';
+  conversation_id: string;
+  target_agent_ids: string[];
+}
+
+export interface ConversationIntervalInterruptedEvent extends EventBase {
+  type: 'conversation_interval_interrupted';
+  conversation_id: string;
+  speaker_agent_id: string;
+  listener_agent_ids: string[];
+  next_speaker_agent_id: string;
+  participant_agent_ids: string[];
+  message: string;
+  closing: boolean;
+}
+
+export interface ConversationTurnStartedEvent extends EventBase {
+  type: 'conversation_turn_started';
+  conversation_id: string;
+  current_speaker_agent_id: string;
 }
 
 export interface ConversationClosingEvent extends EventBase {
   type: 'conversation_closing';
   conversation_id: string;
   initiator_agent_id: string;
-  target_agent_id: string;
+  participant_agent_ids: string[];
   current_speaker_agent_id: string;
   reason: Extract<ConversationClosureReason, 'ended_by_agent' | 'max_turns' | 'server_event'>;
 }
@@ -191,10 +239,17 @@ export interface ConversationEndedEvent extends EventBase {
   type: 'conversation_ended';
   conversation_id: string;
   initiator_agent_id: string;
-  target_agent_id: string;
+  participant_agent_ids: string[];
   reason: ConversationClosureReason;
   final_message?: string;
   final_speaker_agent_id?: string;
+}
+
+export interface ConversationPendingJoinCancelledEvent extends EventBase {
+  type: 'conversation_pending_join_cancelled';
+  conversation_id: string;
+  agent_id: string;
+  reason: PendingJoinCancelReason;
 }
 
 export interface ServerEventFiredEvent extends EventBase {
@@ -250,8 +305,14 @@ export type WorldEvent =
   | ConversationAcceptedEvent
   | ConversationRejectedEvent
   | ConversationMessageEvent
+  | ConversationJoinEvent
+  | ConversationLeaveEvent
+  | ConversationInactiveCheckEvent
+  | ConversationIntervalInterruptedEvent
+  | ConversationTurnStartedEvent
   | ConversationClosingEvent
   | ConversationEndedEvent
+  | ConversationPendingJoinCancelledEvent
   | ServerEventFiredEvent
   | IdleReminderFiredEvent
   | MapInfoRequestedEvent

@@ -64,10 +64,12 @@ function createSnapshot(): WorldSnapshot {
         conversation_id: 'conversation-1',
         status: 'active',
         initiator_agent_id: 'agent-1',
-        target_agent_id: 'agent-2',
+        participant_agent_ids: ['agent-1', 'agent-2'],
         current_turn: 3,
         max_turns: 10,
+        max_participants: 5,
         current_speaker_agent_id: 'agent-1',
+        actionable_speaker_agent_id: 'agent-1',
       },
     ],
     server_events: [
@@ -117,10 +119,12 @@ describe('formatStatusBoard', () => {
         conversation_id: 'conversation-1',
         status: 'closing',
         initiator_agent_id: 'agent-1',
-        target_agent_id: 'agent-2',
+        participant_agent_ids: ['agent-1', 'agent-2'],
         current_turn: 11,
         max_turns: 10,
+        max_participants: 5,
         current_speaker_agent_id: 'agent-1',
+        actionable_speaker_agent_id: 'agent-1',
       },
     ];
 
@@ -190,6 +194,28 @@ describe('formatStatusBoard', () => {
     expect(message).not.toContain('行動中:');
   });
 
+  it('shows the actionable speaker during an inactive-check pause', () => {
+    const snapshot = createSnapshot();
+    snapshot.conversations = [
+      {
+        conversation_id: 'conversation-1',
+        status: 'active',
+        initiator_agent_id: 'agent-1',
+        participant_agent_ids: ['agent-1', 'agent-2', 'agent-3'],
+        current_turn: 4,
+        max_turns: 10,
+        max_participants: 5,
+        current_speaker_agent_id: 'agent-2',
+        actionable_speaker_agent_id: 'agent-1',
+      },
+    ];
+
+    const [message] = formatStatusBoard(snapshot, 'Asia/Tokyo');
+
+    expect(message).toContain('- sakura と taro 他1名 (ターン 4/10, sakuraの番)');
+    expect(message).not.toContain('taroの番');
+  });
+
   it('excludes pending conversations from the display', () => {
     const snapshot = createSnapshot();
     snapshot.conversations = [
@@ -197,10 +223,12 @@ describe('formatStatusBoard', () => {
         conversation_id: 'conversation-1',
         status: 'pending',
         initiator_agent_id: 'agent-1',
-        target_agent_id: 'agent-2',
+        participant_agent_ids: ['agent-1', 'agent-2'],
         current_turn: 1,
         max_turns: 10,
+        max_participants: 5,
         current_speaker_agent_id: 'agent-1',
+        actionable_speaker_agent_id: 'agent-1',
       },
     ];
 

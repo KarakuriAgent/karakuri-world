@@ -5,7 +5,10 @@ world:
 movement:
   duration_ms: 30000
 conversation:
-  max_turns: 10
+  max_turns: 20
+  max_participants: 5
+  # 会話全体のターン数（発言数）で計測。5人会話では各人平均2回で10ターン消費する。
+  inactive_check_turns: 10
   interval_ms: 300000
   accept_timeout_ms: 600000
   turn_timeout_ms: 600000

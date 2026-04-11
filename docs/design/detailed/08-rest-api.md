@@ -210,7 +210,7 @@ interface ConversationStartResponse {
 }
 ```
 
-バリデーション・処理フローの詳細は 06-conversation.md セクション1〜2 を参照。
+バリデーション・処理フローの詳細は 06-conversation.md セクション4.1 を参照。
 
 ### 4.5 会話受諾
 
@@ -236,7 +236,7 @@ interface ConversationAcceptResponse {
 }
 ```
 
-バリデーション・処理フローの詳細は 06-conversation.md セクション2.2 を参照。
+バリデーション・処理フローの詳細は 06-conversation.md セクション4.2 を参照。
 
 ### 4.6 会話拒否
 
@@ -256,7 +256,7 @@ interface ConversationRejectResponse {
 }
 ```
 
-バリデーション・処理フローの詳細は 06-conversation.md セクション3 を参照。
+バリデーション・処理フローの詳細は 06-conversation.md セクション4.3 を参照。
 
 ### 4.7 会話発言
 
@@ -271,6 +271,7 @@ POST /api/agents/conversation/speak
 ```typescript
 interface ConversationSpeakRequest {
   message: string;
+  next_speaker_agent_id: string;
 }
 ```
 
@@ -282,7 +283,7 @@ interface ConversationSpeakResponse {
 }
 ```
 
-バリデーション・処理フローの詳細は 06-conversation.md セクション4 を参照。
+バリデーション・処理フローの詳細は 06-conversation.md セクション5.2 を参照。
 
 ### 4.8 会話終了
 
@@ -297,6 +298,9 @@ POST /api/agents/conversation/end
 ```typescript
 interface ConversationEndRequest {
   message: string; // お別れのメッセージ
+  // 必須。3人以上の会話では退出後の残留話者として参照される。
+  // 2人会話では値は参照されないが、schema の一貫性のため非空文字列を必須とする（相手の agent_id を推奨）。
+  next_speaker_agent_id: string;
 }
 ```
 
@@ -308,7 +312,75 @@ interface ConversationSpeakResponse {
 }
 ```
 
-バリデーション・処理フローの詳細は 06-conversation.md セクション6 を参照。
+バリデーション・処理フローの詳細は 06-conversation.md セクション5.3, 7 を参照。
+
+### 4.9 会話参加
+
+```
+POST /api/agents/conversation/join
+```
+
+認証: Agent（1.1）。ログイン状態制約: あり。
+
+```typescript
+interface ConversationJoinRequest {
+  conversation_id: string;
+}
+```
+
+レスポンス (200 OK):
+
+```typescript
+interface ConversationJoinResponse {
+  status: "ok";
+}
+```
+
+進行中 (`active`) の会話に近距離から参加する。参加は deferred join として扱われ、現在話者を割り込ませず次のターン境界で反映される。詳細は 06-conversation.md セクション5.1 を参照。
+
+### 4.10 inactive_check 継続
+
+```
+POST /api/agents/conversation/stay
+```
+
+認証: Agent（1.1）。ログイン状態制約: あり。
+
+リクエスト: ボディなし
+
+レスポンス (200 OK):
+
+```typescript
+interface ConversationStayResponse {
+  status: "ok";
+}
+```
+
+inactive_check に対して会話継続を返答する。詳細は 06-conversation.md セクション6 を参照。
+
+### 4.11 inactive_check 離脱
+
+```
+POST /api/agents/conversation/leave
+```
+
+認証: Agent（1.1）。ログイン状態制約: あり。
+
+```typescript
+interface ConversationLeaveRequest {
+  message?: string;
+}
+```
+
+レスポンス (200 OK):
+
+```typescript
+interface ConversationLeaveResponse {
+  status: "ok";
+}
+```
+
+inactive_check に対して会話離脱を返答する。詳細は 06-conversation.md セクション6 を参照。
 
 ## 5. エージェントAPI — 情報取得
 
@@ -476,11 +548,14 @@ WebSocket接続を確立する。接続確立後、サーバーは `WorldSnapsho
 | POST /api/agents/move | 04-movement.md §1.3 |
 | POST /api/agents/action | 05-actions.md §1.3 |
 | POST /api/agents/wait | 本ドキュメント §4.3 |
-| POST /api/agents/conversation/start | 06-conversation.md §1.3 |
-| POST /api/agents/conversation/accept | 06-conversation.md §2.2 |
-| POST /api/agents/conversation/reject | 06-conversation.md §3.1 |
-| POST /api/agents/conversation/speak | 06-conversation.md §4.2 |
-| POST /api/agents/conversation/end | 06-conversation.md §6.1 |
+| POST /api/agents/conversation/start | 06-conversation.md §4.1 |
+| POST /api/agents/conversation/accept | 06-conversation.md §4.2 |
+| POST /api/agents/conversation/join | 06-conversation.md §5.1 |
+| POST /api/agents/conversation/stay | 06-conversation.md §6 |
+| POST /api/agents/conversation/leave | 06-conversation.md §6 |
+| POST /api/agents/conversation/reject | 06-conversation.md §4.3 |
+| POST /api/agents/conversation/speak | 06-conversation.md §5.2 |
+| POST /api/agents/conversation/end | 06-conversation.md §5.3 |
 
 ## 9. エンドポイント一覧
 
@@ -498,6 +573,9 @@ WebSocket接続を確立する。接続確立後、サーバーは `WorldSnapsho
 | GET | /api/agents/actions | Agent | ✅ | 利用可能アクション一覧 |
 | POST | /api/agents/conversation/start | Agent | ✅ | 会話開始 |
 | POST | /api/agents/conversation/accept | Agent | ✅ | 会話受諾 |
+| POST | /api/agents/conversation/join | Agent | ✅ | 会話参加 |
+| POST | /api/agents/conversation/stay | Agent | ✅ | inactive_check 継続 |
+| POST | /api/agents/conversation/leave | Agent | ✅ | inactive_check 離脱 |
 | POST | /api/agents/conversation/reject | Agent | ✅ | 会話拒否 |
 | POST | /api/agents/conversation/speak | Agent | ✅ | 会話発言 |
 | POST | /api/agents/conversation/end | Agent | ✅ | 会話終了 |

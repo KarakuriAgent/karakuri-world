@@ -1,5 +1,13 @@
 import type { MapConfig, ServerConfig } from '../../src/types/data-model.js';
 
+type DeepPartial<T> = {
+  [K in keyof T]?: T[K] extends Array<infer U>
+    ? Array<DeepPartial<U>>
+    : T[K] extends object
+      ? DeepPartial<T[K]>
+      : T[K];
+};
+
 export function createTestMapConfig(): MapConfig {
   return {
     rows: 3,
@@ -58,7 +66,7 @@ export function createTestMapConfig(): MapConfig {
   };
 }
 
-export function createTestConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
+export function createTestConfig(overrides: DeepPartial<ServerConfig> = {}): ServerConfig {
   const base: ServerConfig = {
     world: {
       name: 'Karakuri Test World',
@@ -71,6 +79,8 @@ export function createTestConfig(overrides: Partial<ServerConfig> = {}): ServerC
     },
     conversation: {
       max_turns: 10,
+      max_participants: 5,
+      inactive_check_turns: 10,
       interval_ms: 500,
       accept_timeout_ms: 3000,
       turn_timeout_ms: 4000,
@@ -93,7 +103,7 @@ export function createTestConfig(overrides: Partial<ServerConfig> = {}): ServerC
     conversation: { ...config.conversation, ...overrides.conversation },
     perception: { ...config.perception, ...overrides.perception },
     spawn: { ...config.spawn, ...overrides.spawn },
-    map: overrides.map ?? config.map,
+    map: (overrides.map ?? config.map) as MapConfig,
     economy: overrides.economy ?? config.economy,
     weather: overrides.weather ?? config.weather,
     items: overrides.items ?? config.items,

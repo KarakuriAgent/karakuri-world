@@ -54,6 +54,10 @@ const mocks = vi.hoisted(() => {
     user: {
       id: 'world-bot',
     },
+    ws: {
+      shards: { size: 1 },
+    },
+    listenerCount: vi.fn(() => 0),
   };
 
   const Client = vi.fn(function MockClient() {

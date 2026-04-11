@@ -1,13 +1,18 @@
 import { buildPerceptionText } from '../domain/perception.js';
 import type { AgentState } from '../types/agent.js';
 import type { PerceptionResponse } from '../types/api.js';
-import type { ConversationClosureReason, ConversationRejectionReason } from '../types/conversation.js';
+import type { ConversationClosureReason, ConversationRejectionReason, PendingJoinCancelReason } from '../types/conversation.js';
 import type { ItemType } from '../types/data-model.js';
 
 export interface WorldContext {
   worldName: string;
   worldDescription: string;
   agentName: string;
+}
+
+export interface ConversationParticipantInfo {
+  id: string;
+  name: string;
 }
 
 export function formatActionPrompt(skillName: string, choicesText?: string): string {
@@ -43,7 +48,7 @@ function formatTime(timestamp: number, timezone: string): string {
   });
 }
 
-function formatClosureReason(reason: Exclude<ConversationClosureReason, 'partner_logged_out'>): string {
+function formatClosureReason(reason: Exclude<ConversationClosureReason, 'participant_logged_out'>): string {
   switch (reason) {
     case 'max_turns':
       return '最大ターン数に到達しました';
@@ -58,6 +63,29 @@ function formatClosureReason(reason: Exclude<ConversationClosureReason, 'partner
 
 function formatWorldContextHeader(ctx: WorldContext): string {
   return `あなた (${ctx.agentName}) は仮想世界「${ctx.worldName}」にログインしています。\n${ctx.worldDescription}`;
+}
+
+function formatConversationParticipants(participants: ConversationParticipantInfo[] = []): string | undefined {
+  if (participants.length === 0) {
+    return undefined;
+  }
+  return `参加者: ${participants.map((participant) => `${participant.name} (id: ${participant.id})`).join('、')}`;
+}
+
+function formatConversationChoices(
+  mode: 'reply' | 'closing',
+  group: boolean,
+): string {
+  const lines = ['選択肢:'];
+  if (mode === 'reply') {
+    lines.push('- conversation_speak: 返答する (message: 発言内容, next_speaker_agent_id: 次の話者ID)');
+    lines.push(group
+      ? '- end_conversation: 会話から退出する (message: 最後の発言, next_speaker_agent_id: 次の話者ID)'
+      : '- end_conversation: 会話を終了する (message: お別れのメッセージ, next_speaker_agent_id: 次の話者ID)');
+  } else {
+    lines.push('- conversation_speak: お別れのメッセージを送る (message: 発言内容, next_speaker_agent_id: 次の話者ID)');
+  }
+  return lines.join('\n');
 }
 
 export function formatPerceptionMessage(perception: PerceptionResponse): string {
@@ -221,16 +249,14 @@ export function formatConversationReplyPromptMessage(
   speakerName: string,
   message: string,
   skillName: string,
+  participants: ConversationParticipantInfo[] = [],
 ): string {
-  const choices = [
-    '選択肢:',
-    '- conversation_speak: 返答する (message: 発言内容)',
-    '- end_conversation: 会話を終了する (message: お別れのメッセージ)',
-  ].join('\n');
+  const group = participants.length > 2;
   return joinSections(
     formatWorldContextHeader(ctx),
+    formatConversationParticipants(participants),
     `${speakerName}: 「${message}」`,
-    formatActionPrompt(skillName, choices),
+    formatActionPrompt(skillName, formatConversationChoices('reply', group)),
   );
 }
 
@@ -239,16 +265,15 @@ export function formatConversationClosingPromptMessage(
   speakerName: string,
   message: string,
   skillName: string,
+  participants: ConversationParticipantInfo[] = [],
 ): string {
-  const choices = [
-    '選択肢:',
-    '- conversation_speak: お別れのメッセージを送る (message: 発言内容)',
-  ].join('\n');
+  const group = participants.length > 2;
   return joinSections(
     formatWorldContextHeader(ctx),
+    formatConversationParticipants(participants),
     `${speakerName}: 「${message}」`,
     'これが最後のメッセージです。',
-    formatActionPrompt(skillName, choices),
+    formatActionPrompt(skillName, formatConversationChoices('closing', group)),
   );
 }
 
@@ -259,21 +284,82 @@ export function formatConversationDeliveredClosingMessage(speakerName: string, m
 export function formatConversationServerEventClosingPromptMessage(
   ctx: WorldContext,
   skillName: string,
+  participants: ConversationParticipantInfo[] = [],
 ): string {
+  const group = participants.length > 2;
+  return joinSections(
+    formatWorldContextHeader(ctx),
+    formatConversationParticipants(participants),
+    'サーバーイベントにより会話が終了します。',
+    formatActionPrompt(skillName, formatConversationChoices('closing', group)),
+  );
+}
+
+export function formatConversationFYIMessage(speakerName: string, message: string, nextSpeakerName?: string): string {
+  return nextSpeakerName
+    ? `${speakerName}: 「${message}」\n次は ${nextSpeakerName} の番です。`
+    : `${speakerName}: 「${message}」`;
+}
+
+export function formatConversationTurnPromptMessage(
+  ctx: WorldContext,
+  skillName: string,
+  participants: ConversationParticipantInfo[] = [],
+): string {
+  const group = participants.length > 2;
+  return joinSections(
+    formatWorldContextHeader(ctx),
+    formatConversationParticipants(participants),
+    'あなたの番です。',
+    formatActionPrompt(skillName, formatConversationChoices('reply', group)),
+  );
+}
+
+export function formatConversationTurnClosingPromptMessage(
+  ctx: WorldContext,
+  skillName: string,
+  participants: ConversationParticipantInfo[] = [],
+): string {
+  const group = participants.length > 2;
+  return joinSections(
+    formatWorldContextHeader(ctx),
+    formatConversationParticipants(participants),
+    'あなたが最後のメッセージを送る番です。',
+    formatActionPrompt(skillName, formatConversationChoices('closing', group)),
+  );
+}
+
+export function formatConversationLeaveSystemMessage(agentName: string, message?: string, nextSpeakerName?: string): string {
+  const base = [`🔔 ${agentName} が会話から離れました。`];
+  if (message) {
+    base.push(`「${message}」`);
+  }
+  if (nextSpeakerName) {
+    base.push(`次は ${nextSpeakerName} の番です。`);
+  }
+  return base.join('\n');
+}
+
+export function formatConversationInactiveCheckMessage(ctx: WorldContext, skillName: string): string {
   const choices = [
     '選択肢:',
-    '- conversation_speak: お別れのメッセージを送る (message: 発言内容)',
+    '- conversation_stay: 会話に残る',
+    '- conversation_leave: 会話から離れる (message: 任意)',
   ].join('\n');
   return joinSections(
     formatWorldContextHeader(ctx),
-    'サーバーイベントにより会話が終了します。',
+    'しばらく会話に関与していないため、会話を続けるか確認しています。',
     formatActionPrompt(skillName, choices),
   );
 }
 
+export function formatConversationThreadName(initiatorName: string, targetName: string, extraCount: number): string {
+  return extraCount > 0 ? `${initiatorName} と ${targetName} 他${extraCount}名` : `${initiatorName} と ${targetName}`;
+}
+
 export function formatConversationEndedMessage(
   ctx: WorldContext,
-  reason: Exclude<ConversationClosureReason, 'partner_logged_out'>,
+  reason: Exclude<ConversationClosureReason, 'participant_logged_out'>,
   perceptionText: string,
   skillName: string,
   choicesText?: string,
@@ -288,14 +374,46 @@ export function formatConversationEndedMessage(
 
 export function formatConversationForcedEndedMessage(
   ctx: WorldContext,
-  partnerName: string,
+  participantName: string,
   perceptionText: string,
   skillName: string,
   choicesText?: string,
 ): string {
   return joinSections(
     formatWorldContextHeader(ctx),
-    `${partnerName} が世界からログアウトしたため、会話が強制終了されました。`,
+    `${participantName} が世界からログアウトしたため、会話が強制終了されました。`,
+    perceptionText,
+    formatActionPrompt(skillName, choicesText),
+  );
+}
+
+function describePendingJoinCancelReason(reason: PendingJoinCancelReason): string {
+  switch (reason) {
+    case 'participant_logged_out':
+      return '参加予定だった会話が、参加者のログアウトにより開始前に終了しました。';
+    case 'max_turns':
+      return '参加予定だった会話が最大ターン数に到達して終了したため、会話への参加は取り消されました。';
+    case 'turn_timeout':
+      return '参加予定だった会話が応答タイムアウトで終了したため、会話への参加は取り消されました。';
+    case 'server_event':
+      return '参加予定だった会話がサーバーイベントにより中断されたため、会話への参加は取り消されました。';
+    case 'ended_by_agent':
+      return '参加予定だった会話が参加者の終了要求により終了したため、会話への参加は取り消されました。';
+    case 'agent_unavailable':
+      return '会話への参加要求が、エージェント状態の不整合により取り消されました。';
+  }
+}
+
+export function formatConversationPendingJoinCancelledMessage(
+  ctx: WorldContext,
+  reason: PendingJoinCancelReason,
+  perceptionText: string,
+  skillName: string,
+  choicesText?: string,
+): string {
+  return joinSections(
+    formatWorldContextHeader(ctx),
+    describePendingJoinCancelReason(reason),
     perceptionText,
     formatActionPrompt(skillName, choicesText),
   );
@@ -429,16 +547,16 @@ export function formatWorldLogItemUseVenueRejected(itemName: string): string {
   return `「${itemName}」を使おうとしたが、ここでは利用できなかった`;
 }
 
-export function formatWorldLogConversationStarted(initiatorName: string, targetName: string): string {
-  return `${initiatorName} と ${targetName} の会話が始まりました`;
+export function formatWorldLogConversationStarted(...participantNames: string[]): string {
+  return `${participantNames.join(' と ')} の会話が始まりました`;
 }
 
 export function formatWorldLogConversationMessage(message: string): string {
   return `「${message}」`;
 }
 
-export function formatWorldLogConversationEnded(initiatorName: string, targetName: string): string {
-  return `${initiatorName} と ${targetName} の会話が終了しました`;
+export function formatWorldLogConversationEnded(...participantNames: string[]): string {
+  return `${participantNames.join(' と ')} の会話が終了しました`;
 }
 
 export function formatIdleReminderMessage(

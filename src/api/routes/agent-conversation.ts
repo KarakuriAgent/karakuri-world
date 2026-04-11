@@ -5,7 +5,7 @@ import type { WorldEngine } from '../../engine/world-engine.js';
 import type { ApiEnv } from '../context.js';
 import { agentAuth } from '../middleware/auth.js';
 import { requireLoggedIn } from '../middleware/logged-in.js';
-import { validateBody } from '../middleware/validate.js';
+import { validateBody, validateOptionalBody } from '../middleware/validate.js';
 
 const startConversationSchema = z.object({
   target_agent_id: z.string().min(1),
@@ -16,12 +16,22 @@ const acceptSchema = z.object({
   message: z.string().min(1),
 });
 
+const joinSchema = z.object({
+  conversation_id: z.string().min(1),
+});
+
 const speakSchema = z.object({
   message: z.string().min(1),
+  next_speaker_agent_id: z.string().min(1),
 });
 
 const endSchema = z.object({
   message: z.string().min(1),
+  next_speaker_agent_id: z.string().min(1),
+});
+
+const leaveSchema = z.object({
+  message: z.string().min(1).optional(),
 });
 
 export function registerAgentConversationRoutes(app: Hono<ApiEnv>, engine: WorldEngine): void {
@@ -44,6 +54,38 @@ export function registerAgentConversationRoutes(app: Hono<ApiEnv>, engine: World
     (c) => {
       const agentId = c.get('agentId') as string;
       return c.json(engine.acceptConversation(agentId, c.get('validatedBody') as z.infer<typeof acceptSchema>));
+    },
+  );
+
+  app.post(
+    '/api/agents/conversation/join',
+    agentAuth(engine),
+    requireLoggedIn(engine),
+    validateBody(joinSchema),
+    (c) => {
+      const agentId = c.get('agentId') as string;
+      return c.json(engine.joinConversation(agentId, c.get('validatedBody') as z.infer<typeof joinSchema>));
+    },
+  );
+
+  app.post(
+    '/api/agents/conversation/stay',
+    agentAuth(engine),
+    requireLoggedIn(engine),
+    (c) => {
+      const agentId = c.get('agentId') as string;
+      return c.json(engine.stayInConversation(agentId));
+    },
+  );
+
+  app.post(
+    '/api/agents/conversation/leave',
+    agentAuth(engine),
+    requireLoggedIn(engine),
+    validateOptionalBody(leaveSchema),
+    (c) => {
+      const agentId = c.get('agentId') as string;
+      return c.json(engine.leaveConversation(agentId, c.get('validatedBody') as z.infer<typeof leaveSchema>));
     },
   );
 

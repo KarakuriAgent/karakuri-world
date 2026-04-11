@@ -8,6 +8,7 @@ export type TimerType =
   | 'conversation_accept'
   | 'conversation_turn'
   | 'conversation_interval'
+  | 'conversation_inactive_check'
   | 'idle_reminder';
 
 export interface TimerBase {
@@ -65,9 +66,16 @@ export interface ConversationIntervalTimer extends TimerBase {
   type: 'conversation_interval';
   conversation_id: string;
   speaker_agent_id: string;
-  listener_agent_id: string;
+  listener_agent_ids: string[];
+  next_speaker_agent_id: string;
   turn: number;
   message: string;
+}
+
+export interface ConversationInactiveCheckTimer extends TimerBase {
+  type: 'conversation_inactive_check';
+  conversation_id: string;
+  target_agent_ids: string[];
 }
 
 export interface IdleReminderTimer extends TimerBase {
@@ -84,4 +92,5 @@ export type Timer =
   | ConversationAcceptTimer
   | ConversationTurnTimer
   | ConversationIntervalTimer
+  | ConversationInactiveCheckTimer
   | IdleReminderTimer;

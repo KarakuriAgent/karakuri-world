@@ -7,11 +7,15 @@ import {
   formatAgentLoggedOutMessage,
   formatConversationClosingPromptMessage,
   formatConversationEndedMessage,
+  formatConversationFYIMessage,
   formatConversationForcedEndedMessage,
+  formatConversationPendingJoinCancelledMessage,
   formatConversationRejectedMessage,
   formatConversationRequestedMessage,
   formatConversationReplyPromptMessage,
   formatConversationServerEventClosingPromptMessage,
+  formatConversationTurnClosingPromptMessage,
+  formatConversationTurnPromptMessage,
   formatIdleReminderMessage,
   formatMapInfoMessage,
   formatMovementCompletedMessage,
@@ -51,6 +55,7 @@ describe('discord notifications', () => {
       formatConversationClosingPromptMessage(worldContext, 'Bob', 'またね。', skillName),
       formatConversationEndedMessage(worldContext, 'max_turns', '現在地: 2-2', skillName, choicesText),
       formatConversationForcedEndedMessage(worldContext, 'Bob', '現在地: 2-2', skillName, choicesText),
+      formatConversationPendingJoinCancelledMessage(worldContext, 'participant_logged_out', '現在地: 2-2', skillName, choicesText),
       formatServerEventMessage(worldContext, '古い装置が動き出しました。', skillName, choicesText),
       formatIdleReminderMessage(worldContext, 60000, '現在地: 2-2', skillName, choicesText),
       formatConversationServerEventClosingPromptMessage(worldContext, skillName),
@@ -89,6 +94,34 @@ describe('discord notifications', () => {
     expect(formatAgentLoggedOutMessage('in_conversation')).toBe('会話を終了し、ログアウトしました。');
   });
 
+  it('formats deferred join cancellation caused by logout', () => {
+    const message = formatConversationPendingJoinCancelledMessage(
+      worldContext,
+      'participant_logged_out',
+      '現在地: 2-2',
+      'karakuri-world',
+      '選択肢:\n- move: ノードIDを指定して移動する',
+    );
+
+    expectWorldContextHeader(message);
+    expect(message).toContain('参加予定だった会話が、参加者のログアウトにより開始前に終了しました。');
+    expect(message).toContain('選択肢:');
+  });
+
+  it('formats deferred join cancellation caused by agent state desynchronization', () => {
+    const message = formatConversationPendingJoinCancelledMessage(
+      worldContext,
+      'agent_unavailable',
+      '現在地: 2-2',
+      'karakuri-world',
+      '選択肢:\n- move: ノードIDを指定して移動する',
+    );
+
+    expectWorldContextHeader(message);
+    expect(message).toContain('エージェント状態の不整合');
+    expect(message).toContain('選択肢:');
+  });
+
   it('formats world log logout messages based on cancelled state', () => {
     expect(formatWorldLogLoggedOut('idle')).toBe('世界からログアウトしました');
     expect(formatWorldLogLoggedOut('moving')).toBe('移動をキャンセルし、ログアウトしました');
@@ -99,10 +132,21 @@ describe('discord notifications', () => {
 
   it('formats conversation prompts with choices', () => {
     const skillName = 'karakuri-world';
+    const participants = [
+      { id: 'alice', name: 'Alice' },
+      { id: 'bob', name: 'Bob' },
+      { id: 'carol', name: 'Carol' },
+    ];
     const conversation = formatConversationRequestedMessage(worldContext, 'Alice', 'こんにちは。', skillName);
     const reply = formatConversationReplyPromptMessage(worldContext, 'Alice', 'こんにちは。', skillName);
     const closing = formatConversationClosingPromptMessage(worldContext, 'Alice', 'またね。', skillName);
-    const serverEventClosing = formatConversationServerEventClosingPromptMessage(worldContext, skillName);
+    const turnPrompt = formatConversationTurnPromptMessage(worldContext, skillName, participants);
+    const closingTurnPrompt = formatConversationTurnClosingPromptMessage(worldContext, skillName, participants);
+    const serverEventClosing = formatConversationServerEventClosingPromptMessage(
+      worldContext,
+      skillName,
+      participants,
+    );
 
     expectWorldContextHeader(conversation);
     expect(conversation).toContain('Alice が話しかけています。');
@@ -135,11 +179,30 @@ describe('discord notifications', () => {
     expect(closing).toContain('conversation_speak');
     expect(closing).toContain('karakuri-world スキルで次の行動を選択してください。');
 
+    expectWorldContextHeader(turnPrompt);
+    expect(turnPrompt).toContain('あなたの番です。');
+    expect(turnPrompt).toContain('次の話者ID');
+    expect(turnPrompt).toContain('end_conversation');
+
+    expectWorldContextHeader(closingTurnPrompt);
+    expect(closingTurnPrompt).toContain('あなたが最後のメッセージを送る番です。');
+    expect(closingTurnPrompt).toContain('次の話者ID');
+    expect(closingTurnPrompt).toContain('conversation_speak');
+
     expectWorldContextHeader(serverEventClosing);
     expect(serverEventClosing).toContain('サーバーイベントにより会話が終了します。');
+    expect(serverEventClosing).toContain('参加者: Alice (id: alice)、Bob (id: bob)、Carol (id: carol)');
     expect(serverEventClosing).toContain('選択肢:');
     expect(serverEventClosing).toContain('conversation_speak');
+    expect(serverEventClosing).toContain('次の話者ID');
     expect(serverEventClosing).toContain('karakuri-world スキルで次の行動を選択してください。');
+  });
+
+  it('formats conversation FYI messages for non-speakers', () => {
+    expect(formatConversationFYIMessage('Alice', 'こんにちは。', 'Bob')).toBe(
+      'Alice: 「こんにちは。」\n次は Bob の番です。',
+    );
+    expect(formatConversationFYIMessage('Alice', 'こんにちは。')).toBe('Alice: 「こんにちは。」');
   });
 
   it('formats server event messages with the action prompt', () => {
