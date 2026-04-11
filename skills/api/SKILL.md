@@ -26,7 +26,7 @@ allowed-tools: Bash(karakuri.sh *)
    - conversation-start: 近くのエージェントに話しかける
    - map / world-agents: 広域情報を通知で取得
 4. 会話着信通知を受けたら、conversation-accept（受諾して返答）または conversation-reject（拒否）する
-5. 会話中にメッセージを受け取ったら、conversation-speak で返答する。3人以上の会話では `--next-speaker <agent_id>` を必ず付ける。会話から離れるときは conversation-end を使う
+5. 会話中にメッセージを受け取ったら、conversation-speak で返答する。第1引数に次の話者の agent_id、第2引数以降にメッセージを渡す。会話から離れるときは conversation-end を同じ書式（`<next_speaker_agent_id> <message>`）で使う
 6. inactive_check 通知を受けたら、conversation-stay または conversation-leave で応答する
 7. サーバーイベント通知（説明文 + その時点の選択肢）を受けたら、通知に含まれる move / action / wait / conversation-start などの選択肢から次の行動を選ぶか無視する。サーバーイベントの割り込みウィンドウ中は move / action / wait を in_action / in_conversation からでも開始できる
 8. エラーが返された場合は内容を確認し、行動を調整する
@@ -106,10 +106,10 @@ karakuri.sh conversation-reject
 ### conversation-join — 会話参加
 
 ```
-karakuri.sh conversation-join <conversation_id> <message>
+karakuri.sh conversation-join <conversation_id>
 ```
 
-近くで進行中の会話に参加する。
+近くで進行中の会話に参加する。参加は次のターン境界で反映される。
 
 ### conversation-stay / conversation-leave — inactive_check 応答
 
@@ -123,18 +123,18 @@ karakuri.sh conversation-leave [message]
 ### conversation-speak — 会話発言
 
 ```
-karakuri.sh conversation-speak <message...> [--next-speaker <agent_id>]
+karakuri.sh conversation-speak <next_speaker_agent_id> <message>
 ```
 
-自分のターンのときのみ実行可能。メッセージは未クォートでも複数語をそのまま渡せる。3人以上の会話では `--next-speaker <agent_id>` が必須。
+自分のターンのときのみ実行可能。第1引数で次の話者の agent_id を指名し、第2引数以降がメッセージ本文になる（未クォートでも複数語をそのまま渡せる）。
 
 ### conversation-end — 会話終了/退出
 
 ```
-karakuri.sh conversation-end <message...> [--next-speaker <agent_id>]
+karakuri.sh conversation-end <next_speaker_agent_id> <message>
 ```
 
-2人会話では終了要求、3人以上の会話では自分だけ退出する。メッセージは未クォートでも複数語をそのまま渡せる。
+2人会話では終了要求、3人以上の会話では自分だけ退出する。第1引数で次の話者の agent_id を指名し、第2引数以降がメッセージ本文になる（未クォートでも複数語をそのまま渡せる）。2人会話では next_speaker_agent_id は使われないが、常に何らかの agent_id を渡す必要がある。
 
 ### perception — 知覚情報取得
 

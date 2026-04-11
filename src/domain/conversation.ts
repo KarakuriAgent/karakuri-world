@@ -169,6 +169,106 @@ function cleanupParticipant(engine: WorldEngine, conversation: ConversationData,
   }
 }
 
+function applyPendingJoiners(engine: WorldEngine, conversation: ConversationData): string[] {
+  if (conversation.pending_participant_agent_ids.length === 0) {
+    return [];
+  }
+
+  const pendingJoinerIds = [...conversation.pending_participant_agent_ids];
+  conversation.pending_participant_agent_ids = [];
+  const appliedJoinerIds: string[] = [];
+
+  for (const joinerId of pendingJoinerIds) {
+    const joiner = engine.state.getLoggedIn(joinerId);
+    if (!joiner) {
+      cleanupParticipant(engine, conversation, joinerId);
+      engine.emitEvent({
+        type: 'conversation_pending_join_cancelled',
+        conversation_id: conversation.conversation_id,
+        agent_id: joinerId,
+        reason: 'participant_logged_out',
+      });
+      continue;
+    }
+    if (
+      joiner.current_conversation_id !== conversation.conversation_id
+      || joiner.state !== 'in_conversation'
+      || conversation.participant_agent_ids.includes(joinerId)
+    ) {
+      console.error('[conversation] pending joiner state desynchronized, cancelling', {
+        conversation_id: conversation.conversation_id,
+        agent_id: joinerId,
+        agent_state: joiner.state,
+        current_conversation_id: joiner.current_conversation_id,
+      });
+      cleanupParticipant(engine, conversation, joinerId);
+      engine.emitEvent({
+        type: 'conversation_pending_join_cancelled',
+        conversation_id: conversation.conversation_id,
+        agent_id: joinerId,
+        reason: 'agent_unavailable',
+      });
+      continue;
+    }
+
+    conversation.participant_agent_ids.push(joinerId);
+    conversation.last_spoken_turns[joinerId] = conversation.current_turn;
+    appliedJoinerIds.push(joinerId);
+    engine.emitEvent({
+      type: 'conversation_join',
+      conversation_id: conversation.conversation_id,
+      agent_id: joinerId,
+      agent_name: joiner.agent_name,
+      participant_agent_ids: getConversationParticipants(conversation),
+    });
+  }
+
+  return appliedJoinerIds;
+}
+
+function discardPendingJoiners(
+  engine: WorldEngine,
+  conversation: ConversationData,
+  reason: ConversationClosureReason,
+): void {
+  const pendingJoinerIds = [...conversation.pending_participant_agent_ids];
+  conversation.pending_participant_agent_ids = [];
+
+  for (const joinerId of pendingJoinerIds) {
+    cleanupParticipant(engine, conversation, joinerId);
+    engine.emitEvent({
+      type: 'conversation_pending_join_cancelled',
+      conversation_id: conversation.conversation_id,
+      agent_id: joinerId,
+      reason,
+    });
+  }
+}
+
+function removePendingJoiner(conversation: ConversationData, agentId: string): void {
+  conversation.pending_participant_agent_ids = conversation.pending_participant_agent_ids.filter((pendingAgentId) => pendingAgentId !== agentId);
+}
+
+export function detachPendingJoiner(
+  engine: WorldEngine,
+  conversationId: string,
+  agentId: string,
+  startReminder = true,
+): boolean {
+  const conversation = engine.state.conversations.get(conversationId);
+  if (
+    !conversation
+    || conversation.participant_agent_ids.includes(agentId)
+    || !conversation.pending_participant_agent_ids.includes(agentId)
+  ) {
+    return false;
+  }
+
+  removePendingJoiner(conversation, agentId);
+  cleanupParticipant(engine, conversation, agentId, startReminder);
+  return true;
+}
+
 function endConversation(
   engine: WorldEngine,
   conversationId: string,
@@ -182,6 +282,7 @@ function endConversation(
   }
 
   const participantAgentIds = getConversationParticipants(conversation);
+  discardPendingJoiners(engine, conversation, reason);
   cancelConversationTimers(engine, conversationId);
   engine.state.conversations.delete(conversationId);
 
@@ -240,11 +341,8 @@ function resolveNextSpeaker(
   nextSpeakerId?: string,
 ): string {
   const others = getOtherParticipants(conversation, currentSpeakerId);
-  if (others.length === 1) {
-    return others[0]!;
-  }
   if (!nextSpeakerId) {
-    throw new WorldError(400, 'next_speaker_required', 'next_speaker_agent_id is required for group conversations.');
+    throw new WorldError(400, 'next_speaker_required', 'next_speaker_agent_id is required.');
   }
   if (nextSpeakerId === currentSpeakerId) {
     throw new WorldError(400, 'cannot_nominate_self', 'Cannot nominate yourself as the next speaker.');
@@ -456,6 +554,7 @@ function resumeAfterInactiveCheck(engine: WorldEngine, conversation: Conversatio
   if (timer) {
     engine.timerManager.cancel(timer.timer_id);
   }
+  applyPendingJoiners(engine, conversation);
   const nextSpeakerAgentId = resolveResumeSpeaker(conversation);
   conversation.resume_speaker_agent_id = null;
   if (!nextSpeakerAgentId) {
@@ -469,6 +568,7 @@ function resumeAfterInactiveCheck(engine: WorldEngine, conversation: Conversatio
 function removeParticipant(conversation: ConversationData, agentId: string): void {
   const previousParticipantIds = [...conversation.participant_agent_ids];
   conversation.participant_agent_ids = conversation.participant_agent_ids.filter((participantId) => participantId !== agentId);
+  removePendingJoiner(conversation, agentId);
   delete conversation.last_spoken_turns[agentId];
   conversation.inactive_check_pending_agent_ids = conversation.inactive_check_pending_agent_ids.filter((id) => id !== agentId);
   if (conversation.resume_speaker_agent_id === agentId) {
@@ -487,6 +587,8 @@ function concludeOrContinueAfterLeave(
   finalMessage?: string,
   finalSpeakerAgentId?: string,
 ): void {
+  applyPendingJoiners(engine, conversation);
+
   if (conversation.participant_agent_ids.length <= 1) {
     endConversation(engine, conversation.conversation_id, reason, finalMessage, finalSpeakerAgentId);
     return;
@@ -516,7 +618,10 @@ export function findConversationByAgent(
     if (
       currentConversation
       && statuses.includes(currentConversation.status)
-      && currentConversation.participant_agent_ids.includes(agentId)
+      && (
+        currentConversation.participant_agent_ids.includes(agentId)
+        || currentConversation.pending_participant_agent_ids.includes(agentId)
+      )
     ) {
       return currentConversation;
     }
@@ -526,7 +631,12 @@ export function findConversationByAgent(
     engine.state.conversations
       .list()
       .find(
-        (conversation) => statuses.includes(conversation.status) && conversation.participant_agent_ids.includes(agentId),
+        (conversation) =>
+          statuses.includes(conversation.status)
+          && (
+            conversation.participant_agent_ids.includes(agentId)
+            || conversation.pending_participant_agent_ids.includes(agentId)
+          ),
       ) ?? null
   );
 }
@@ -571,6 +681,7 @@ export function startConversation(
     status: 'pending',
     initiator_agent_id: initiator.agent_id,
     participant_agent_ids: [initiator.agent_id, target.agent_id],
+    pending_participant_agent_ids: [],
     current_turn: 1,
     current_speaker_agent_id: target.agent_id,
     initial_message: message,
@@ -814,6 +925,7 @@ export function endConversationByAgent(engine: WorldEngine, agentId: string, req
     const turn = conversation.current_turn + 1;
     conversation.current_turn = turn;
     clearInactiveCheckState(engine, conversation);
+    discardPendingJoiners(engine, conversation, 'ended_by_agent');
     conversation.status = 'closing';
     conversation.closing_reason = 'ended_by_agent';
     conversation.current_speaker_agent_id = otherAgentId;
@@ -850,17 +962,19 @@ export function endConversationByAgent(engine: WorldEngine, agentId: string, req
   );
   const turn = conversation.current_turn + 1;
   conversation.current_turn = turn;
+
+  removeParticipant(conversation, agentId);
+  cleanupParticipant(engine, conversation, agentId);
+  const listeners = getConversationParticipants(conversation);
   engine.emitEvent({
     type: 'conversation_message',
     conversation_id: conversation.conversation_id,
     speaker_agent_id: agentId,
-    listener_agent_ids: remainingParticipantIds,
+    listener_agent_ids: listeners,
     turn,
     message,
   });
 
-  removeParticipant(conversation, agentId);
-  cleanupParticipant(engine, conversation, agentId);
   engine.emitEvent({
     type: 'conversation_leave',
     conversation_id: conversation.conversation_id,
@@ -872,18 +986,18 @@ export function endConversationByAgent(engine: WorldEngine, agentId: string, req
     next_speaker_agent_id: nextSpeakerAgentId,
   });
 
-  if (conversation.participant_agent_ids.length <= 1) {
+  if (conversation.participant_agent_ids.length <= 1 && conversation.pending_participant_agent_ids.length === 0) {
     endConversation(engine, conversation.conversation_id, 'ended_by_agent', message, agentId);
     return { turn };
   }
 
-  updateLastSpokenTurns(conversation, agentId, nextSpeakerAgentId, turn);
+  conversation.last_spoken_turns[nextSpeakerAgentId] = turn;
   engine.timerManager.create({
     type: 'conversation_interval',
     agent_ids: getConversationParticipants(conversation),
     conversation_id: conversation.conversation_id,
     speaker_agent_id: agentId,
-    listener_agent_ids: getConversationParticipants(conversation),
+    listener_agent_ids: listeners,
     next_speaker_agent_id: nextSpeakerAgentId,
     turn,
     message,
@@ -895,15 +1009,14 @@ export function endConversationByAgent(engine: WorldEngine, agentId: string, req
 
 export function joinConversation(engine: WorldEngine, agentId: string, request: ConversationJoinRequest): OkResponse {
   const agent = requireLoggedInAgent(engine, agentId);
-  const message = ensureMessage(request.message);
   const conversation = engine.state.conversations.get(request.conversation_id);
   if (!conversation || conversation.status !== 'active') {
     throw new WorldError(400, 'conversation_not_found', 'No active conversation found.');
   }
-  if (conversation.participant_agent_ids.includes(agentId)) {
+  if (conversation.participant_agent_ids.includes(agentId) || conversation.pending_participant_agent_ids.includes(agentId)) {
     throw new WorldError(409, 'state_conflict', 'Agent is already participating in this conversation.');
   }
-  if (conversation.participant_agent_ids.length >= engine.config.conversation.max_participants) {
+  if (conversation.participant_agent_ids.length + conversation.pending_participant_agent_ids.length >= engine.config.conversation.max_participants) {
     throw new WorldError(409, 'conversation_full', 'The conversation has reached the maximum participant count.');
   }
   if (!['idle', 'in_action'].includes(agent.state) || agent.pending_conversation_id) {
@@ -925,21 +1038,9 @@ export function joinConversation(engine: WorldEngine, agentId: string, request: 
   }
 
   cancelIdleReminder(engine, agentId);
-  conversation.participant_agent_ids.push(agentId);
-  conversation.last_spoken_turns[agentId] = conversation.current_turn;
+  conversation.pending_participant_agent_ids.push(agentId);
   engine.state.setCurrentConversation(agentId, conversation.conversation_id);
   engine.state.setState(agentId, 'in_conversation');
-  engine.emitEvent({
-    type: 'conversation_join',
-    conversation_id: conversation.conversation_id,
-    agent_id: agentId,
-    agent_name: agent.agent_name,
-    message,
-    participant_agent_ids: getConversationParticipants(conversation),
-  });
-  if (findTurnTimer(engine, conversation.conversation_id, conversation.current_speaker_agent_id)) {
-    emitConversationTurnStarted(engine, conversation, conversation.current_speaker_agent_id);
-  }
   return { status: 'ok' };
 }
 
@@ -1008,6 +1109,10 @@ export function handleConversationInterval(engine: WorldEngine, timer: Conversat
   const conversation = engine.state.conversations.get(timer.conversation_id);
   if (!conversation) {
     return;
+  }
+
+  if (conversation.status === 'active') {
+    applyPendingJoiners(engine, conversation);
   }
 
   let nextSpeakerAgentId: string | null | undefined = conversation.participant_agent_ids.includes(timer.next_speaker_agent_id)
@@ -1141,6 +1246,7 @@ export function beginClosingConversation(
 
   cancelConversationTimers(engine, conversationId);
   clearInactiveCheckState(engine, conversation);
+  discardPendingJoiners(engine, conversation, reason);
   conversation.status = 'closing';
   conversation.closing_reason = reason;
   const originalParticipantCount = conversation.participant_agent_ids.length;
@@ -1304,6 +1410,10 @@ export function forceEndConversation(engine: WorldEngine, agentId: string): void
     return;
   }
 
+  if (detachPendingJoiner(engine, conversation.conversation_id, agentId)) {
+    return;
+  }
+
   const intervalTimer = findIntervalTimer(engine, conversation.conversation_id);
   cancelConversationTimers(engine, conversation.conversation_id);
   const agent = engine.getAgentById(agentId);
@@ -1323,6 +1433,7 @@ export function forceEndConversation(engine: WorldEngine, agentId: string): void
 
   if (conversation.participant_agent_ids.length <= 1) {
     const remainingParticipantIds = getConversationParticipants(conversation);
+    discardPendingJoiners(engine, conversation, 'participant_logged_out');
     engine.state.conversations.delete(conversation.conversation_id);
     for (const participantId of remainingParticipantIds) {
       cleanupParticipant(engine, conversation, participantId);

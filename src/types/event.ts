@@ -1,5 +1,5 @@
 import type { AgentItem, AgentState } from './agent.js';
-import type { ConversationClosureReason, ConversationRejectionReason } from './conversation.js';
+import type { ConversationClosureReason, ConversationRejectionReason, PendingJoinCancelReason } from './conversation.js';
 import type { ItemType, NodeId } from './data-model.js';
 
 export type EventType =
@@ -26,6 +26,7 @@ export type EventType =
   | 'conversation_turn_started'
   | 'conversation_closing'
   | 'conversation_ended'
+  | 'conversation_pending_join_cancelled'
   | 'server_event_fired'
   | 'idle_reminder_fired'
   | 'map_info_requested'
@@ -188,7 +189,6 @@ export interface ConversationJoinEvent extends EventBase {
   conversation_id: string;
   agent_id: string;
   agent_name: string;
-  message: string;
   participant_agent_ids: string[];
 }
 
@@ -243,6 +243,13 @@ export interface ConversationEndedEvent extends EventBase {
   reason: ConversationClosureReason;
   final_message?: string;
   final_speaker_agent_id?: string;
+}
+
+export interface ConversationPendingJoinCancelledEvent extends EventBase {
+  type: 'conversation_pending_join_cancelled';
+  conversation_id: string;
+  agent_id: string;
+  reason: PendingJoinCancelReason;
 }
 
 export interface ServerEventFiredEvent extends EventBase {
@@ -305,6 +312,7 @@ export type WorldEvent =
   | ConversationTurnStartedEvent
   | ConversationClosingEvent
   | ConversationEndedEvent
+  | ConversationPendingJoinCancelledEvent
   | ServerEventFiredEvent
   | IdleReminderFiredEvent
   | MapInfoRequestedEvent

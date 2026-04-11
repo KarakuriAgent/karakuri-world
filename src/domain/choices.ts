@@ -51,8 +51,8 @@ export function buildChoicesText(
     ? engine.state.conversations
         .list()
         .filter((conversation) => conversation.status === 'active')
-        .filter((conversation) => !conversation.participant_agent_ids.includes(agentId))
-        .filter((conversation) => conversation.participant_agent_ids.length < engine.config.conversation.max_participants)
+        .filter((conversation) => !conversation.participant_agent_ids.includes(agentId) && !conversation.pending_participant_agent_ids.includes(agentId))
+        .filter((conversation) => conversation.participant_agent_ids.length + conversation.pending_participant_agent_ids.length < engine.config.conversation.max_participants)
         .filter((conversation) => conversation.participant_agent_ids.some((participantId) => {
           const participant = engine.state.getLoggedIn(participantId);
           return participant && manhattanDistance(currentNodeId, getAgentCurrentNode(engine, participant, now)) <= 1;
@@ -62,7 +62,7 @@ export function buildChoicesText(
           const participantNames = conversation.participant_agent_ids
             .map((participantId) => engine.getAgentById(participantId)?.agent_name ?? participantId)
             .join(' と ');
-          return `- conversation_join: ${participantNames} の会話に参加する (conversation_id: ${conversation.conversation_id}, message: 最初のメッセージ)`;
+          return `- conversation_join: ${participantNames} の会話に参加する (conversation_id: ${conversation.conversation_id})`;
         })
     : [];
 

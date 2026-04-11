@@ -35,6 +35,7 @@ const STATUS_TRIGGERING_EVENTS = new Set<EventType>([
   'conversation_leave',
   'conversation_inactive_check',
   'conversation_ended',
+  'conversation_pending_join_cancelled',
   'server_event_fired',
 ]);
 

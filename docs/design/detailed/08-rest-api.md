@@ -271,7 +271,7 @@ POST /api/agents/conversation/speak
 ```typescript
 interface ConversationSpeakRequest {
   message: string;
-  next_speaker_agent_id?: string; // 3人以上の会話では必須
+  next_speaker_agent_id: string;
 }
 ```
 
@@ -298,7 +298,9 @@ POST /api/agents/conversation/end
 ```typescript
 interface ConversationEndRequest {
   message: string; // お別れのメッセージ
-  next_speaker_agent_id?: string; // 3人以上の会話で自分だけ退出する場合に利用
+  // 必須。3人以上の会話では退出後の残留話者として参照される。
+  // 2人会話では値は参照されないが、schema の一貫性のため非空文字列を必須とする（相手の agent_id を推奨）。
+  next_speaker_agent_id: string;
 }
 ```
 
@@ -323,7 +325,6 @@ POST /api/agents/conversation/join
 ```typescript
 interface ConversationJoinRequest {
   conversation_id: string;
-  message: string;
 }
 ```
 
@@ -335,7 +336,7 @@ interface ConversationJoinResponse {
 }
 ```
 
-進行中 (`active`) の会話に近距離から参加する。詳細は 06-conversation.md セクション5.1 を参照。
+進行中 (`active`) の会話に近距離から参加する。参加は deferred join として扱われ、現在話者を割り込ませず次のターン境界で反映される。詳細は 06-conversation.md セクション5.1 を参照。
 
 ### 4.10 inactive_check 継続
 

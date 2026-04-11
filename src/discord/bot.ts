@@ -138,10 +138,35 @@ export class DiscordBot implements DiscordNotificationAdapter {
       intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages],
     });
 
+    client.on('error', (error) => console.error('[discord] client error', error));
+    client.on('warn', (message) => console.warn('[discord] client warn', message));
+    client.on('shardReady', (shardId, unavailableGuilds) =>
+      console.log('[discord] shardReady', { shardId, unavailable: unavailableGuilds?.size ?? 0 }),
+    );
+    client.on('shardDisconnect', (event, shardId) =>
+      console.warn('[discord] shardDisconnect', { shardId, code: event.code, reason: event.reason }),
+    );
+    client.on('shardError', (error, shardId) =>
+      console.error('[discord] shardError', { shardId, message: error.message, stack: error.stack }),
+    );
+    client.on('shardReconnecting', (shardId) => console.log('[discord] shardReconnecting', { shardId }));
+    client.on('shardResume', (shardId, replayedEvents) =>
+      console.log('[discord] shardResume', { shardId, replayedEvents }),
+    );
+    client.on('invalidated', () => {
+      console.error('[discord] invalidated: session has been invalidated; exiting for supervisor restart');
+      process.exit(1);
+    });
+
     await client.login(options.token);
     if (!client.isReady()) {
       await once(client, 'clientReady');
     }
+    console.log('[discord] clientReady', {
+      userId: client.user?.id,
+      shards: client.ws.shards.size,
+      interactionListeners: client.listenerCount('interactionCreate'),
+    });
 
     const guild = await client.guilds.fetch(options.guildId);
     const channelManager = new ChannelManager(guild);

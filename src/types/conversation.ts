@@ -9,11 +9,14 @@ export type ConversationClosureReason =
   | 'ended_by_agent'
   | 'participant_logged_out';
 
+export type PendingJoinCancelReason = ConversationClosureReason | 'agent_unavailable';
+
 export interface ConversationData {
   conversation_id: string;
   status: ConversationStatus;
   initiator_agent_id: string;
   participant_agent_ids: string[];
+  pending_participant_agent_ids: string[];
   current_turn: number;
   current_speaker_agent_id: string;
   initial_message: string;

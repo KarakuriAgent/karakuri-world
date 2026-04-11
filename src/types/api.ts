@@ -120,7 +120,6 @@ export interface ConversationStartRequest {
 
 export interface ConversationJoinRequest {
   conversation_id: string;
-  message: string;
 }
 
 export interface ConversationLeaveRequest {
@@ -137,12 +136,12 @@ export interface ConversationAcceptRequest {
 
 export interface ConversationSpeakRequest {
   message: string;
-  next_speaker_agent_id?: string;
+  next_speaker_agent_id: string;
 }
 
 export interface ConversationEndRequest {
   message: string;
-  next_speaker_agent_id?: string;
+  next_speaker_agent_id: string;
 }
 
 export interface OkResponse {

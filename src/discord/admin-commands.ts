@@ -136,6 +136,17 @@ export class AdminCommandHandler {
 
     await bot.registerGuildCommands(commands.map((command) => command.toJSON() as RESTPostAPIChatInputApplicationCommandsJSONBody));
     this.unsubscribe = bot.registerInteractionHandler((interaction: Interaction) => {
+      if (interaction.isChatInputCommand() || interaction.isAutocomplete()) {
+        const ageMs = Date.now() - interaction.createdTimestamp;
+        console.log('[discord] interaction received', {
+          id: interaction.id,
+          type: interaction.type,
+          commandName: interaction.commandName,
+          ageMs,
+          replied: interaction.isChatInputCommand() ? interaction.replied : undefined,
+          deferred: interaction.isChatInputCommand() ? interaction.deferred : undefined,
+        });
+      }
       if (interaction.isChatInputCommand()) {
         if (!knownCommandNames.has(interaction.commandName)) {
           return;
@@ -167,6 +178,7 @@ export class AdminCommandHandler {
         });
       }
     });
+    console.log('[discord] admin commands registered', { commandCount: commands.length });
   }
 
   dispose(): void {

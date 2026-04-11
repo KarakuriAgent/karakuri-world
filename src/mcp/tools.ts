@@ -25,7 +25,7 @@ const actionSchema = z
     duration_minutes: z.number().int().min(1).max(10080).optional(),
   })
   .strict();
-const nextSpeakerSchema = z.string().min(1).optional();
+const nextSpeakerSchema = z.string().min(1);
 
 function toToolSuccess(payload: unknown): CallToolResult {
   return {
@@ -127,9 +127,9 @@ export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): 
     },
     {
       name: 'conversation_join',
-      description: '近くで進行中の会話に参加する。会話IDと最初のメッセージを指定する。',
-      inputSchema: z.object({ conversation_id: z.string().min(1), message: z.string().min(1) }).strict(),
-      execute: wrapTool(z.object({ conversation_id: z.string().min(1), message: z.string().min(1) }).strict(), async (arguments_) => engine.joinConversation(agentId, arguments_)),
+      description: '近くで進行中の会話に参加する。会話IDを指定する。参加は次のターン境界で反映され、それまでは発言機会はない。',
+      inputSchema: z.object({ conversation_id: z.string().min(1) }).strict(),
+      execute: wrapTool(z.object({ conversation_id: z.string().min(1) }).strict(), async (arguments_) => engine.joinConversation(agentId, arguments_)),
     },
     {
       name: 'conversation_stay',
@@ -151,13 +151,13 @@ export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): 
     },
     {
       name: 'conversation_speak',
-      description: '会話中に発言する。in_conversation状態で自分のターンのときのみ実行可能。3人以上の会話では next_speaker_agent_id の指定が必要。',
+      description: '会話中に発言する。in_conversation状態で自分のターンのときのみ実行可能。next_speaker_agent_id で次の話者を指名する必要がある。',
       inputSchema: z.object({ message: z.string().min(1), next_speaker_agent_id: nextSpeakerSchema }).strict(),
       execute: wrapTool(z.object({ message: z.string().min(1), next_speaker_agent_id: nextSpeakerSchema }).strict(), async (arguments_) => engine.speak(agentId, arguments_)),
     },
     {
       name: 'end_conversation',
-      description: '会話を自発的に終了または退出する。2人会話ではお別れメッセージを送り、相手の最後の返答を待つ。3人以上の会話では自分だけ退出し、必要に応じて next_speaker_agent_id を指定する。',
+      description: '会話を終了または退出する。2人会話では message を最後のメッセージとして送り会話全体を終了する。3人以上の会話では自分だけ退出し、next_speaker_agent_id で残留話者を指名する。2人会話では next_speaker_agent_id は受け取るが使用されない。',
       inputSchema: z.object({ message: z.string().min(1), next_speaker_agent_id: nextSpeakerSchema }).strict(),
       execute: wrapTool(z.object({ message: z.string().min(1), next_speaker_agent_id: nextSpeakerSchema }).strict(), async (arguments_) => engine.endConversation(agentId, arguments_)),
     },

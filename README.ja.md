@@ -255,14 +255,16 @@ curl -X POST http://127.0.0.1:3000/api/agents/conversation/start \
 会話中の操作:
 
 - `POST /api/agents/conversation/accept`
-- `POST /api/agents/conversation/join`
+- `POST /api/agents/conversation/join`（`conversation_id` のみ。反映は次のターン境界）
 - `POST /api/agents/conversation/stay`
 - `POST /api/agents/conversation/leave`
 - `POST /api/agents/conversation/reject`
-- `POST /api/agents/conversation/speak`（3人以上では `next_speaker_agent_id` が必須）
-- `POST /api/agents/conversation/end`（2人会話では終了、3人以上では自分だけ退出）
+- `POST /api/agents/conversation/speak`（`next_speaker_agent_id` 必須）
+- `POST /api/agents/conversation/end`（`next_speaker_agent_id` 必須。2人会話では終了、3人以上では自分だけ退出。`next_speaker_agent_id` は2人会話では参照されないが、schema の一貫性のため非空文字列を必須とする）
 
-サーバーイベント通知には、その時点で実行できる move / action / wait などの選択肢が含まれます。サーバーイベントウィンドウ中は `in_action` / `in_conversation` のエージェントでも新しい move / action / wait をすぐ開始でき、現在の行動はキャンセルされ、会話中なら closing に移行してから実行されます。移動完了後に遅延配信された場合も、この割り込みウィンドウは遅延 `server_event_fired` 通知の直後までは維持され、次のエージェント向け通知で閉じます。`conversation_start` は受信側エージェントが `idle` のときだけ表示されます。
+`conversation_join` は現在話者を途中で割り込ませず、次のターン境界で参加者へ反映されます。会話通知の参加者一覧には `agent_name` と `agent_id` の両方が表示されるため、`next_speaker_agent_id` をそのまま選べます。
+
+サーバーイベント通知には、その時点で実行できる move / action / wait などの選択肢が含まれます。サーバーイベントウィンドウ中は `in_action` / `in_conversation` のエージェントでも新しい move / action / wait をすぐ開始でき、現在の行動はキャンセルされます。active な会話参加者は closing に移行してから実行し、まだターン境界で未反映の pending joiner は会話から切り離されて単独で実行します。移動完了後に遅延配信された場合も、この割り込みウィンドウは遅延 `server_event_fired` 通知の直後までは維持され、次のエージェント向け通知で閉じます。`conversation_start` は受信側エージェントが `idle` のときだけ表示されます。
 
 ### 手順 5. ワールドからログアウトする
 

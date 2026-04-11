@@ -23,12 +23,12 @@ Commands:
   conversation-start <target_agent_id> <message> Start a conversation
   conversation-accept <message>                  Accept a conversation and reply
   conversation-reject                            Reject a conversation
-  conversation-join <conversation_id> <message> Join an active conversation
+  conversation-join <conversation_id>           Join an active conversation on the next turn boundary
   conversation-stay                              Stay after an inactive-check prompt
   conversation-leave [message]                   Leave after an inactive-check prompt
-  conversation-speak <message...> [--next-speaker <agent_id>]
+  conversation-speak <next_speaker_agent_id> <message>
                                                 Speak in a conversation
-  conversation-end <message...> [--next-speaker <agent_id>]
+  conversation-end <next_speaker_agent_id> <message>
                                                 End/leave a conversation with a farewell message
   map                                            Request the full map via notification
   world-agents                                   Request all agent states via notification
@@ -88,37 +88,10 @@ do_post() {
 }
 
 build_conversation_payload() {
-  local next_speaker=""
-  local -a message_parts=()
-
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --next-speaker)
-        shift
-        [ $# -lt 1 ] && {
-          echo "Error: --next-speaker requires an agent ID" >&2
-          exit 1
-        }
-        next_speaker="$1"
-        ;;
-      *)
-        message_parts+=("$1")
-        ;;
-    esac
-    shift
-  done
-
-  [ ${#message_parts[@]} -eq 0 ] && {
-    echo "Error: message is required" >&2
-    exit 1
-  }
-
-  local message="${message_parts[*]}"
-  if [ -n "${next_speaker}" ]; then
-    json_obj message "${message}" next_speaker_agent_id "${next_speaker}"
-  else
-    json_obj message "${message}"
-  fi
+  local next_speaker="$1"
+  shift
+  local message="${*}"
+  json_obj message "${message}" next_speaker_agent_id "${next_speaker}"
 }
 
 command="$1"
@@ -163,8 +136,8 @@ case "${command}" in
     do_post "/agents/conversation/reject" '{}'
     ;;
   conversation-join)
-    [ $# -lt 2 ] && { echo "Usage: karakuri.sh conversation-join <conversation_id> <message>" >&2; exit 1; }
-    do_post "/agents/conversation/join" "$(json_obj conversation_id "$1" message "${*:2}")"
+    [ $# -lt 1 ] && { echo "Usage: karakuri.sh conversation-join <conversation_id>" >&2; exit 1; }
+    do_post "/agents/conversation/join" "$(json_obj conversation_id "$1")"
     ;;
   conversation-stay)
     do_post "/agents/conversation/stay" '{}'
@@ -177,11 +150,11 @@ case "${command}" in
     fi
     ;;
   conversation-speak)
-    [ $# -lt 1 ] && { echo "Usage: karakuri.sh conversation-speak <message...> [--next-speaker <agent_id>]" >&2; exit 1; }
+    [ $# -lt 2 ] && { echo "Usage: karakuri.sh conversation-speak <next_speaker_agent_id> <message>" >&2; exit 1; }
     do_post "/agents/conversation/speak" "$(build_conversation_payload "$@")"
     ;;
   conversation-end)
-    [ $# -lt 1 ] && { echo "Usage: karakuri.sh conversation-end <message...> [--next-speaker <agent_id>]" >&2; exit 1; }
+    [ $# -lt 2 ] && { echo "Usage: karakuri.sh conversation-end <next_speaker_agent_id> <message>" >&2; exit 1; }
     do_post "/agents/conversation/end" "$(build_conversation_payload "$@")"
     ;;
   map)

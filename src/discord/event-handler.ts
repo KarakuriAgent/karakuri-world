@@ -23,7 +23,7 @@ import {
   formatConversationFYIMessage,
   formatConversationForcedEndedMessage,
   formatConversationInactiveCheckMessage,
-  formatConversationJoinSystemMessage,
+  formatConversationPendingJoinCancelledMessage,
   formatConversationLeaveSystemMessage,
   formatConversationRejectedMessage,
   formatConversationReplyPromptMessage,
@@ -57,6 +57,7 @@ import {
   formatWorldLogMovement,
   formatWorldLogServerEvent,
   formatWorldLogWait,
+  type ConversationParticipantInfo,
   type WorldContext,
 } from './notification.js';
 
@@ -208,6 +209,9 @@ export class DiscordEventHandler {
       case 'conversation_ended':
         await this.handleConversationEnded(event);
         return;
+      case 'conversation_pending_join_cancelled':
+        await this.handleConversationPendingJoinCancelled(event);
+        return;
       case 'conversation_join':
         await this.handleConversationJoin(event);
         return;
@@ -276,7 +280,7 @@ export class DiscordEventHandler {
     }
 
     const closing = conversation.status === 'closing' || conversation.closing_reason === 'ended_by_agent';
-    const participantNames = this.getParticipantNames(conversation.participant_agent_ids);
+    const participants = this.getParticipantInfos(conversation.participant_agent_ids);
     const { listenerAgentIds, nextSpeakerAgentId } = this.resolveConversationIntervalNotificationTargets(timer, conversation);
     const nextSpeakerName = nextSpeakerAgentId ? this.getAgentName(nextSpeakerAgentId) : undefined;
     for (const listenerAgentId of listenerAgentIds) {
@@ -313,7 +317,7 @@ export class DiscordEventHandler {
         this.getAgentName(timer.speaker_agent_id),
         timer.message,
         closing,
-        participantNames,
+        participants,
         listenerAgentId === nextSpeakerAgentId,
         nextSpeakerName,
       );
@@ -337,7 +341,9 @@ export class DiscordEventHandler {
     }
 
     const participantIds = new Set(conversation.participant_agent_ids);
-    const listenerAgentIds = timer.listener_agent_ids.filter((listenerAgentId) => participantIds.has(listenerAgentId));
+    const listenerAgentIds = conversation.participant_agent_ids.filter(
+      (participantAgentId) => participantAgentId !== timer.speaker_agent_id,
+    );
     const hasInactiveCheckPause = (conversation.inactive_check_pending_agent_ids?.length ?? 0) > 0;
     const pausedNextSpeakerAgentId = hasInactiveCheckPause
       ? (
@@ -364,7 +370,7 @@ export class DiscordEventHandler {
   private async handleConversationIntervalInterrupted(
     event: Extract<WorldEvent, { type: 'conversation_interval_interrupted' }>,
   ): Promise<void> {
-    const participantNames = this.getParticipantNames(event.participant_agent_ids);
+    const participants = this.getParticipantInfos(event.participant_agent_ids);
     const speakerName = this.getAgentName(event.speaker_agent_id);
     const nextSpeakerName = this.getAgentName(event.next_speaker_agent_id);
     const prioritizedListenerAgentIds = event.listener_agent_ids.includes(event.next_speaker_agent_id)
@@ -387,7 +393,7 @@ export class DiscordEventHandler {
         speakerName,
         event.message,
         event.closing,
-        participantNames,
+        participants,
         false,
         nextSpeakerName,
       );
@@ -639,7 +645,7 @@ export class DiscordEventHandler {
     speakerName: string,
     message: string,
     closing: boolean,
-    participantNames: string[],
+    participants: ConversationParticipantInfo[],
     actionable: boolean,
     nextSpeakerName?: string,
   ): Promise<void> {
@@ -650,14 +656,14 @@ export class DiscordEventHandler {
           speakerName,
           message,
           this.skillName,
-          participantNames,
+          participants,
         )
       : formatConversationReplyPromptMessage(
           this.getWorldContext(listenerAgentId),
           speakerName,
           message,
           this.skillName,
-          participantNames,
+          participants,
         ))
       : formatConversationFYIMessage(speakerName, message, nextSpeakerName);
 
@@ -674,7 +680,29 @@ export class DiscordEventHandler {
       formatConversationServerEventClosingPromptMessage(
         this.getWorldContext(event.current_speaker_agent_id),
         this.skillName,
-        this.getParticipantNames(event.participant_agent_ids),
+        this.getParticipantInfos(event.participant_agent_ids),
+      ),
+    );
+  }
+
+  private async handleConversationPendingJoinCancelled(
+    event: Extract<WorldEvent, { type: 'conversation_pending_join_cancelled' }>,
+  ): Promise<void> {
+    const loggedInAgent = this.engine.state.getLoggedIn(event.agent_id);
+    if (!loggedInAgent) {
+      return;
+    }
+    const agentContext = this.getWorldContext(event.agent_id);
+    const perceptionText = this.getPerceptionText(event.agent_id);
+    const choicesText = this.getChoicesText(event.agent_id);
+    await this.sendConversationFollowUp(
+      event.agent_id,
+      formatConversationPendingJoinCancelledMessage(
+        agentContext,
+        event.reason,
+        perceptionText,
+        this.skillName,
+        choicesText,
       ),
     );
   }
@@ -733,10 +761,6 @@ export class DiscordEventHandler {
 
   private async handleConversationJoin(event: Extract<WorldEvent, { type: 'conversation_join' }>): Promise<void> {
     await this.renameConversationThread(event.conversation_id, event.participant_agent_ids);
-    await this.postConversationSystemMessage(
-      event.conversation_id,
-      formatConversationJoinSystemMessage(event.agent_name, event.message),
-    );
   }
 
   private async handleConversationLeave(event: Extract<WorldEvent, { type: 'conversation_leave' }>): Promise<void> {
@@ -767,17 +791,17 @@ export class DiscordEventHandler {
       return;
     }
 
-    const participantNames = this.getParticipantNames(conversation.participant_agent_ids);
+    const participants = this.getParticipantInfos(conversation.participant_agent_ids);
     const content = conversation.status === 'closing'
       ? formatConversationTurnClosingPromptMessage(
           this.getWorldContext(event.current_speaker_agent_id),
           this.skillName,
-          participantNames,
+          participants,
         )
       : formatConversationTurnPromptMessage(
           this.getWorldContext(event.current_speaker_agent_id),
           this.skillName,
-          participantNames,
+          participants,
         );
     await this.sendConversationFollowUp(event.current_speaker_agent_id, content);
   }
@@ -963,8 +987,15 @@ export class DiscordEventHandler {
     return this.engine.getAgentById(agentId)?.agent_name ?? agentId;
   }
 
+  private getParticipantInfos(participantAgentIds: string[]): ConversationParticipantInfo[] {
+    return participantAgentIds.map((agentId) => ({
+      id: agentId,
+      name: this.getAgentName(agentId),
+    }));
+  }
+
   private getParticipantNames(participantAgentIds: string[]): string[] {
-    return participantAgentIds.map((agentId) => this.getAgentName(agentId));
+    return this.getParticipantInfos(participantAgentIds).map((participant) => participant.name);
   }
 
   private getWorldContext(agentId: string): WorldContext {

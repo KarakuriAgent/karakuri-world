@@ -18,17 +18,16 @@ const acceptSchema = z.object({
 
 const joinSchema = z.object({
   conversation_id: z.string().min(1),
-  message: z.string().min(1),
 });
 
 const speakSchema = z.object({
   message: z.string().min(1),
-  next_speaker_agent_id: z.string().min(1).optional(),
+  next_speaker_agent_id: z.string().min(1),
 });
 
 const endSchema = z.object({
   message: z.string().min(1),
-  next_speaker_agent_id: z.string().min(1).optional(),
+  next_speaker_agent_id: z.string().min(1),
 });
 
 const leaveSchema = z.object({

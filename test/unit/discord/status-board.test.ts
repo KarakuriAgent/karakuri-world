@@ -325,7 +325,6 @@ describe('StatusBoard', () => {
 
     engine.joinConversation(carol.agent_id, {
       conversation_id: [...engine.state.conversations.list()][0]!.conversation_id,
-      message: 'Can I join?',
     });
     await vi.advanceTimersByTimeAsync(10);
     await flushAsyncWork();
@@ -333,6 +332,12 @@ describe('StatusBoard', () => {
     engine.speak(alice.agent_id, {
       message: 'Bob, your turn.',
       next_speaker_agent_id: bob.agent_id,
+    });
+    await vi.advanceTimersByTimeAsync(500);
+    await flushAsyncWork();
+    engine.speak(bob.agent_id, {
+      message: 'Alice, continue.',
+      next_speaker_agent_id: alice.agent_id,
     });
     await vi.advanceTimersByTimeAsync(500);
     await flushAsyncWork();
@@ -390,7 +395,7 @@ describe('StatusBoard', () => {
     channel.fetchMessages.mockClear();
     channel.sendMessage.mockClear();
 
-    engine.speak(alice.agent_id, { message: 'How are you?' });
+    engine.speak(alice.agent_id, { message: 'How are you?', next_speaker_agent_id: bob.agent_id });
     await vi.advanceTimersByTimeAsync(10);
     await flushAsyncWork();
 
@@ -455,7 +460,7 @@ describe('StatusBoard', () => {
       )
       .mockResolvedValue({ id: 'sent-after-delay' });
 
-    engine.speak(alice.agent_id, { message: 'How are you?' });
+    engine.speak(alice.agent_id, { message: 'How are you?', next_speaker_agent_id: bob.agent_id });
     await vi.advanceTimersByTimeAsync(120);
     await flushAsyncWork();
 
@@ -505,7 +510,7 @@ describe('StatusBoard', () => {
     channel.fetchMessages.mockClear();
     channel.sendMessage.mockClear();
 
-    engine.speak(alice.agent_id, { message: 'How are you?' });
+    engine.speak(alice.agent_id, { message: 'How are you?', next_speaker_agent_id: bob.agent_id });
     await flushAsyncWork();
     await vi.advanceTimersByTimeAsync(499);
     await flushAsyncWork();

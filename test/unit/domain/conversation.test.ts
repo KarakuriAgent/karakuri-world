@@ -92,7 +92,7 @@ describe('conversation domain', () => {
     expect(conversation?.current_speaker_agent_id).toBe(alice.agent_id);
     expect(closingEvents).toEqual([{ speaker: alice.agent_id, reason: 'max_turns' }]);
 
-    expect(engine.speak(alice.agent_id, { message: 'Goodbye' })).toEqual({
+    expect(engine.speak(alice.agent_id, { message: 'Goodbye', next_speaker_agent_id: bob.agent_id })).toEqual({
       turn: 3,
     });
     expect(messageEvents).toEqual([
@@ -175,7 +175,7 @@ describe('conversation domain', () => {
     engine.acceptConversation(bob.agent_id, { message: 'Hello Alice' });
     vi.advanceTimersByTime(500);
 
-    engine.endConversation(alice.agent_id, { message: 'Goodbye Bob' });
+    engine.endConversation(alice.agent_id, { message: 'Goodbye Bob', next_speaker_agent_id: bob.agent_id });
     let conversation = engine.state.conversations.get(started.conversation_id);
     expect(conversation?.status).toBe('closing');
     expect(conversation?.closing_reason).toBe('ended_by_agent');
@@ -186,7 +186,7 @@ describe('conversation domain', () => {
     conversation = engine.state.conversations.get(started.conversation_id);
     expect(conversation?.status).toBe('closing');
 
-    engine.speak(bob.agent_id, { message: 'Farewell Alice' });
+    engine.speak(bob.agent_id, { message: 'Farewell Alice', next_speaker_agent_id: alice.agent_id });
     vi.advanceTimersByTime(500);
 
     expect(engine.state.conversations.get(started.conversation_id)).toBeNull();
@@ -199,7 +199,7 @@ describe('conversation domain', () => {
   it('rejects endConversation when agent is idle', async () => {
     const { engine, alice } = await setupConversationWorld();
 
-    expect(() => engine.endConversation(alice.agent_id, { message: 'bye' })).toThrow(
+    expect(() => engine.endConversation(alice.agent_id, { message: 'bye', next_speaker_agent_id: 'unused' })).toThrow(
       expect.objectContaining({ code: 'state_conflict' }),
     );
   });
@@ -213,7 +213,7 @@ describe('conversation domain', () => {
     engine.acceptConversation(bob.agent_id, { message: 'Hi' });
     vi.advanceTimersByTime(500);
 
-    expect(() => engine.endConversation(alice.agent_id, { message: '   ' })).toThrow(
+    expect(() => engine.endConversation(alice.agent_id, { message: '   ', next_speaker_agent_id: bob.agent_id })).toThrow(
       expect.objectContaining({ code: 'invalid_request' }),
     );
   });
@@ -228,7 +228,7 @@ describe('conversation domain', () => {
     vi.advanceTimersByTime(500);
 
     // It is Alice's turn, Bob should not be able to end
-    expect(() => engine.endConversation(bob.agent_id, { message: 'bye' })).toThrow(
+    expect(() => engine.endConversation(bob.agent_id, { message: 'bye', next_speaker_agent_id: alice.agent_id })).toThrow(
       expect.objectContaining({ code: 'not_your_turn' }),
     );
   });
@@ -244,7 +244,7 @@ describe('conversation domain', () => {
     vi.advanceTimersByTime(500);
 
     // conversation is now closing, endConversation only accepts 'active'
-    expect(() => engine.endConversation(alice.agent_id, { message: 'bye' })).toThrow(
+    expect(() => engine.endConversation(alice.agent_id, { message: 'bye', next_speaker_agent_id: bob.agent_id })).toThrow(
       expect.objectContaining({ code: 'conversation_not_found' }),
     );
   });
@@ -265,7 +265,7 @@ describe('conversation domain', () => {
     engine.acceptConversation(bob.agent_id, { message: 'Hello Alice' });
     vi.advanceTimersByTime(500);
 
-    engine.endConversation(alice.agent_id, { message: 'Goodbye Bob' });
+    engine.endConversation(alice.agent_id, { message: 'Goodbye Bob', next_speaker_agent_id: bob.agent_id });
     // interval fires → Bob's farewell turn starts
     vi.advanceTimersByTime(500);
 
@@ -308,7 +308,7 @@ describe('conversation domain', () => {
       engine.timerManager.cancel(turnTimer.timer_id);
     }
 
-    expect(() => engine.speak(alice.agent_id, { message: 'test' })).toThrow(
+    expect(() => engine.speak(alice.agent_id, { message: 'test', next_speaker_agent_id: bob.agent_id })).toThrow(
       expect.objectContaining({ code: 'not_your_turn' }),
     );
   });
@@ -331,7 +331,7 @@ describe('conversation domain', () => {
     expect(engine.state.getLoggedIn(bob.agent_id)?.state).toBe('in_action');
 
     // Alice (farewell speaker) sends farewell, which triggers endConversation
-    engine.speak(alice.agent_id, { message: 'Goodbye' });
+    engine.speak(alice.agent_id, { message: 'Goodbye', next_speaker_agent_id: bob.agent_id });
     vi.advanceTimersByTime(500);
 
     // Bob should still be in_action, NOT reset to idle
@@ -373,12 +373,16 @@ describe('conversation domain', () => {
 
     engine.joinConversation(carol.agent_id, {
       conversation_id: started.conversation_id,
-      message: 'Mind if I join?',
     });
 
     engine.speak(alice.agent_id, {
       message: 'Bob, over to you.',
       next_speaker_agent_id: bob.agent_id,
+    });
+    vi.advanceTimersByTime(500);
+    engine.speak(bob.agent_id, {
+      message: 'Alice, continue.',
+      next_speaker_agent_id: alice.agent_id,
     });
     vi.advanceTimersByTime(500);
 
@@ -392,13 +396,13 @@ describe('conversation domain', () => {
     expect(conversationTimers.filter((timer) => timer.type === 'conversation_inactive_check')).toHaveLength(0);
     expect(conversationTimers.filter((timer) => timer.type === 'conversation_turn')).toEqual([
       expect.objectContaining({
-        current_speaker_agent_id: bob.agent_id,
+        current_speaker_agent_id: alice.agent_id,
       }),
     ]);
   });
 
   it('skips the paused resume speaker if they log out during an inactive-check pause', async () => {
-    const { engine, alice, bob, carol } = await setupGroupConversationWorld({ max_turns: 10, inactive_check_turns: 2 });
+    const { engine, alice, bob, carol } = await setupGroupConversationWorld({ max_turns: 10, inactive_check_turns: 1 });
     const dave = await engine.registerAgent({ discord_bot_id: 'bot-dave' });
     await engine.loginAgent(dave.agent_id);
 
@@ -416,11 +420,9 @@ describe('conversation domain', () => {
 
     engine.joinConversation(carol.agent_id, {
       conversation_id: started.conversation_id,
-      message: 'Mind if I join?',
     });
     engine.joinConversation(dave.agent_id, {
       conversation_id: started.conversation_id,
-      message: 'Room for one more?',
     });
 
     engine.speak(alice.agent_id, {
@@ -481,15 +483,135 @@ describe('conversation domain', () => {
     engine.acceptConversation(bob.agent_id, { message: 'Hello Alice' });
     vi.advanceTimersByTime(500);
 
-    engine.endConversation(alice.agent_id, { message: 'Goodbye Bob' });
+    engine.endConversation(alice.agent_id, { message: 'Goodbye Bob', next_speaker_agent_id: bob.agent_id });
 
     const conversation = engine.state.conversations.get(started.conversation_id);
     expect(conversation?.status).toBe('closing');
     expect(conversation?.current_speaker_agent_id).toBe(bob.agent_id);
     expect(() => engine.joinConversation(carol.agent_id, {
       conversation_id: started.conversation_id,
-      message: 'Mind if I join?',
     })).toThrow(expect.objectContaining({ code: 'conversation_not_found' }));
+  });
+
+  it('notifies discarded pending joiners when a 2-person conversation ends before they are applied', async () => {
+    const { engine, alice, bob, carol } = await setupGroupConversationWorld({ max_turns: 10 });
+    const started = engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello Bob',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hello Alice' });
+    vi.advanceTimersByTime(500);
+
+    engine.joinConversation(carol.agent_id, {
+      conversation_id: started.conversation_id,
+    });
+
+    const cancelledEvents: WorldEvent[] = [];
+    const unsubscribe = engine.eventBus.onAny((event) => {
+      if (event.type === 'conversation_pending_join_cancelled') {
+        cancelledEvents.push(event);
+      }
+    });
+
+    engine.endConversation(alice.agent_id, { message: 'Goodbye Bob', next_speaker_agent_id: bob.agent_id });
+
+    expect(cancelledEvents).toContainEqual(expect.objectContaining({
+      type: 'conversation_pending_join_cancelled',
+      conversation_id: started.conversation_id,
+      agent_id: carol.agent_id,
+      reason: 'ended_by_agent',
+    }));
+    expect(engine.state.getLoggedIn(carol.agent_id)).toEqual(expect.objectContaining({
+      state: 'idle',
+      current_conversation_id: null,
+    }));
+    unsubscribe();
+  });
+
+  it('discards pending joiners when logout ends a conversation before their turn-boundary join', async () => {
+    const { engine, alice, bob, carol } = await setupGroupConversationWorld({ max_turns: 10 });
+    const started = engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello Bob',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hello Alice' });
+    vi.advanceTimersByTime(500);
+
+    engine.joinConversation(carol.agent_id, {
+      conversation_id: started.conversation_id,
+    });
+
+    const cancelledEvents: WorldEvent[] = [];
+    const unsubscribe = engine.eventBus.onAny((event) => {
+      if (event.type === 'conversation_pending_join_cancelled') {
+        cancelledEvents.push(event);
+      }
+    });
+
+    await engine.logoutAgent(alice.agent_id);
+
+    expect(engine.state.conversations.get(started.conversation_id)).toBeNull();
+    expect(engine.state.getLoggedIn(bob.agent_id)).toEqual(expect.objectContaining({
+      state: 'idle',
+      current_conversation_id: null,
+    }));
+    expect(engine.state.getLoggedIn(carol.agent_id)).toEqual(expect.objectContaining({
+      state: 'idle',
+      current_conversation_id: null,
+    }));
+    expect(cancelledEvents).toContainEqual(expect.objectContaining({
+      type: 'conversation_pending_join_cancelled',
+      conversation_id: started.conversation_id,
+      agent_id: carol.agent_id,
+      reason: 'participant_logged_out',
+    }));
+    unsubscribe();
+  });
+
+  it('keeps pending joiners queued when logout continues an active group conversation', async () => {
+    const { engine, alice, bob, carol } = await setupGroupConversationWorld({ max_turns: 10 });
+    const dave = await engine.registerAgent({ discord_bot_id: 'bot-dave' });
+    await engine.loginAgent(dave.agent_id);
+    engine.state.setNode(dave.agent_id, '3-2');
+
+    const started = engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello Bob',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hello Alice' });
+    engine.joinConversation(carol.agent_id, {
+      conversation_id: started.conversation_id,
+    });
+    vi.advanceTimersByTime(500);
+
+    expect(engine.state.conversations.get(started.conversation_id)).toEqual(expect.objectContaining({
+      participant_agent_ids: [alice.agent_id, bob.agent_id, carol.agent_id],
+      pending_participant_agent_ids: [],
+      current_speaker_agent_id: alice.agent_id,
+    }));
+
+    engine.joinConversation(dave.agent_id, {
+      conversation_id: started.conversation_id,
+    });
+
+    await engine.logoutAgent(alice.agent_id);
+
+    expect(engine.state.conversations.get(started.conversation_id)).toEqual(expect.objectContaining({
+      participant_agent_ids: [bob.agent_id, carol.agent_id],
+      pending_participant_agent_ids: [dave.agent_id],
+      current_speaker_agent_id: bob.agent_id,
+    }));
+    expect(engine.state.getLoggedIn(dave.agent_id)).toEqual(expect.objectContaining({
+      state: 'in_conversation',
+      current_conversation_id: started.conversation_id,
+    }));
+    expect(engine.timerManager.list()).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'conversation_turn',
+        conversation_id: started.conversation_id,
+        current_speaker_agent_id: bob.agent_id,
+      }),
+    ]));
   });
 
   it('requires next_speaker_agent_id for closing turns that still have 3 or more participants', async () => {
@@ -502,7 +624,6 @@ describe('conversation domain', () => {
     vi.advanceTimersByTime(500);
     engine.joinConversation(carol.agent_id, {
       conversation_id: started.conversation_id,
-      message: 'Mind if I join?',
     });
 
     engine.speak(alice.agent_id, {
@@ -516,7 +637,7 @@ describe('conversation domain', () => {
       current_speaker_agent_id: bob.agent_id,
       participant_agent_ids: [alice.agent_id, bob.agent_id, carol.agent_id],
     }));
-    expect(() => engine.speak(bob.agent_id, { message: 'One last thing.' })).toThrow(
+    expect(() => engine.speak(bob.agent_id, { message: 'One last thing.' } as never)).toThrow(
       expect.objectContaining({ code: 'next_speaker_required' }),
     );
   });
@@ -531,7 +652,6 @@ describe('conversation domain', () => {
     vi.advanceTimersByTime(500);
     engine.joinConversation(carol.agent_id, {
       conversation_id: started.conversation_id,
-      message: 'Mind if I join?',
     });
 
     engine.speak(alice.agent_id, {
@@ -540,7 +660,7 @@ describe('conversation domain', () => {
     });
     vi.advanceTimersByTime(500);
 
-    engine.endConversation(bob.agent_id, { message: 'I need to go.' });
+    engine.endConversation(bob.agent_id, { message: 'I need to go.', next_speaker_agent_id: carol.agent_id });
     vi.advanceTimersByTime(500);
 
     const conversation = engine.state.conversations.get(started.conversation_id);
@@ -564,7 +684,6 @@ describe('conversation domain', () => {
     vi.advanceTimersByTime(500);
     engine.joinConversation(carol.agent_id, {
       conversation_id: started.conversation_id,
-      message: 'Mind if I join?',
     });
 
     engine.speak(alice.agent_id, {
@@ -572,6 +691,7 @@ describe('conversation domain', () => {
       next_speaker_agent_id: bob.agent_id,
     });
     await engine.logoutAgent(carol.agent_id);
+    vi.advanceTimersByTime(500);
 
     const conversation = engine.state.conversations.get(started.conversation_id);
     expect(conversation?.current_speaker_agent_id).toBe(bob.agent_id);
@@ -594,7 +714,6 @@ describe('conversation domain', () => {
     vi.advanceTimersByTime(500);
     engine.joinConversation(carol.agent_id, {
       conversation_id: started.conversation_id,
-      message: 'Mind if I join?',
     });
 
     engine.speak(alice.agent_id, {
@@ -645,7 +764,6 @@ describe('conversation domain', () => {
     vi.advanceTimersByTime(500);
     engine.joinConversation(carol.agent_id, {
       conversation_id: started.conversation_id,
-      message: 'Mind if I join?',
     });
 
     engine.speak(alice.agent_id, {
@@ -688,11 +806,9 @@ describe('conversation domain', () => {
     vi.advanceTimersByTime(500);
     engine.joinConversation(carol.agent_id, {
       conversation_id: started.conversation_id,
-      message: 'Mind if I join?',
     });
     engine.joinConversation(dave.agent_id, {
       conversation_id: started.conversation_id,
-      message: 'Room for one more?',
     });
 
     engine.speak(alice.agent_id, {
@@ -752,8 +868,12 @@ describe('conversation domain', () => {
     vi.advanceTimersByTime(500);
     engine.joinConversation(carol.agent_id, {
       conversation_id: started.conversation_id,
-      message: 'Mind if I join?',
     });
+    engine.speak(alice.agent_id, {
+      message: 'Carolも来たよ。',
+      next_speaker_agent_id: bob.agent_id,
+    });
+    vi.advanceTimersByTime(500);
 
     const events: WorldEvent[] = [];
     const unsubscribe = engine.eventBus.onAny((event) => {
@@ -791,8 +911,12 @@ describe('conversation domain', () => {
     vi.advanceTimersByTime(500);
     engine.joinConversation(carol.agent_id, {
       conversation_id: started.conversation_id,
-      message: 'Mind if I join?',
     });
+    engine.speak(alice.agent_id, {
+      message: 'Carolも一緒に話そう。',
+      next_speaker_agent_id: bob.agent_id,
+    });
+    vi.advanceTimersByTime(500);
 
     beginClosingConversation(engine, started.conversation_id, bob.agent_id, 'server_event');
 
@@ -833,12 +957,16 @@ describe('conversation domain', () => {
     vi.advanceTimersByTime(500);
     engine.joinConversation(carol.agent_id, {
       conversation_id: started.conversation_id,
-      message: 'Mind if I join?',
     });
 
     engine.speak(alice.agent_id, {
       message: 'Bob, over to you.',
       next_speaker_agent_id: bob.agent_id,
+    });
+    vi.advanceTimersByTime(500);
+    engine.speak(bob.agent_id, {
+      message: 'Alice, continue.',
+      next_speaker_agent_id: alice.agent_id,
     });
     vi.advanceTimersByTime(500);
 
@@ -883,7 +1011,6 @@ describe('conversation domain', () => {
 
     engine.joinConversation(carol.agent_id, {
       conversation_id: started.conversation_id,
-      message: 'I join!',
     });
 
     // max_participants defaults to 5, add 2 more to reach it
@@ -896,16 +1023,13 @@ describe('conversation domain', () => {
 
     engine.joinConversation(dave.agent_id, {
       conversation_id: started.conversation_id,
-      message: 'Me too!',
     });
     engine.joinConversation(eve.agent_id, {
       conversation_id: started.conversation_id,
-      message: 'And me!',
     });
 
     expect(() => engine.joinConversation(frank.agent_id, {
       conversation_id: started.conversation_id,
-      message: 'Can I join?',
     })).toThrow(expect.objectContaining({ code: 'conversation_full' }));
   });
 
@@ -919,12 +1043,16 @@ describe('conversation domain', () => {
     vi.advanceTimersByTime(500);
     engine.joinConversation(carol.agent_id, {
       conversation_id: started.conversation_id,
-      message: 'Mind if I join?',
     });
 
     engine.speak(alice.agent_id, {
       message: 'Bob, over to you.',
       next_speaker_agent_id: bob.agent_id,
+    });
+    vi.advanceTimersByTime(500);
+    engine.speak(bob.agent_id, {
+      message: 'Alice, continue.',
+      next_speaker_agent_id: alice.agent_id,
     });
     vi.advanceTimersByTime(500);
 
@@ -967,7 +1095,6 @@ describe('conversation domain', () => {
     vi.advanceTimersByTime(500);
     engine.joinConversation(carol.agent_id, {
       conversation_id: started.conversation_id,
-      message: 'Mind if I join?',
     });
 
     expect(() => engine.speak(alice.agent_id, {
@@ -986,12 +1113,186 @@ describe('conversation domain', () => {
     vi.advanceTimersByTime(500);
     engine.joinConversation(carol.agent_id, {
       conversation_id: started.conversation_id,
-      message: 'Mind if I join?',
     });
 
     expect(() => engine.speak(alice.agent_id, {
       message: 'Unknown person next!',
       next_speaker_agent_id: 'nonexistent-agent',
     })).toThrow(expect.objectContaining({ code: 'invalid_next_speaker' }));
+  });
+
+  it('removes the agent and continues the conversation when ending a 3+ participant conversation', async () => {
+    const { engine, alice, bob, carol } = await setupGroupConversationWorld({ max_turns: 10 });
+    const leaveEvents: WorldEvent[] = [];
+    const unsubscribe = engine.eventBus.onAny((event) => {
+      if (event.type === 'conversation_leave') {
+        leaveEvents.push(event);
+      }
+    });
+
+    const started = engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello Bob',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hello Alice' });
+    vi.advanceTimersByTime(500);
+    engine.joinConversation(carol.agent_id, {
+      conversation_id: started.conversation_id,
+    });
+
+    engine.speak(alice.agent_id, {
+      message: 'Carolも来たよ。',
+      next_speaker_agent_id: bob.agent_id,
+    });
+    vi.advanceTimersByTime(500);
+
+    // Bob ends the 3-person conversation
+    engine.endConversation(bob.agent_id, { message: 'I need to leave.', next_speaker_agent_id: carol.agent_id });
+
+    // Bob should be removed from the conversation, Alice+Carol continue
+    expect(leaveEvents).toContainEqual(expect.objectContaining({
+      type: 'conversation_leave',
+      agent_id: bob.agent_id,
+      reason: 'voluntary',
+      participant_agent_ids: expect.arrayContaining([alice.agent_id, carol.agent_id]),
+    }));
+
+    // Bob should be idle, Alice+Carol still in_conversation
+    expect(engine.state.getLoggedIn(bob.agent_id)?.state).toBe('idle');
+    expect(engine.state.getLoggedIn(bob.agent_id)?.current_conversation_id).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('in_conversation');
+    expect(engine.state.getLoggedIn(carol.agent_id)?.state).toBe('in_conversation');
+
+    // Conversation should still exist with Alice+Carol
+    const conversation = engine.state.conversations.get(started.conversation_id);
+    expect(conversation).not.toBeNull();
+    expect(conversation?.participant_agent_ids).toEqual([alice.agent_id, carol.agent_id]);
+    expect(conversation?.status).toBe('active');
+
+    // A conversation interval timer should be scheduled for the remaining participants
+    const intervalTimers = engine.timerManager.list().filter(
+      (timer) => timer.type === 'conversation_interval' && 'conversation_id' in timer && timer.conversation_id === started.conversation_id,
+    );
+    expect(intervalTimers).toHaveLength(1);
+
+    unsubscribe();
+  });
+
+  it('rejects join when the agent is out of range of all participants', async () => {
+    const { engine, alice, bob, carol } = await setupGroupConversationWorld({ max_turns: 10 });
+    // Alice on 3-1, Bob+Carol on 3-2 (adjacent)
+    // Move carol far away to 1-1 (not adjacent to 3-1 or 3-2)
+    engine.state.setNode(carol.agent_id, '1-1');
+
+    const started = engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello Bob',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hello Alice' });
+    vi.advanceTimersByTime(500);
+
+    // Carol is too far to join
+    expect(() => engine.joinConversation(carol.agent_id, {
+      conversation_id: started.conversation_id,
+    })).toThrow(expect.objectContaining({ code: 'out_of_range' }));
+  });
+
+  it('rejects join when the agent is already participating', async () => {
+    const { engine, alice, bob, carol } = await setupGroupConversationWorld({ max_turns: 10 });
+    const started = engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello Bob',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hello Alice' });
+    vi.advanceTimersByTime(500);
+    engine.joinConversation(carol.agent_id, {
+      conversation_id: started.conversation_id,
+    });
+
+    // Carol is already a participant (pending promoted immediately since timer hasn't fired yet)
+    // Try to join again
+    expect(() => engine.joinConversation(carol.agent_id, {
+      conversation_id: started.conversation_id,
+    })).toThrow(expect.objectContaining({ code: 'state_conflict' }));
+  });
+
+  it('rejects join when the agent is already a pending participant', async () => {
+    const { engine, alice, bob, carol } = await setupGroupConversationWorld({ max_turns: 10 });
+    // Carol is on a non-adjacent node so she stays pending
+    engine.state.setNode(carol.agent_id, '1-1');
+
+    const started = engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello Bob',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hello Alice' });
+    // At this point, the conversation has only Alice+Bob as participants
+    // Carol on 1-1 is out of range, so we need her to be adjacent to at least one participant
+
+    // Actually, for pending join, we need carol to be adjacent but the join hasn't been applied yet
+    // Let's use a different approach: set carol adjacent and check she can't double-join while pending
+    engine.state.setNode(carol.agent_id, '3-1');
+
+    // Carol joins (becomes pending, not yet applied)
+    engine.joinConversation(carol.agent_id, {
+      conversation_id: started.conversation_id,
+    });
+
+    // Carol is now pending — try to join again before the timer fires
+    expect(() => engine.joinConversation(carol.agent_id, {
+      conversation_id: started.conversation_id,
+    })).toThrow(expect.objectContaining({ code: 'state_conflict' }));
+  });
+
+  it('emits pending join cancelled event when a pending joiner is discarded on conversation end', async () => {
+    const { engine, alice, bob } = await setupConversationWorld({ max_turns: 10 });
+    const carol = await engine.registerAgent({ discord_bot_id: 'bot-carol' });
+    const dave = await engine.registerAgent({ discord_bot_id: 'bot-dave' });
+    await engine.loginAgent(carol.agent_id);
+    await engine.loginAgent(dave.agent_id);
+    engine.state.setNode(carol.agent_id, '3-2');
+    engine.state.setNode(dave.agent_id, '3-2');
+
+    const started = engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello Bob',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hello Alice' });
+    vi.advanceTimersByTime(500);
+
+    // Carol and Dave join (both pending, not yet applied since interval hasn't fired again)
+    engine.joinConversation(carol.agent_id, {
+      conversation_id: started.conversation_id,
+    });
+    engine.joinConversation(dave.agent_id, {
+      conversation_id: started.conversation_id,
+    });
+
+    const cancelledEvents: WorldEvent[] = [];
+    const unsubscribe = engine.eventBus.onAny((event) => {
+      if (event.type === 'conversation_pending_join_cancelled') {
+        cancelledEvents.push(event);
+      }
+    });
+
+    // Alice ends the 2-person conversation before pending joiners are applied
+    // This goes into closing (2-person), discarding pending joiners
+    engine.endConversation(alice.agent_id, { message: 'Goodbye', next_speaker_agent_id: bob.agent_id });
+
+    // Carol and Dave's pending joins should be cancelled
+    expect(cancelledEvents).toContainEqual(expect.objectContaining({
+      type: 'conversation_pending_join_cancelled',
+      conversation_id: started.conversation_id,
+      agent_id: carol.agent_id,
+      reason: 'ended_by_agent',
+    }));
+    expect(cancelledEvents).toContainEqual(expect.objectContaining({
+      type: 'conversation_pending_join_cancelled',
+      conversation_id: started.conversation_id,
+      agent_id: dave.agent_id,
+      reason: 'ended_by_agent',
+    }));
+
+    unsubscribe();
   });
 });

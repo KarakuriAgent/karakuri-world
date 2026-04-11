@@ -7,6 +7,7 @@ import { cancelActiveAction } from './actions.js';
 import {
   beginClosingConversation,
   cancelPendingConversationForServerEvent,
+  detachPendingJoiner,
   detachParticipantFromClosingConversation,
   findConversationByAgent,
   getConversationActionableSpeaker,
@@ -150,14 +151,28 @@ export function handleServerEventInterruption(engine: WorldEngine, agentId: stri
   } else if (refreshedAgent.state === 'in_conversation') {
     const conversation = findConversationByAgent(engine, agentId, ['active', 'closing']);
     if (conversation) {
+      if (detachPendingJoiner(engine, conversation.conversation_id, agentId, false)) {
+        engine.emitEvent({
+          type: 'conversation_pending_join_cancelled',
+          conversation_id: conversation.conversation_id,
+          agent_id: agentId,
+          reason: 'server_event',
+        });
+        engine.state.setState(agentId, 'idle');
+        clearActiveServerEvent(engine, agentId);
+        return;
+      }
+
       const actionableSpeakerAgentId = getConversationActionableSpeaker(conversation);
       const partnerId = actionableSpeakerAgentId && actionableSpeakerAgentId !== agentId
         ? actionableSpeakerAgentId
-        : getNextConversationSpeakerAfterInterruption(
-          conversation.participant_agent_ids,
-          agentId,
-          conversation.inactive_check_pending_agent_ids.length > 0 ? conversation.current_speaker_agent_id : undefined,
-        ) ?? conversation.current_speaker_agent_id;
+        : conversation.participant_agent_ids.find((participantId) => participantId !== agentId)
+          ?? getNextConversationSpeakerAfterInterruption(
+            conversation.participant_agent_ids,
+            agentId,
+            conversation.inactive_check_pending_agent_ids.length > 0 ? conversation.current_speaker_agent_id : undefined,
+          )
+          ?? conversation.current_speaker_agent_id;
       if (conversation.status === 'closing') {
         detachParticipantFromClosingConversation(engine, conversation.conversation_id, agentId);
       } else {

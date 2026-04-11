@@ -216,6 +216,134 @@ describe('DiscordEventHandler', () => {
     handler.dispose();
   });
 
+  it('notifies discarded pending joiners when logout ends a conversation before they join', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+
+    const { engine } = createTestWorld();
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = await registerAgent(engine, 'Alice');
+    const bob = await registerAgent(engine, 'Bob');
+    const carol = await registerAgent(engine, 'Carol');
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    await engine.loginAgent(carol.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.worldLogMessages).toHaveLength(3);
+    });
+    bot.agentMessages.length = 0;
+    bot.worldLogMessages.length = 0;
+
+    const conversation = engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'こんにちは。',
+    });
+    engine.acceptConversation(bob.agent_id, {
+      message: 'やあ、Alice！',
+    });
+    vi.advanceTimersByTime(500);
+    engine.joinConversation(carol.agent_id, {
+      conversation_id: conversation.conversation_id,
+    });
+    bot.agentMessages.length = 0;
+    bot.worldLogMessages.length = 0;
+
+    await engine.logoutAgent(alice.agent_id);
+
+    await vi.waitFor(() => {
+      expect(
+        bot.agentMessages.some(
+          (message) =>
+            message.channelId === 'channel-Bob'
+            && message.content.includes('Alice が世界からログアウトしたため、会話が強制終了されました。'),
+        ),
+      ).toBe(true);
+      expect(
+        bot.agentMessages.some(
+          (message) =>
+            message.channelId === 'channel-Carol'
+            && message.content.includes('参加予定だった会話が、参加者のログアウトにより開始前に終了しました。'),
+        ),
+      ).toBe(true);
+      expect(bot.threadMessages.get('thread-1')).toContain('Alice と Bob の会話が終了しました');
+      expect(bot.archivedThreads).toContain('thread-1');
+    });
+
+    handler.dispose();
+  });
+
+  it('delivers the turn-boundary speaker message to deferred joiners after applyPendingJoiners runs', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    const { engine } = createTestWorld({
+      config: {
+        conversation: {
+          max_turns: 10,
+          inactive_check_turns: 10,
+          interval_ms: 500,
+          accept_timeout_ms: 1000,
+          turn_timeout_ms: 1000,
+        },
+      },
+    });
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = await registerAgent(engine, 'Alice');
+    const bob = await registerAgent(engine, 'Bob');
+    const carol = await registerAgent(engine, 'Carol');
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    await engine.loginAgent(carol.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.worldLogMessages).toHaveLength(3);
+    });
+
+    engine.state.setNode(alice.agent_id, '3-1');
+    engine.state.setNode(bob.agent_id, '3-2');
+    engine.state.setNode(carol.agent_id, '3-2');
+    bot.agentMessages.length = 0;
+
+    const started = engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'こんにちは。',
+    });
+    engine.acceptConversation(bob.agent_id, {
+      message: 'やあ、Alice！',
+    });
+    vi.advanceTimersByTime(500);
+
+    engine.joinConversation(carol.agent_id, {
+      conversation_id: started.conversation_id,
+    });
+    expect(
+      engine.state.conversations.get(started.conversation_id)?.pending_participant_agent_ids,
+    ).toEqual([carol.agent_id]);
+
+    bot.agentMessages.length = 0;
+    engine.speak(alice.agent_id, {
+      message: 'Carolも一緒に話そう。',
+      next_speaker_agent_id: bob.agent_id,
+    });
+    vi.advanceTimersByTime(500);
+
+    await vi.waitFor(() => {
+      const carolMessages = bot.agentMessages
+        .filter((message) => message.channelId === 'channel-Carol')
+        .map((message) => message.content);
+      expect(carolMessages.some((message) => message.includes('Alice: 「Carolも一緒に話そう。」'))).toBe(true);
+    });
+    expect(
+      engine.state.conversations.get(started.conversation_id)?.participant_agent_ids,
+    ).toEqual([alice.agent_id, bob.agent_id, carol.agent_id]);
+
+    handler.dispose();
+  });
+
   it('delivers the pending spoken message before the forced-end notice when logout interrupts an interval', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
@@ -252,7 +380,7 @@ describe('DiscordEventHandler', () => {
     expect(engine.state.conversations.get(started.conversation_id)?.current_speaker_agent_id).toBe(alice.agent_id);
 
     bot.agentMessages.length = 0;
-    engine.speak(alice.agent_id, { message: '最後にこれだけ。' });
+    engine.speak(alice.agent_id, { message: '最後にこれだけ。', next_speaker_agent_id: bob.agent_id });
     await engine.logoutAgent(alice.agent_id);
 
     await vi.waitFor(() => {
@@ -460,6 +588,7 @@ describe('DiscordEventHandler', () => {
 
     engine.speak(alice.agent_id, {
       message: 'それではまた。',
+      next_speaker_agent_id: bob.agent_id,
     });
 
     await vi.waitFor(() => {
@@ -1339,8 +1468,12 @@ describe('DiscordEventHandler', () => {
     bot.agentMessages.length = 0;
     engine.joinConversation(carol.agent_id, {
       conversation_id: [...engine.state.conversations.list()][0]!.conversation_id,
-      message: '混ざってもいい？',
     });
+    engine.speak(alice.agent_id, {
+      message: 'Carolも来てね。',
+      next_speaker_agent_id: bob.agent_id,
+    });
+    vi.advanceTimersByTime(500);
     await vi.waitFor(() => {
       expect(bot.renamedThreads.get('thread-1')).toBe('Alice と Bob 他1名');
     });
@@ -1363,9 +1496,8 @@ describe('DiscordEventHandler', () => {
     });
 
     const alicePrompt = bot.agentMessages.find((message) => message.channelId === 'channel-Alice');
-    expect(alicePrompt?.content).toContain('参加者: Alice、Carol');
-    expect(alicePrompt?.content).not.toContain('3人以上の会話では next_speaker_agent_id の指定が必要です。');
-    expect(alicePrompt?.content).not.toContain('次の話者ID');
+    expect(alicePrompt?.content).toContain(`参加者: Alice (id: ${alice.agent_id})、Carol (id: ${carol.agent_id})`);
+    expect(alicePrompt?.content).toContain('次の話者ID');
     expect(bot.renamedThreads.get('thread-1')).toBe('Alice と Carol');
     expect(bot.threadMessages.get('thread-1')).toContain('🔔 Bob が会話から離れました。\n次は Alice の番です。');
 
@@ -1417,12 +1549,15 @@ describe('DiscordEventHandler', () => {
     vi.advanceTimersByTime(500);
     engine.joinConversation(carol.agent_id, {
       conversation_id: [...engine.state.conversations.list()][0]!.conversation_id,
-      message: '混ざってもいい？',
     });
     engine.joinConversation(dave.agent_id, {
       conversation_id: [...engine.state.conversations.list()][0]!.conversation_id,
-      message: '僕もいいかな？',
     });
+    engine.speak(alice.agent_id, {
+      message: 'みんなで話そう。',
+      next_speaker_agent_id: bob.agent_id,
+    });
+    vi.advanceTimersByTime(500);
 
     bot.agentMessages.length = 0;
     const conversationId = [...engine.state.conversations.list()][0]!.conversation_id;
@@ -1447,8 +1582,8 @@ describe('DiscordEventHandler', () => {
     });
 
     const bobPrompt = bot.agentMessages.find((message) => message.channelId === 'channel-Bob');
-    expect(bobPrompt?.content).toContain('参加者: Bob、Carol、Dave');
-    expect(bobPrompt?.content).toContain('3人以上の会話では next_speaker_agent_id の指定が必要です。');
+    expect(bobPrompt?.content).toContain(`参加者: Bob (id: ${bob.agent_id})、Carol (id: ${carol.agent_id})、Dave (id: ${dave.agent_id})`);
+    expect(bobPrompt?.content).toContain('次の話者ID');
     expect(bobPrompt?.content).not.toContain('あなたが最後のメッセージを送る番です。');
 
     handler.dispose();
@@ -1494,21 +1629,29 @@ describe('DiscordEventHandler', () => {
     vi.advanceTimersByTime(500);
     engine.joinConversation(carol.agent_id, {
       conversation_id: [...engine.state.conversations.list()][0]!.conversation_id,
-      message: '混ざってもいい？',
     });
     engine.joinConversation(dave.agent_id, {
       conversation_id: [...engine.state.conversations.list()][0]!.conversation_id,
-      message: '僕もいいかな？',
     });
+    engine.speak(alice.agent_id, {
+      message: 'CarolとDaveもどうぞ。',
+      next_speaker_agent_id: bob.agent_id,
+    });
+    vi.advanceTimersByTime(500);
+    engine.speak(bob.agent_id, {
+      message: 'Aliceに戻すね。',
+      next_speaker_agent_id: alice.agent_id,
+    });
+    vi.advanceTimersByTime(500);
 
     bot.agentMessages.length = 0;
-    engine.fireServerEvent('Dark clouds gather.');
-    await vi.waitFor(() => {
-      expect(bot.agentMessages.filter((message) => message.content.includes('【サーバーイベント】'))).toHaveLength(4);
-    });
-
-    bot.agentMessages.length = 0;
-    engine.executeWait(carol.agent_id, { duration: 1 });
+    beginClosingConversation(
+      engine,
+      [...engine.state.conversations.list()][0]!.conversation_id,
+      alice.agent_id,
+      'server_event',
+      carol.agent_id,
+    );
     await vi.waitFor(() => {
       expect(
         bot.agentMessages.some(
@@ -1621,38 +1764,34 @@ describe('DiscordEventHandler', () => {
     bot.agentMessages.length = 0;
     engine.joinConversation(carol.agent_id, {
       conversation_id: [...engine.state.conversations.list()][0]!.conversation_id,
-      message: 'お邪魔します。',
     });
-    await vi.waitFor(() => {
-      expect(bot.renamedThreads.get('thread-1')).toBe('Alice と Bob 他1名');
-      expect(bot.threadMessages.get('thread-1')).toContain('🔔 Carol が会話に参加しました。\n「お邪魔します。」');
-      expect(
-        bot.agentMessages.some(
-          (message) =>
-            message.channelId === 'channel-Alice'
-            && message.content.includes('3人以上の会話では next_speaker_agent_id の指定が必要です。'),
-        ),
-      ).toBe(true);
-    });
-
-    bot.agentMessages.length = 0;
     engine.speak(alice.agent_id, {
       message: 'Carolも一緒に話そう',
-      next_speaker_agent_id: carol.agent_id,
+      next_speaker_agent_id: bob.agent_id,
     });
 
     vi.advanceTimersByTime(500);
+    await vi.waitFor(() => {
+      expect(bot.renamedThreads.get('thread-1')).toBe('Alice と Bob 他1名');
+    });
+    bot.agentMessages.length = 0;
+    engine.speak(bob.agent_id, {
+      message: 'Carol、次どうぞ。',
+      next_speaker_agent_id: carol.agent_id,
+    });
+    vi.advanceTimersByTime(500);
 
     await vi.waitFor(() => {
+      expect(bot.renamedThreads.get('thread-1')).toBe('Alice と Bob 他1名');
       expect(bot.agentMessages).toHaveLength(2);
     });
 
-    const bobMessage = bot.agentMessages.find((message) => message.channelId === 'channel-Bob');
+    const aliceMessage = bot.agentMessages.find((message) => message.channelId === 'channel-Alice');
     const carolMessage = bot.agentMessages.find((message) => message.channelId === 'channel-Carol');
-    expect(bobMessage?.content).toContain('Alice: 「Carolも一緒に話そう」');
-    expect(bobMessage?.content).toContain('次は Carol の番です。');
-    expect(bobMessage?.content).not.toContain('選択肢:');
-    expect(carolMessage?.content).toContain('Alice: 「Carolも一緒に話そう」');
+    expect(aliceMessage?.content).toContain('Bob: 「Carol、次どうぞ。」');
+    expect(aliceMessage?.content).toContain('次は Carol の番です。');
+    expect(aliceMessage?.content).not.toContain('選択肢:');
+    expect(carolMessage?.content).toContain('Bob: 「Carol、次どうぞ。」');
     expect(carolMessage?.content).toContain('選択肢:');
     expect(carolMessage?.content).toContain('conversation_speak');
 
@@ -1698,8 +1837,12 @@ describe('DiscordEventHandler', () => {
 
     engine.joinConversation(beta.agent_id, {
       conversation_id: [...engine.state.conversations.list()][0]!.conversation_id,
-      message: '失礼します。',
     });
+    engine.speak(zulu.agent_id, {
+      message: 'Betaもどうぞ。',
+      next_speaker_agent_id: alpha.agent_id,
+    });
+    vi.advanceTimersByTime(500);
 
     await vi.waitFor(() => {
       expect(bot.renamedThreads.get('thread-1')).toBe('Zulu と Alpha 他1名');
@@ -1758,20 +1901,20 @@ describe('DiscordEventHandler', () => {
     const conversationId = [...engine.state.conversations.list()][0]!.conversation_id;
     engine.joinConversation(carol.agent_id, {
       conversation_id: conversationId,
-      message: '参加します。',
     });
-    await vi.waitFor(() => {
-      expect(bot.renamedThreads.get('thread-1')).toBe('Alice と Bob 他1名');
-    });
-
-    bot.agentMessages.length = 0;
     engine.speak(alice.agent_id, {
       message: 'Bob、次にどうする？',
       next_speaker_agent_id: bob.agent_id,
     });
     vi.advanceTimersByTime(500);
+    engine.speak(bob.agent_id, {
+      message: 'Alice、考えてみて。',
+      next_speaker_agent_id: alice.agent_id,
+    });
+    vi.advanceTimersByTime(500);
 
     await vi.waitFor(() => {
+      expect(bot.renamedThreads.get('thread-1')).toBe('Alice と Bob 他1名');
       expect(bot.agentMessages.some((message) => message.channelId === 'channel-Carol' && message.content.includes('conversation_stay'))).toBe(true);
     });
 
@@ -1781,7 +1924,7 @@ describe('DiscordEventHandler', () => {
     await vi.waitFor(() => {
       expect(
         bot.agentMessages.some(
-          (message) => message.channelId === 'channel-Bob' && message.content.includes('あなたの番です。'),
+          (message) => message.channelId === 'channel-Alice' && message.content.includes('あなたの番です。'),
         ),
       ).toBe(true);
     });
@@ -1793,7 +1936,7 @@ describe('DiscordEventHandler', () => {
       expect(bot.renamedThreads.get('thread-1')).toBe('Alice と Bob');
       expect(
         bot.agentMessages.some(
-          (message) => message.channelId === 'channel-Bob' && message.content.includes('あなたの番です。'),
+          (message) => message.channelId === 'channel-Alice' && message.content.includes('あなたの番です。'),
         ),
       ).toBe(true);
     });
@@ -1840,11 +1983,9 @@ describe('DiscordEventHandler', () => {
     vi.advanceTimersByTime(500);
     engine.joinConversation(carol.agent_id, {
       conversation_id: started.conversation_id,
-      message: '参加します。',
     });
     engine.joinConversation(dave.agent_id, {
       conversation_id: started.conversation_id,
-      message: '私も参加します。',
     });
 
     bot.agentMessages.length = 0;
@@ -1920,7 +2061,7 @@ describe('DiscordEventHandler', () => {
     expect(engine.state.conversations.get([...engine.state.conversations.list()][0]!.conversation_id)?.current_speaker_agent_id).toBe(alice.agent_id);
 
     bot.agentMessages.length = 0;
-    engine.endConversation(alice.agent_id, { message: 'またね。' });
+    engine.endConversation(alice.agent_id, { message: 'またね。', next_speaker_agent_id: bob.agent_id });
     vi.advanceTimersByTime(500);
 
     await vi.waitFor(() => {
@@ -1984,11 +2125,9 @@ describe('DiscordEventHandler', () => {
 
     engine.joinConversation(carol.agent_id, {
       conversation_id: started.conversation_id,
-      message: '参加します。',
     });
     engine.joinConversation(dave.agent_id, {
       conversation_id: started.conversation_id,
-      message: '私も参加します。',
     });
 
     bot.agentMessages.length = 0;
@@ -1997,23 +2136,14 @@ describe('DiscordEventHandler', () => {
       next_speaker_agent_id: bob.agent_id,
     });
     await engine.logoutAgent(carol.agent_id);
+    vi.advanceTimersByTime(500);
 
     await vi.waitFor(() => {
       const bobMessages = bot.agentMessages
         .filter((message) => message.channelId === 'channel-Bob')
         .map((message) => message.content);
-      const daveMessages = bot.agentMessages
-        .filter((message) => message.channelId === 'channel-Dave')
-        .map((message) => message.content);
       expect(bobMessages.some((message) => message.includes('Alice: 「Bob、次をお願い。」'))).toBe(true);
-      expect(bobMessages.some((message) => message.includes('あなたの番です。'))).toBe(true);
-      expect(daveMessages.some((message) => message.includes('Alice: 「Bob、次をお願い。」'))).toBe(true);
-      expect(daveMessages.some((message) => message.includes('次は Bob の番です。'))).toBe(true);
-      expect(
-        bobMessages.findIndex((message) => message.includes('Alice: 「Bob、次をお願い。」')),
-      ).toBeLessThan(
-        bobMessages.findIndex((message) => message.includes('あなたの番です。')),
-      );
+      expect(bobMessages.some((message) => message.includes('conversation_speak'))).toBe(true);
     });
 
     handler.dispose();
@@ -2061,11 +2191,9 @@ describe('DiscordEventHandler', () => {
     vi.advanceTimersByTime(500);
     engine.joinConversation(carol.agent_id, {
       conversation_id: started.conversation_id,
-      message: '参加します。',
     });
     engine.joinConversation(dave.agent_id, {
       conversation_id: started.conversation_id,
-      message: '私も参加します。',
     });
 
     bot.agentMessages.length = 0;
