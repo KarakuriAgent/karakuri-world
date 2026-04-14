@@ -67,7 +67,8 @@ type HistoryCacheEntry =
 
 interface SnapshotStore {
   snapshot?: SpectatorSnapshot;
-  snapshot_status: 'idle' | 'loading' | 'ready' | 'error';
+  // `incompatible` は schema_version 不一致の永続エラー状態。`error` と明確に区別する。
+  snapshot_status: 'idle' | 'loading' | 'ready' | 'error' | 'incompatible';
   last_success_at?: number;
   last_error_at?: number;
   is_stale: boolean;
@@ -128,7 +129,7 @@ fetch 失敗は stale と別状態であり、`snapshot_status = 'error'` と `l
 
 1. 初回マウント時に即時 fetch
 2. 以後 5 秒ごとに再取得するが、3.2 のとおり poll 自体は single-flight とし、重複 tick は 1 回分だけ queue する
-3. fetch レスポンスは「**ステータス確認 → JSON parse → schema_version 検証**」の順で必ず妥当性を検証する。HTTP 非 2xx、parse 失敗、`schema_version !== 1` のいずれかに該当した場合は 8 と同じ失敗扱いとし、`snapshot_status = 'error'`, `last_error_at = Date.now()` を記録して既存 snapshot はそのまま残す。検証を 3.2 の version 比較より前に行い、壊れた body を `ready` で素通りさせない
+3. fetch レスポンスは「**ステータス確認 → JSON parse → schema_version 検証**」の順で必ず妥当性を検証する。HTTP 非 2xx または JSON parse 失敗は transient な fetch error として 8 と同じ失敗扱いとし、`snapshot_status = 'error'`, `last_error_at = Date.now()` を記録する。`schema_version !== 1` は transient error ではなく永続エラー扱いとし、`snapshot_status = 'incompatible'` を記録する。どちらの場合も既存 snapshot はそのまま残す。検証を 3.2 の version 比較より前に行い、壊れた body を `ready` で素通りさせない。`incompatible` は次回以降の poll 成功で `ready` に戻せるが、スキーマが復旧しないまま次回も `schema_version !== 1` であれば `incompatible` を維持する
 4. 検証通過した成功時は 3.2 の比較規則で処理する。現在より新しい snapshot は採用し、same-version success は version を進めずに成功扱いとする。どちらも `snapshot_status = 'ready'`, `last_success_at = Date.now()` を記録する
 5. 4 の成功時は、現在 store に残っている最新 snapshot に対して 3.3 の stale 条件を再評価する。新しい snapshot を採用した場合はその snapshot 用に stale timer を張り直し、same-version success の場合も stale 判定だけは回復後の現在時刻で再評価してよい。ただし stale deadline は常に当該 snapshot の `generated_at + 60000` を使い、fetch 成功時刻基準へ延長しない
 6. stale timer の callback は、張り直し時点の `{ generated_at, published_at }` もしくは同等の version token を capture し、発火時に「まだ同じ snapshot が store に載っている場合だけ」`is_stale = true` を適用する。これにより古い timer が新しい snapshot 到着後に遅れて発火しても stale 表示へ巻き戻さない
@@ -286,9 +287,11 @@ fetchHistory(
 | snapshot 未取得 | 全画面ローディング |
 | snapshot stale | 上部に `接続遅延中` バッジ |
 | snapshot fetch error | stale バッジとは別に `更新の取得に失敗しました` を表示し、最後に成功した snapshot を継続表示 |
+| snapshot incompatible (`schema_version !== 1`) | transient error とは分離し、`観戦 UI の更新が必要です。再読み込みしてください` のような永続エラー表示を行う。最後に成功した snapshot は継続表示してよいが、リトライで解消しないためユーザーへ再読み込みを促す導線を出す |
 | サーバーイベントなし | `snapshot.recent_server_events` が空なら `サーバーイベントはまだありません` |
 | 履歴なし | `履歴はまだありません` |
-| 履歴取得失敗 | `履歴の取得に失敗しました` + 再試行ボタン |
+| 履歴取得失敗 (初回 fetch) | `履歴の取得に失敗しました` + 再試行ボタンを一覧領域全体で表示し、既存 items は存在しないため空 |
+| 履歴 append 失敗 (2 ページ目以降) | 既存の取得済み items はそのまま表示を継続し、末尾に `続きの取得に失敗しました` + `再試行` を inline 表示する。既存 items を隠さない。再試行は 8.3 の仕様どおり同じ `cursor` から再取得する |
 
 ## 11. 認証との関係
 

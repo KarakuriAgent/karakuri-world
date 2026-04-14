@@ -372,5 +372,6 @@ DO は以下の順で変換する。
 ## 6. 互換性とバージョニング
 
 - `SpectatorSnapshot.schema_version` は破壊的変更時にのみ更新する
-- UI は未知のフィールドを無視し、`schema_version !== 1` の場合は「未対応の snapshot 形式」としてエラー表示する
+- UI は未知のフィールドを無視し、`schema_version !== 1` の場合は一時的な fetch error とは区別される `incompatible` 状態として扱い、「観戦 UI の更新が必要です。再読み込みしてください」のような永続エラーメッセージを表示する。リトライで解消しない永続エラーであるため、通常の transient error と同じ「更新の取得に失敗しました」表示には吸収しない
+- 後方互換で済む追加フィールドは `schema_version` を上げない。非互換な型・意味変更のときに限り `schema_version` を上げる
 - 本体 `WorldSnapshot` は内部用型であるため後方互換保証対象にせず、DO 変換層を境界とする
