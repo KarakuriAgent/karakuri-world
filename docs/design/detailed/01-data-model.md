@@ -120,10 +120,20 @@ interface NpcConfig {
 ### 5.1 アクション定義
 
 ```typescript
+interface ItemRequirement {
+  item_id: string; // ServerConfig.items 内の item_id を参照
+  quantity: number; // 1以上
+}
+
 interface ActionConfigBase {
   action_id: string; // 一意なアクションID（MapConfig内で一意）
   name: string; // アクション名（例: "武器を鍛造する"）
   description: string; // アクションの説明
+  emoji?: string; // 任意。UI/通知で使う代表絵文字
+  cost_money?: number; // 開始時に消費する所持金
+  reward_money?: number; // 完了時に付与する所持金
+  required_items?: ItemRequirement[]; // 開始時に消費する必要アイテム
+  reward_items?: ItemRequirement[]; // 完了時に付与する報酬アイテム
 }
 
 interface FixedDurationActionConfig extends ActionConfigBase {
@@ -143,7 +153,14 @@ type ActionConfig = FixedDurationActionConfig | RangeDurationActionConfig;
 
 - **固定時間アクション**: `duration_ms` を持つ。実行時に追加の時間指定は不要
 - **可変時間アクション**: `min_duration_minutes` / `max_duration_minutes` を持つ。エージェントは実行時にこの範囲内の `duration_minutes` を指定する
+- **絵文字指定**: `emoji` は任意。指定された場合、通知・観戦UI・履歴要約で当該アクションの代表絵文字として利用できる
+- **所持金コスト**: `cost_money` は任意。指定時はアクション開始時に消費し、不足時は実行できない
+- **所持金報酬**: `reward_money` は任意。指定時はアクション完了時に付与する
+- **必要アイテム**: `required_items` は任意。各要素は `item_id` と必要数量を表し、開始時に消費する。`venue` 型アイテムでは 05-actions.md セクション6.3.1 の `venue_hints` 構築にも使う
+- **報酬アイテム**: `reward_items` は任意。各要素は完了時に付与するアイテムと数量を表す
 - 上記の2形式は排他的であり、`duration_ms` と `min/max_duration_minutes` を同時に持つことはできない
+- `required_items` / `reward_items` の `item_id` は `ServerConfig.items` に定義済みのアイテムを参照しなければならない
+- 同一アクション内で `required_items` / `reward_items` に同じ `item_id` を複数回書かない
 
 ### 5.2 実行条件
 
@@ -164,7 +181,12 @@ type ActionConfig = FixedDurationActionConfig | RangeDurationActionConfig;
 
 ### 5.4 アクション結果
 
-アクション完了時、アクション名を含む完了通知がエージェントに送られる。結果の解釈はエージェントに委ねられる。世界の状態を変更する副作用は持たない。
+アクション完了時、アクション名を含む完了通知がエージェントに送られる。結果の解釈はエージェントに委ねられるが、`cost_money` / `required_items` / `reward_money` / `reward_items` を指定した場合は経済状態に副作用を持つ。適用タイミングは以下のとおり。
+
+- `cost_money` / `required_items`: 開始時に消費
+- `reward_money` / `reward_items`: 完了時に付与
+- 開始後に会話着信受諾・サーバーイベント割り込み・logout で中断された場合、開始時消費分は返却しない
+- `reward_items` の付与は `EconomyConfig.max_inventory_slots` と各 `ItemConfig.max_stack` の制約を受け、入りきらない分は `items_dropped` として扱う
 
 ## 6. サーバー設定
 
@@ -172,6 +194,7 @@ type ActionConfig = FixedDurationActionConfig | RangeDurationActionConfig;
 
 ```typescript
 interface ServerConfig {
+  timezone: string; // IANA timezone 名（例: "Asia/Tokyo"）
   world: WorldConfig;
   movement: MovementConfig;
   conversation: ConversationConfig;
@@ -179,8 +202,12 @@ interface ServerConfig {
   spawn: SpawnConfig;
   map: MapConfig;
   idle_reminder?: IdleReminderConfig; // idle再通知設定（オプション、未設定で無効）
+  economy?: EconomyConfig; // 所持金・所持品・item_use の設定
+  items?: ItemConfig[]; // アイテムカタログ
 }
 ```
+
+`timezone` はワールドのローカル時刻を決める正本であり、天気取得・通知時刻・観戦 UI 向け `calendar` 生成の基準として使う。値は IANA timezone database の識別子（例: `Asia/Tokyo`）を前提とする。
 
 ### 6.2 世界観設定
 
@@ -238,6 +265,53 @@ interface IdleReminderConfig {
 ```
 
 `idle_reminder` フィールドはオプショナルであり、未設定の場合この機能は無効となる。設定された場合、エージェントがidle状態に入ってから `interval_ms` ごとに再通知を送信し、行動を促す。
+
+### 6.8 経済設定
+
+```typescript
+interface EconomyConfig {
+  initial_money?: number; // login時の初期所持金。未設定時は 0
+  max_inventory_slots?: number; // 所持品スロット上限。未設定時は無制限
+  item_use_duration_ms?: number; // 汎用 item_use の所要時間。未設定時は 600_000
+}
+```
+
+- `initial_money` は新規登録直後および再ログイン時の未保存エージェントに適用する
+- `max_inventory_slots` は `reward_items` や `use-item` 後の所持品数制御に使う
+- `item_use_duration_ms` は 03-world-engine.md / 05-actions.md の `item_use` タイマーの正本である
+
+### 6.9 アイテムカタログ
+
+```typescript
+type ItemType = "general" | "food" | "drink" | "venue";
+
+interface ItemConfig {
+  item_id: string; // 一意なアイテムID
+  name: string;
+  description: string;
+  type: ItemType;
+  stackable: boolean;
+  max_stack?: number; // stackable = true のときのみ利用
+}
+
+interface AgentItem {
+  item_id: string;
+  quantity: number;
+}
+```
+
+`ItemType` の意味:
+
+| 値 | 用途 |
+|----|------|
+| `general` | 汎用使用できる一般アイテム |
+| `food` | 汎用使用でき、完了通知で「食べました」を使う |
+| `drink` | 汎用使用でき、完了通知で「飲みました」を使う |
+| `venue` | 汎用 `use-item` できず、`required_items` を参照するアクション場所案内に使う |
+
+- `ServerConfig.items` は `item_id` ごとの正本カタログであり、`required_items` / `reward_items` / `AgentItem.item_id` はここを参照する
+- `stackable = false` のアイテムは 1 件ごとに別スロットとして数える
+- `stackable = true` でも `max_stack` を超える数量は別スロットへ分割され、`max_inventory_slots` を超える分は保持できない
 
 ## 7. 知覚範囲
 
