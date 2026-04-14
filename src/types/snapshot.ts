@@ -61,6 +61,9 @@ export interface AgentSnapshot {
   discord_channel_id: string;
   money: number;
   items: AgentItem[];
+  discord_bot_avatar_url?: string;
+  status_emoji: string;
+  current_conversation_id?: string;
   movement?: {
     from_node_id: NodeId;
     to_node_id: NodeId;

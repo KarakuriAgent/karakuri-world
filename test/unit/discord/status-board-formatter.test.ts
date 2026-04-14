@@ -11,6 +11,7 @@ function createAgentSnapshot(overrides: Partial<AgentSnapshot>): AgentSnapshot {
     agent_name: 'agent',
     node_id: '3-1',
     state: 'idle',
+    status_emoji: '',
     discord_channel_id: 'channel',
     money: 0,
     items: [],

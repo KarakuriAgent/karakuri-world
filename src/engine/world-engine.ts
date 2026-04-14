@@ -83,6 +83,60 @@ type EmittableWorldEvent<T extends WorldEvent = WorldEvent> = T extends WorldEve
   ? Omit<T, 'event_id' | 'occurred_at'>
   : never;
 
+function findActionEmoji(config: ServerConfig, actionId: string): string | undefined {
+  for (const building of config.map.buildings) {
+    const action = building.actions.find((candidate) => candidate.action_id === actionId);
+    if (action) {
+      return action.emoji;
+    }
+  }
+
+  for (const npc of config.map.npcs) {
+    const action = npc.actions.find((candidate) => candidate.action_id === actionId);
+    if (action) {
+      return action.emoji;
+    }
+  }
+
+  return undefined;
+}
+
+function resolveStatusEmoji(params: {
+  state: AgentState;
+  currentActivity?: WorldSnapshot['agents'][number]['current_activity'];
+  actionEmoji?: string;
+}): string {
+  if (params.state === 'moving') {
+    return '🚶';
+  }
+  if (params.state === 'in_conversation') {
+    return '💬';
+  }
+  if (params.currentActivity?.type === 'wait') {
+    return '💤';
+  }
+  if (params.currentActivity?.type === 'item_use') {
+    return '🧰';
+  }
+  if (params.currentActivity?.type === 'action') {
+    return params.actionEmoji ?? '✨';
+  }
+  return '';
+}
+
+function getSnapshotConversationId(state: WorldState, agentId: string, currentConversationId: string | null): string | null {
+  if (!currentConversationId) {
+    return null;
+  }
+
+  const conversation = state.conversations.get(currentConversationId);
+  if (!conversation || !conversation.participant_agent_ids.includes(agentId)) {
+    return null;
+  }
+
+  return currentConversationId;
+}
+
 export interface DiscordRuntimeAdapter {
   createAgentChannel(agentName: string, agentId: string): Promise<string>;
   deleteAgentChannel(channelId: string): Promise<void>;
@@ -460,6 +514,7 @@ export class WorldEngine {
           }
         : {}),
       agents: this.state.listLoggedIn().map((agent) => {
+        const registration = this.state.getById(agent.agent_id);
         const movementTimer = agent.state === 'moving' ? getMovementTimer(this, agent.agent_id) : null;
         const actionTimer = this.timerManager.find(
           (timer): timer is ActionTimer => timer.type === 'action' && timer.agent_id === agent.agent_id,
@@ -470,6 +525,31 @@ export class WorldEngine {
         const itemUseTimer = this.timerManager.find(
           (timer): timer is ItemUseTimer => timer.type === 'item_use' && timer.agent_id === agent.agent_id,
         );
+        const currentActivity = actionTimer
+          ? {
+              type: 'action' as const,
+              action_id: actionTimer.action_id,
+              action_name: actionTimer.action_name,
+              duration_ms: actionTimer.duration_ms,
+              completes_at: actionTimer.fires_at,
+            }
+          : waitTimer
+            ? {
+                type: 'wait' as const,
+                duration_ms: waitTimer.duration_ms,
+                completes_at: waitTimer.fires_at,
+              }
+            : itemUseTimer
+              ? {
+                  type: 'item_use' as const,
+                  item_id: itemUseTimer.item_id,
+                  item_name: itemUseTimer.item_name,
+                  completes_at: itemUseTimer.fires_at,
+                }
+              : undefined;
+        const actionEmoji =
+          currentActivity?.type === 'action' ? findActionEmoji(this.config, currentActivity.action_id) : undefined;
+        const snapshotConversationId = getSnapshotConversationId(this.state, agent.agent_id, agent.current_conversation_id);
 
         return {
           agent_id: agent.agent_id,
@@ -479,6 +559,21 @@ export class WorldEngine {
           discord_channel_id: agent.discord_channel_id,
           money: agent.money,
           items: [...agent.items],
+          ...(registration?.discord_bot_avatar_url
+            ? {
+                discord_bot_avatar_url: registration.discord_bot_avatar_url,
+              }
+            : {}),
+          status_emoji: resolveStatusEmoji({
+            state: agent.state,
+            currentActivity,
+            actionEmoji,
+          }),
+          ...(snapshotConversationId
+            ? {
+                current_conversation_id: snapshotConversationId,
+              }
+            : {}),
           ...(movementTimer
             ? {
                 movement: {
@@ -489,34 +584,11 @@ export class WorldEngine {
                 },
               }
             : {}),
-          ...(actionTimer
+          ...(currentActivity
             ? {
-                current_activity: {
-                  type: 'action' as const,
-                  action_id: actionTimer.action_id,
-                  action_name: actionTimer.action_name,
-                  duration_ms: actionTimer.duration_ms,
-                  completes_at: actionTimer.fires_at,
-                },
+                current_activity: currentActivity,
               }
-            : waitTimer
-              ? {
-                  current_activity: {
-                    type: 'wait' as const,
-                    duration_ms: waitTimer.duration_ms,
-                    completes_at: waitTimer.fires_at,
-                  },
-                }
-              : itemUseTimer
-                ? {
-                    current_activity: {
-                      type: 'item_use' as const,
-                      item_id: itemUseTimer.item_id,
-                      item_name: itemUseTimer.item_name,
-                      completes_at: itemUseTimer.fires_at,
-                    },
-                  }
-                : {}),
+            : {}),
         };
       }),
       conversations: this.state.conversations.list().map((conversation) => ({

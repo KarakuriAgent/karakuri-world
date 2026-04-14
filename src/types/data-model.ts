@@ -30,6 +30,7 @@ interface ActionConfigBase {
   action_id: string;
   name: string;
   description: string;
+  emoji?: string;
   hours?: Hours;
   cost_money?: number;
   reward_money?: number;
