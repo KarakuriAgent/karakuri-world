@@ -353,9 +353,19 @@ DO は以下の順で変換する。
 | `item_use_completed` | `agent_id`, `agent_name`, `item_id`, `item_name`, `item_type` | 所持品残高・在庫差分の追加フィールド全般 |
 | `item_use_venue_rejected` | `agent_id`, `agent_name`, `item_id`, `item_name`, `venue_hints` | 所持品残高・在庫差分の追加フィールド全般 |
 | 会話系イベント | 03-world-engine.md / 06-conversation.md で定義される会話公開フィールド（`conversation_id`, 参加者, 話者, `message`, `reason`, `final_message` など UI 表示に使うもの） | 内部通知導線・秘密情報・将来追加される非公開フィールド |
-| `server_event_fired` | `server_event_id`, `description`, `delivered_agent_ids`, `pending_agent_ids` | なし |
+| `server_event_fired` | `server_event_id`, `description`, `delivered_agent_ids`, `pending_agent_ids`, `delayed` | なし |
 
 特に `cost_money`, `reward_money`, `required_items`, `reward_items`, `money_balance`, `items_consumed`, `items_granted`, `items_dropped` といった経済・インベントリ関連フィールドは、設定由来でもイベント結果由来でも公開契約へ入れない。
+
+`delayed` を `server_event_fired` の公開フィールドに含めるのは、observability 上の必須情報だからである。同じ `server_event_id` の遅延再配信を `server_event_instances.first_occurred_at` / `last_occurred_at` 差分で検出する設計（14-ui-history-api.md §4.3）と組み合わせ、運用者が遅延再配信の発生を後追い可能にする。なお `delayed` は UI 描画には使わず、`SpectatorRecentServerEvent` には載せない。
+
+### 5.4 未知イベント・未知フィールド受信時の規則
+
+`/ws` 経由で本表に列挙されていない `event.type` を受信した場合、または既知イベントに想定外フィールドが含まれていた場合の DO 側挙動は次のとおりとする。
+
+- **未知 `event.type`**: `world_events` / link 表への保存を行わずに drop する。drop 件数は `event.type` 単位で metric として記録し、warn ログを出す。`SpectatorSnapshot` の生成・配信にも反映しない
+- **既知イベントの未知フィールド**: 本表 / §5.3 に列挙された allowlist フィールドのみを `payload_json` へ保存し、それ以外は黙って捨てる。新規フィールド検出時に warn ログ + metric を出す
+- これにより本体側で新イベントや新フィールドが追加された際にも、UI 中継・履歴 API 側の公開境界が自動的に拡張されない
 
 詳細な D1 形式は 14-ui-history-api.md を参照。
 

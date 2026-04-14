@@ -60,6 +60,7 @@ CREATE TABLE world_event_agents (
   event_id TEXT NOT NULL,
   agent_id TEXT NOT NULL,
   occurred_at INTEGER NOT NULL,
+  event_type TEXT NOT NULL,
   role TEXT NOT NULL,
   PRIMARY KEY (event_id, agent_id),
   FOREIGN KEY (event_id) REFERENCES world_events(event_id) ON DELETE CASCADE
@@ -68,19 +69,28 @@ CREATE TABLE world_event_agents (
 CREATE INDEX world_event_agents_agent_timeline_idx
   ON world_event_agents (agent_id, occurred_at DESC, event_id DESC);
 
+CREATE INDEX world_event_agents_agent_type_timeline_idx
+  ON world_event_agents (agent_id, event_type, occurred_at DESC, event_id DESC);
+
 CREATE TABLE world_event_conversations (
   event_id TEXT NOT NULL,
   conversation_id TEXT NOT NULL,
   occurred_at INTEGER NOT NULL,
+  event_type TEXT NOT NULL,
   PRIMARY KEY (event_id, conversation_id),
   FOREIGN KEY (event_id) REFERENCES world_events(event_id) ON DELETE CASCADE
 );
 
 CREATE INDEX world_event_conversations_timeline_idx
   ON world_event_conversations (conversation_id, occurred_at DESC, event_id DESC);
+
+CREATE INDEX world_event_conversations_type_timeline_idx
+  ON world_event_conversations (conversation_id, event_type, occurred_at DESC, event_id DESC);
 ```
 
-`event_id` は UUID 系の非時系列 ID であり、`ORDER BY occurred_at DESC, event_id DESC` の第二キーにしか使えない。したがって `/api/history?agent_id=...` と `/api/history?conversation_id=...` の driver はそれぞれ `world_event_agents` / `world_event_conversations` とし、両リンク表に `occurred_at` を冗長保持して cursor 順序と一致する index を持たせる。`world_event_agents.occurred_at` と `world_event_conversations.occurred_at` は常に対応する `world_events.occurred_at` のコピーでなければならない。
+`event_id` は UUID 系の非時系列 ID であり、`ORDER BY occurred_at DESC, event_id DESC` の第二キーにしか使えない。したがって `/api/history?agent_id=...` と `/api/history?conversation_id=...` の driver はそれぞれ `world_event_agents` / `world_event_conversations` とし、両リンク表に `occurred_at` を冗長保持して cursor 順序と一致する index を持たせる。
+
+link 表側にも `event_type` を冗長保持し、`(scope_key, event_type, occurred_at DESC, event_id DESC)` 型の複合 index を別途用意する。これにより `types` フィルタつきクエリ（§5.3）でも join 後フィルタを避け、scope + 型で index 走査を完結できる。冗長保存される値は `world_events.event_type` と `world_events.occurred_at` のコピーであり、ingest はこの整合を §4 の D1 batch / トランザクション内で保証する。同 ingest 内で値がずれる場合は batch 全体を失敗扱いとする。
 
 ## 4. 取り込みルール
 
@@ -113,7 +123,7 @@ UI はまず `summary_emoji`, `summary_title`, `summary_text` を一覧表示し
 | イベント種別 | link する agent と role |
 |-------------|-------------------------|
 | `conversation_requested` | `initiator_agent_id`=`subject`、`target_agent_id`=`target` |
-| `conversation_accepted` | `initiator_agent_id`=`subject`、`participant_agent_ids` のうち initiator 以外=`participant` |
+| `conversation_accepted` | `initiator_agent_id`=`subject`、`participant_agent_ids` のうち initiator 以外=`participant`（acceptor も `participant_agent_ids` に必ず含まれる前提） |
 | `conversation_rejected` | `initiator_agent_id`=`subject`、`target_agent_id`=`target` |
 | `conversation_message` | `speaker_agent_id`=`subject`、`listener_agent_ids`=`participant` |
 | `conversation_join` | `agent_id`=`subject`、`participant_agent_ids` のうち joiner 以外=`participant` |
@@ -131,8 +141,8 @@ ingest 時の順序は以下で固定する。
 
 1. 現在の `BridgeState.conversations[conversation_id]` を読み、incoming event を適用した **next state** をローカルに作る
 2. agent link / conversation link の解決はこの next state を使う。したがって `conversation_turn_started` / `conversation_inactive_check` の participant 補完は「event 適用後」の authoritative 集合になる
-3. `world_events` / link 表への D1 書き込みを行う
-4. D1 書き込み成功後にだけ next state を `BridgeState.conversations` へ commit する。失敗時は mirror 更新も破棄し、次回 snapshot 再同期を待つ
+3. `world_events` 1 行 + link 表（`world_event_agents` / `world_event_conversations`）+ `server_event_fired` 時の `server_event_instances` UPSERT を **同一の D1 batch / トランザクションで atomic に書き込む**。partial write を許容しない
+4. D1 batch 成功後にだけ next state を `BridgeState.conversations` へ commit する。batch のいずれか 1 文でも失敗した場合は mirror 更新を破棄し、観測された失敗を 13-ui-relay-backend.md §9.1 のメトリクスへ記録したうえで次回 snapshot 再同期を待つ
 
 next state の更新規則は次のとおり。
 
@@ -147,8 +157,8 @@ next state の更新規則は次のとおり。
 | `conversation_inactive_check` | participant 集合は変更しない。link 解決時だけ current mirror を参照する |
 | `conversation_interval_interrupted` | payload の `participant_agent_ids` があれば participant 集合を同期し、`next_speaker_agent_id` を `current_speaker_agent_id` へ反映する。`closing: true` でも status の確定は後続の `conversation_closing` を待つ |
 | `conversation_turn_started` | participant 集合は維持したまま `current_speaker_agent_id` を更新する |
-| `conversation_closing` | payload の `participant_agent_ids` で participant 集合を置換し、`status: 'closing'`, `current_speaker_agent_id`, `closing_reason` を更新する |
-| `conversation_ended` | link 解決後に mirror から削除する |
+| `conversation_closing` | payload の `participant_agent_ids` で participant 集合を置換し、`status: 'closing'`, `current_speaker_agent_id`, `closing_reason` を更新する。`conversation_closing.reason` は `'ended_by_agent' \| 'max_turns' \| 'server_event'` の 3 値のみ |
+| `conversation_ended` | mirror に存在すれば `status: 'closing'`, `closing_reason: event.reason` を一時更新したうえで link を解決し、解決後に mirror から削除する。`conversation_ended.reason` は `ConversationClosureReason` 全 5 値（`'turn_timeout'` / `'participant_logged_out'` を含む）。これにより `conversation_closing` を経由しない直接終了経路でも `closing_reason` が観測できる |
 | `conversation_pending_join_cancelled` | mirror 変更なし |
 
 これにより `conversation_turn_started` や `conversation_inactive_check` も、直前 event の join / leave / closing がまだ `latest_snapshot` に反映されていなくても、正しい participant 集合で全参加者の agent timeline に現れる。
@@ -205,17 +215,21 @@ DO の cold start 復元は `server_event_instances_recent_idx` を使って `OR
 
 ### 5.1 クエリパラメータ
 
+`agent_id` か `conversation_id` のどちらか **ちょうど 1 つ** が必須である。両方指定や両方欠落は不正リクエストとする。型は scope を discriminated union で表現する。
+
 ```typescript
-interface HistoryQuery {
-  agent_id?: string;
-  conversation_id?: string;
+interface HistoryQueryBase {
   types?: string;   // カンマ区切り
   cursor?: string;  // base64url(`${occurred_at}:${event_id}`)
   limit?: number;   // 1..100, default 20
 }
+
+type HistoryQuery =
+  | (HistoryQueryBase & { agent_id: string; conversation_id?: never })
+  | (HistoryQueryBase & { conversation_id: string; agent_id?: never });
 ```
 
-少なくとも `agent_id` または `conversation_id` のどちらか 1 つは必須とする。
+実装は HTTP クエリ文字列を上記 union のどちらかに正規化し、両方欠落・両方指定はいずれも 400 `invalid_request` とする（§5.4 参照）。
 
 ### 5.2 レスポンス
 
@@ -246,10 +260,10 @@ interface HistoryResponse {
 - cursor は「この項目より古いデータ」を指す
 - `next_cursor` がなければ終端
 
-agent / conversation 履歴は link 表を先頭に読む。`event_id` 単独では時系列を表さないため、cursor 条件と sort 条件は必ず link 表の `occurred_at, event_id` に対して評価する。
+agent / conversation 履歴は link 表を先頭に読む。`event_id` 単独では時系列を表さないため、cursor 条件と sort 条件は必ず link 表の `occurred_at, event_id` に対して評価する。`types` フィルタも link 表側 `event_type` で評価し、複合 index `(scope_key, event_type, occurred_at DESC, event_id DESC)` を使う。
 
 ```sql
--- agent timeline
+-- agent timeline (types フィルタなし: world_event_agents_agent_timeline_idx を使う)
 SELECT we.*
 FROM world_event_agents wea
 JOIN world_events we ON we.event_id = wea.event_id
@@ -259,31 +273,46 @@ WHERE wea.agent_id = :agent_id
     OR wea.occurred_at < :cursor_occurred_at
     OR (wea.occurred_at = :cursor_occurred_at AND wea.event_id < :cursor_event_id)
   )
-  -- types filter がある場合だけ追加
-  AND we.event_type IN (...)
 ORDER BY wea.occurred_at DESC, wea.event_id DESC
 LIMIT :limit_plus_one;
 
--- conversation timeline
+-- agent timeline (types フィルタあり: world_event_agents_agent_type_timeline_idx を使う)
+SELECT we.*
+FROM world_event_agents wea
+JOIN world_events we ON we.event_id = wea.event_id
+WHERE wea.agent_id = :agent_id
+  AND wea.event_type IN (...)
+  AND (
+    :cursor_occurred_at IS NULL
+    OR wea.occurred_at < :cursor_occurred_at
+    OR (wea.occurred_at = :cursor_occurred_at AND wea.event_id < :cursor_event_id)
+  )
+ORDER BY wea.occurred_at DESC, wea.event_id DESC
+LIMIT :limit_plus_one;
+
+-- conversation timeline (types フィルタあり: world_event_conversations_type_timeline_idx を使う)
 SELECT we.*
 FROM world_event_conversations wec
 JOIN world_events we ON we.event_id = wec.event_id
 WHERE wec.conversation_id = :conversation_id
+  AND wec.event_type IN (...)
   AND (
     :cursor_occurred_at IS NULL
     OR wec.occurred_at < :cursor_occurred_at
     OR (wec.occurred_at = :cursor_occurred_at AND wec.event_id < :cursor_event_id)
   )
-  AND we.event_type IN (...)
 ORDER BY wec.occurred_at DESC, wec.event_id DESC
 LIMIT :limit_plus_one;
 ```
+
+`types` フィルタは link 表側 index で完結させ、`world_events` を `event_type` で全走査しないこと。クエリプランナで join 後フィルタになっていないかは ingest 時に意図したインデックスが選ばれるか EXPLAIN で確認する。
 
 ### 5.4 バリデーション
 
 | ステータス | エラーコード | 条件 |
 |-----------|-------------|------|
 | 400 | `invalid_request` | `agent_id`, `conversation_id` の両方欠落 |
+| 400 | `invalid_request` | `agent_id` と `conversation_id` の両方指定 |
 | 400 | `invalid_request` | `limit` が範囲外 |
 | 400 | `invalid_cursor` | cursor の decode 失敗 |
 
