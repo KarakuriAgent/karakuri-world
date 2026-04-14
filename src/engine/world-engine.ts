@@ -73,7 +73,9 @@ import type { MapConfig, NodeId, ServerConfig } from '../types/data-model.js';
 import type { WorldEvent } from '../types/event.js';
 import type { WorldSnapshot } from '../types/snapshot.js';
 import type { ActionTimer, ItemUseTimer, WaitTimer } from '../types/timer.js';
+import { getMapRenderTheme } from '../discord/map-renderer.js';
 import { EventBus } from './event-bus.js';
+import { buildWorldCalendarSnapshot } from './world-snapshot.js';
 import { WorldState } from './state/world-state.js';
 import { TimerManager } from './timer-manager.js';
 
@@ -447,6 +449,8 @@ export class WorldEngine {
     return {
       world: this.config.world,
       map: this.config.map,
+      calendar: buildWorldCalendarSnapshot(now, this.config.timezone),
+      map_render_theme: getMapRenderTheme(),
       ...(weather
         ? {
             weather: {

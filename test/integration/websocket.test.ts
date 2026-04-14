@@ -121,6 +121,20 @@ describe('websocket integration', () => {
 
     const snapshotMessage = await waitForMessage(messages, (message) => message.type === 'snapshot');
     expect(snapshotMessage.type).toBe('snapshot');
+    expect(snapshotMessage.data.calendar).toMatchObject({
+      timezone: 'Asia/Tokyo',
+      local_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      local_time: expect.stringMatching(/^\d{2}:\d{2}:\d{2}$/),
+      season: expect.stringMatching(/^(spring|summer|autumn|winter)$/),
+      season_label: expect.stringMatching(/^(春|夏|秋|冬)$/),
+      day_in_season: expect.any(Number),
+      display_label: expect.stringMatching(/.+・\d+日目$/),
+    });
+    expect(snapshotMessage.data.map_render_theme).toMatchObject({
+      cell_size: 96,
+      node_id_font_size: 12,
+      background_fill: '#e2e8f0',
+    });
     expect(snapshotMessage.data.agents).toEqual([]);
 
     const registration = await engine.registerAgent({ discord_bot_id: 'bot-alice', });

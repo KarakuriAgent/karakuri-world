@@ -27,6 +27,32 @@ export interface SnapshotWeather {
   temperature_celsius: number;
 }
 
+export interface WorldCalendarSnapshot {
+  timezone: string;
+  local_date: string;
+  local_time: string;
+  season: 'spring' | 'summer' | 'autumn' | 'winter';
+  season_label: '春' | '夏' | '秋' | '冬';
+  day_in_season: number;
+  display_label: string;
+}
+
+export interface MapRenderTheme {
+  cell_size: number;
+  label_font_size: number;
+  node_id_font_size: number;
+  background_fill: string;
+  grid_stroke: string;
+  default_node_fill: string;
+  normal_node_fill: string;
+  wall_node_fill: string;
+  door_node_fill: string;
+  npc_node_fill: string;
+  building_palette: string[];
+  wall_text_color: string;
+  default_text_color: string;
+}
+
 export interface AgentSnapshot {
   agent_id: string;
   agent_name: string;
@@ -67,6 +93,8 @@ export interface ServerEventSnapshot {
 export interface WorldSnapshot {
   world: WorldConfig;
   map: MapConfig;
+  calendar: WorldCalendarSnapshot;
+  map_render_theme: MapRenderTheme;
   weather?: SnapshotWeather;
   agents: AgentSnapshot[];
   conversations: ConversationSnapshot[];
