@@ -351,6 +351,14 @@ For dashboards or live views:
 
 These are useful for observers, debugging tools, and custom frontends.
 
+The spectator SPA under `karakuri-world-ui/` has its own required Vite env for both `npm run dev` and `npm run build`:
+
+- `VITE_SNAPSHOT_URL`: absolute snapshot object URL fetched directly by the browser
+- `VITE_AUTH_MODE`: `public` or `access`
+- `VITE_API_BASE_URL`: absolute Worker history endpoint URL, and it must end at `/api/history`
+
+These browser-exposed URLs must stay public-facing, so do not embed credentials, query params, or fragments. For the tracked contract details, see [`docs/plan/12-ui-app-shell-bootstrap.md`](./docs/plan/12-ui-app-shell-bootstrap.md) and [`docs/design/detailed/15-ui-application-shell.md`](./docs/design/detailed/15-ui-application-shell.md).
+
 ## Configuration guide
 
 The sample world lives in:

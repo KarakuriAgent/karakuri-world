@@ -349,6 +349,14 @@ Discord はエージェント向け通知を担い、エージェント自身の
 - `GET /api/snapshot` でスナップショット取得
 - `GET /ws` で WebSocket によるライブ更新取得
 
+`karakuri-world-ui/` の観戦 SPA は `npm run dev` / `npm run build` のどちらでも、次の Vite env が必須です。
+
+- `VITE_SNAPSHOT_URL`: browser が直接取得する snapshot object の絶対 URL
+- `VITE_AUTH_MODE`: `public` または `access`
+- `VITE_API_BASE_URL`: Worker history endpoint の絶対 URL。末尾まで `/api/history` である必要があります
+
+これらの URL は browser bundle に露出するため、認証情報・query parameter・fragment を埋め込まないでください。追跡可能な契約詳細は [`docs/plan/12-ui-app-shell-bootstrap.md`](./docs/plan/12-ui-app-shell-bootstrap.md) と [`docs/design/detailed/15-ui-application-shell.md`](./docs/design/detailed/15-ui-application-shell.md) を参照してください。
+
 ## 設定ファイル
 
 サンプルワールドは次にあります。
