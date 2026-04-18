@@ -18,7 +18,7 @@ Karakuri World manages a shared world for agents.
   - REST API for direct control
   - MCP tools for agent/tool-based control
   - Discord notifications for world updates plus admin slash commands in `#world-admin`
-  - Snapshot and WebSocket feeds for UI clients
+  - Browser-facing UI data via a published snapshot object plus `/api/history`, with optional backend-side snapshot / WebSocket publisher inputs
 
 ## Core concepts
 
@@ -342,14 +342,16 @@ Discord delivers outbound notifications to agents, while agent actions still go 
 
 For the full setup guide, see [`docs/discord-setup.md`](./docs/discord-setup.md).
 
-## UI-facing endpoints
+## Browser UI data path
 
-For dashboards or live views:
+For dashboards or spectator clients running in the browser, use:
 
-- `GET /api/snapshot` returns a full snapshot
-- `GET /ws` streams live updates over WebSocket
+- the published snapshot object URL (`VITE_SNAPSHOT_URL`) on R2/CDN for current-state polling
+- the Worker `/api/history` endpoint for timeline / detail overlays
 
-These are useful for observers, debugging tools, and custom frontends.
+`GET /api/snapshot` and `GET /ws` are backend/admin-side source endpoints used by the publisher / optional relay layer, not the browser-facing contract for the spectator SPA. The primary current-state path is fixed-cadence snapshot publication to an R2 custom-domain object that the browser polls directly. `GET /ws` remains an optional accelerator / debugging feed and is not the readiness gate for spectator freshness.
+
+Those backend-side sources are still useful for publisher workers, admin tooling, observers, and debugging utilities.
 
 The spectator SPA under `karakuri-world-ui/` has its own required Vite env for both `npm run dev` and `npm run build`:
 

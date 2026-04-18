@@ -1,8 +1,9 @@
 # Unit 09 - Relay 障害観測と運用シグナル
-- 参照: docs/design/detailed/13-ui-relay-backend.md §9, §9.1
-- 目的: snapshot / D1 / WebSocket 障害を無言で見逃さない最低限の運用観測を実装する。
-- 実装対象: `relay.ws.disconnect_total{reason,handshake_status}`、`relay.ws.connect_duration_ms`、`relay.ws.event_gap_ms`、`relay.snapshot.refresh_failure_total{reason}`、`relay.r2.publish_failure_total`、`relay.r2.publish_failure_streak`、`relay.heartbeat.failure_streak`、`relay.d1.ingest_failure_total{event_type}`、`relay.d1.retention_run_total{result}`、`relay.d1.retention_deleted_rows`、`relay.event.unknown_total{event_type}`、`relay.snapshot.generated_age_ms`、`relay.snapshot.published_age_ms` の送出点整理。
-- 完了条件: 主要障害経路で counter / gauge が確実に増分され、ログと指標の相関が取れる。構成不備（`auth_rejected` 持続）と一時ネットワーク障害を `handshake_status` で区別でき、切断中イベント欠落範囲を `connect_duration_ms` / `event_gap_ms` から推定できる。retention cron の成功・失敗・削除件数が観測できる。
-- 依存: Unit 06〜08。
-- 検証: 失敗注入テスト（R2 PUT / D1 ingest / retention cron / WebSocket upgrade それぞれ）、metric emission テスト、切断 → 再接続シナリオで `connect_duration_ms` / `event_gap_ms` が出力されるテスト、ログ文脈テスト。
-- 非対象: 外部監視 SaaS 選定、通知先ごとの alert ルーティング実装（Unit 28 で扱う）。
+- 注記: Unit 29 で primary publisher path の `ui.snapshot.*` / `ui.r2.*` emit points を持ち、Unit 10 で `ui.d1.retention_*` emit points を持ち、Unit 31 でそれらを束ねた readiness gate を定義したため、この Unit は **relay `/ws` を有効化する配備だけに追加で積む optional hardening** として扱う。alert wiring 自体は Unit 28、relay の位置づけ変更は Unit 32 を参照。
+- 参照: docs/design/detailed/13-ui-relay-backend.md §6, §9, §9.1, docs/plan/28-relay-alert-wiring-readiness.md, docs/plan/29-polling-r2-primary-architecture.md, docs/plan/31-polling-r2-cdn-readiness.md, docs/plan/32-optional-relay-ws-accelerator.md
+- 目的: optional relay / history ingest を有効化した配備で、WebSocket 切断や補助 ingest 劣化を無言で見逃さない最低限の運用観測を実装する。
+- 実装対象: primary readiness set に含まれる `ui.*` 指標のうち、Unit 29 が emit する primary / publisher-side 指標（`ui.snapshot.refresh_failure_total{reason}`、`ui.r2.publish_failure_total`、`ui.r2.publish_failure_streak`、`ui.snapshot.generated_age_ms`、`ui.snapshot.published_age_ms`）と、Unit 10 が emit 済みの retention 指標（`ui.d1.retention_run_total{result}`、`ui.d1.retention_deleted_rows`）を前提にしつつ、本 Unit では optional relay / degraded-path 専用シグナルとして `ui.d1.ingest_failure_total{event_type}`、`relay.ws.disconnect_total{reason,handshake_status}`、`relay.ws.connect_duration_ms`、`relay.ws.event_gap_ms`、`relay.heartbeat.failure_streak`、`relay.event.unknown_total{event_type}` の送出点とログ相関を整理する。
+- 完了条件: relay を無効化しても primary readiness の `ui.*` 指標 ownership は Unit 29（`ui.snapshot.*` / `ui.r2.*`）と Unit 10（`ui.d1.retention_*`）で完結しており、本 Unit を積んだ配備では構成不備（`auth_rejected` 持続）と一時ネットワーク障害を `handshake_status` で区別でき、切断中イベント欠落範囲を `connect_duration_ms` / `event_gap_ms` から推定できる。`ui.d1.ingest_failure_total{event_type}` は `/api/history` degraded-path 専用シグナルとして観測できる。
+- 依存: Unit 06〜08, Unit 10, Unit 29。retention cron と `ui.d1.retention_*` emit は Unit 10 完了を前提にし、本 Unit はその観測結果を readiness / alert review に取り込む。
+- 検証: 失敗注入テスト（D1 ingest / WebSocket upgrade と、Unit 10 が提供する retention cron metric の確認）、metric emission テスト、切断 → 再接続シナリオで `connect_duration_ms` / `event_gap_ms` が出力されるテスト、ログ文脈テスト。
+- 非対象: primary-path readiness の最低監視項目の emit 実装（Unit 29 で扱う）、その gate 定義（Unit 31 で扱う）、外部監視 SaaS 選定、通知先ごとの alert ルーティング実装（Unit 28 で扱う）。

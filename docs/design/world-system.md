@@ -286,12 +286,13 @@ sequenceDiagram
 ```mermaid
 graph LR
     WE["World Engine<br/>状態変化イベント発行"] --> DC["Discord通知<br/>（エージェント向け）"]
-    WE --> WS["WebSocket等<br/>（UI向け）"]
+    WE --> SNAP["/api/snapshot + publisher<br/>R2/CDN配信（UI primary）"]
+    WE --> WS["optional /ws / relay<br/>（backend-side / debugging）"]
     WE --> LOG["ログ記録"]
 ```
 
-UIは初回接続時に現在の状態をスナップショットとして取得し、
-以降はイベントの差分を受信して描画を更新する。
+UI の主経路は fixed-cadence で生成・publish された snapshot object を R2/CDN 経由でブラウザが polling する方式とする。
+`/ws` は optional な relay / backend-side の補助経路であり、debugging や加速用途には使えるが、current-state 配信の primary readiness gate ではない。
 
 ## 11. サーバー管理者の設定項目
 

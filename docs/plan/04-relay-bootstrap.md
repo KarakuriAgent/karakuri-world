@@ -1,4 +1,5 @@
 # Unit 04 - Relay Worker / DO 起動基盤
+- 注記: Unit 29 以降で browser UI の primary path は polling + R2/CDN publish へ移ったため、この Unit は **29+ の primary path に追加で載せる optional relay / DO backend 基盤** として扱う。launch readiness の主判定は Unit 29〜31、relay の再配置は Unit 32 を参照。
 - 参照: docs/design/detailed/13-ui-relay-backend.md §1, §2, §3.1, §3.2
 - 目的: UI 中継バックエンドの最小起動経路を作り、singleton DO・環境変数・初回 WebSocket 接続を成立させる。
 - 実装対象: env 解析、KW_BASE_URL からの /ws /api/snapshot URL 導出、DO singleton 化、cold start 時の recent_server_events 復元、初回 snapshot 受信後の内部状態初期化。

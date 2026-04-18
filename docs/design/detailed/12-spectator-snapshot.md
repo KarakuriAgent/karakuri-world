@@ -2,13 +2,13 @@
 
 ## 1. 目的
 
-本書は UI システム向けに公開する `SpectatorSnapshot` と、それを生成するために Karakuri World 本体へ追加する型・変換ルールを定義する。方針は「ブラウザに出してよい情報だけを、UI がそのまま描画できる形で渡す」である。`GET /api/snapshot` と `/ws` 初回 `snapshot` の契約は引き続き内部 / 管理向け `WorldSnapshot` であり、Durable Object がその入力を受けて `SpectatorSnapshot` へ変換する。
+本書は UI システム向けに公開する `SpectatorSnapshot` と、それを生成するために Karakuri World 本体へ追加する型・変換ルールを定義する。方針は「ブラウザに出してよい情報だけを、UI がそのまま描画できる形で渡す」である。`GET /api/snapshot` は引き続き内部 / 管理向け `WorldSnapshot` を返す正本 API であり、primary path では snapshot publisher がこれを fixed cadence で取得して `SpectatorSnapshot` へ変換する。relay が `/ws` 初回 `snapshot` を使う場合も、それは補助経路として扱う。
 
 ## 2. 本体側の追加データ
 
 ### 2.1 `WorldSnapshot` の追加項目
 
-DO が `/api/snapshot` と `/ws` 初回 `snapshot` を正本の世界状態として再利用できるよう、`WorldSnapshot` に以下を追加する。固定表示する直近サーバーイベント履歴は 5.1 のとおり DO 側の永続化データから補う。
+snapshot publisher が `/api/snapshot` を正本の世界状態として再利用できるよう、`WorldSnapshot` に以下を追加する。relay が `/ws` 初回 `snapshot` を使う場合も同じ構造を読む。固定表示する直近サーバーイベント履歴は 5.1 のとおり D1 ないし同等の永続化データから補う。
 
 ```typescript
 interface WorldCalendarSnapshot {
@@ -123,7 +123,7 @@ interface ActionConfigBase {
 
 ### 3.1 `SpectatorSnapshot`
 
-DO は `WorldSnapshot` から以下の公開専用型へ変換して R2 に書き出す。
+snapshot publisher は `WorldSnapshot` から以下の公開専用型へ変換して R2 に書き出す。
 
 ```typescript
 interface SpectatorWorldSnapshot {
@@ -237,13 +237,13 @@ interface SpectatorSnapshot {
   server_events: SpectatorServerEventSnapshot[];
   recent_server_events: SpectatorRecentServerEvent[];
   generated_at: number; // 本体 snapshot 生成時刻
-  published_at: number; // DO が R2 に反映または heartbeat 再publishした時刻
+  published_at: number; // snapshot publisher が R2 へ反映した時刻
 }
 ```
 
-現行 UI は `discord_bot_avatar_url ?? 既定アイコン` で描画してよいが、将来 overview 6.5 の UI 独自アイコン設定を導入する際は `ui_agent_icon -> discord_bot_avatar_url -> 既定アイコン` の優先順位へ拡張できる余地を残す。`discord_bot_avatar_url` 前提の実装詳細を DO 永続化契約そのものに焼き込まない。
+現行 UI は `discord_bot_avatar_url ?? 既定アイコン` で描画してよいが、将来 overview 6.5 の UI 独自アイコン設定を導入する際は `ui_agent_icon -> discord_bot_avatar_url -> 既定アイコン` の優先順位へ拡張できる余地を残す。`discord_bot_avatar_url` 前提の実装詳細を snapshot publish / 永続化契約そのものに焼き込まない。
 
-`generated_at` は本体がその `WorldSnapshot` を生成した時刻であり、overview どおり UI の stale 判定の正本とする。heartbeat refresh でも `/api/snapshot` を再取得して新しい `WorldSnapshot` を生成させるため、quiet period でも成功した再取得ごとに `generated_at` は進む。`published_at` は relay が公開 JSON を最後に正常反映した時刻で、relay 健全性診断の補助情報として使う。`server_events` は「現在未解決のイベント」、`recent_server_events` は「直近に発火したイベント履歴」であり、後者には完了済みイベントも含む。
+`generated_at` は本体がその `WorldSnapshot` を生成した時刻であり、overview どおり UI の stale 判定の正本とする。primary path では publisher が `/api/snapshot` を fixed cadence で再取得するため、quiet period でも成功した再取得ごとに `generated_at` は進む。`published_at` は snapshot publisher が公開 JSON を最後に正常反映した時刻で、配信健全性診断の補助情報として使う。`server_events` は「現在未解決のイベント」、`recent_server_events` は publisher-side cache から合成する「直近に観測・発火したイベント履歴」であり、完了済みイベントも含んでよい。ただし polling-only + cold start では publisher 起動前に完了した履歴の完全再現までは保証しない。
 
 ### 3.2 除外する情報
 
@@ -308,7 +308,7 @@ interface SpectatorSnapshot {
 
 ### 5.1 `WorldSnapshot -> SpectatorSnapshot`
 
-DO は以下の順で変換する。
+snapshot publisher（または同等の変換層）は以下の順で変換する。
 
 1. `world` から `name`, `description` のみを残す
 2. `timezone` は `calendar.timezone` を複製してトップレベルにも配置する
@@ -316,10 +316,10 @@ DO は以下の順で変換する。
 4. `agents` は内部 `WorldSnapshot.AgentSnapshot` を入力とし、`discord_channel_id`, `money`, `items` などの内部項目をここで除外したうえで、公開用 `SpectatorAgentSnapshot` へ `status_emoji` と `current_conversation_id` を含めて変換する
 5. `conversations` は UI 描画に必要な要約項目だけへ圧縮する
 6. `server_events` は `WorldSnapshot.server_events` をそのまま写し、現在 outstanding なイベントだけを保持する
-7. `recent_server_events` は DO 側で保持する `server_event_fired` 履歴から、`server_event_id` 単位で重複排除した論理イベントを `occurred_at DESC` で最大 3 件埋める。重複行がある場合の `occurred_at` はその `server_event_id` に属する最小値（初回発火時刻）を採用し、遅延再配信では順序を更新しない。履歴ソースは D1 永続化または同等の DO メモリキャッシュとし、完了済みイベントも残す。`is_active` は各 `server_event_id` が手順 6 の `server_events` にまだ存在するかで判定する
-8. `published_at` は DO の書き込み時刻で上書きする
+7. `recent_server_events` は publisher-side cache から `server_event_id` 単位で重複排除した論理イベントを `occurred_at DESC` で最大 3 件埋める。primary baseline では fixed-cadence polling 中の `WorldSnapshot.server_events` を監視し、前回 poll に無かった `server_event_id` を **新規観測**した時点の `generated_at` を `occurred_at` として記録する。D1 `server_event_instances` や relay/backfill がある配備では、その後に authoritative な初回発火時刻へ補正してよい。永続 cache を持たない cold start では起動前に完了した recent history の再現は保証しない。`is_active` は各 `server_event_id` が手順 6 の `server_events` にまだ存在するかで判定する
+8. `published_at` は publisher の書き込み時刻で上書きする
 
-将来 `ui_agent_icon` 等の UI 専用アイコン契約を追加する場合も、この変換境界で `SpectatorAgentSnapshot` に載せ替える。DO 内部の永続化・公開 JSON は「現在の Discord avatar URL」ではなく「観戦 UI が使うアイコン情報」を返す責務へ拡張可能であることを前提にしておく。
+将来 `ui_agent_icon` 等の UI 専用アイコン契約を追加する場合も、この変換境界で `SpectatorAgentSnapshot` に載せ替える。publisher / relay 境界の永続化・公開 JSON は「現在の Discord avatar URL」ではなく「観戦 UI が使うアイコン情報」を返す責務へ拡張可能であることを前提にしておく。
 
 ### 5.2 `current_activity` の変換
 
@@ -361,7 +361,7 @@ DO は以下の順で変換する。
 
 ### 5.4 未知イベント・未知フィールド受信時の規則
 
-`/ws` 経由で本表に列挙されていない `event.type` を受信した場合、または既知イベントに想定外フィールドが含まれていた場合の DO 側挙動は次のとおりとする。
+optional relay / history ingest 経路で本表に列挙されていない `event.type` を受信した場合、または既知イベントに想定外フィールドが含まれていた場合の挙動は次のとおりとする。
 
 - **未知 `event.type`**: `world_events` / link 表への保存を行わずに drop する。drop 件数は `event.type` 単位で metric として記録し、warn ログを出す。`SpectatorSnapshot` の生成・配信にも反映しない
 - **既知イベントの未知フィールド**: 本表 / §5.3 に列挙された allowlist フィールドのみを `payload_json` へ保存し、それ以外は黙って捨てる。新規フィールド検出時に warn ログ + metric を出す
@@ -374,4 +374,4 @@ DO は以下の順で変換する。
 - `SpectatorSnapshot.schema_version` は破壊的変更時にのみ更新する
 - UI は未知のフィールドを無視し、`schema_version !== 1` の場合は一時的な fetch error とは区別される `incompatible` 状態として扱い、「観戦 UI の更新が必要です。再読み込みしてください」のような永続エラーメッセージを表示する。リトライで解消しない永続エラーであるため、通常の transient error と同じ「更新の取得に失敗しました」表示には吸収しない
 - 後方互換で済む追加フィールドは `schema_version` を上げない。非互換な型・意味変更のときに限り `schema_version` を上げる
-- 本体 `WorldSnapshot` は内部用型であるため後方互換保証対象にせず、DO 変換層を境界とする
+- 本体 `WorldSnapshot` は内部用型であるため後方互換保証対象にせず、snapshot publisher / relay の変換層を境界とする

@@ -1,4 +1,5 @@
 # Unit 06 - Relay event ingest と D1 原子的保存
+- 注記: Unit 29/30 で current-state primary path と `/api/history` の critical path を relay `/ws` から切り離したため、この Unit は **optional relay を残す配備で history 補助品質を上積みする additive ingest path** として扱う。launch readiness の主判定は Unit 29〜31、relay の再配置は Unit 32 を参照。
 - 参照: docs/design/detailed/13-ui-relay-backend.md §4.3, docs/design/detailed/14-ui-history-api.md §2, §4.1〜§4.5, §6
 - 目的: /ws event を summary / payload / link 表へ一括保存し、agent / conversation 履歴の正本を構築する。
 - 実装対象: world_events 行生成、world_event_agents role 正規化、world_event_conversations link、server_event_instances UPSERT、summary template と action emoji 解決。

@@ -9,7 +9,7 @@ Create `karakuri-world-ui/.env.local` (or another Vite env file) with:
 ```bash
 VITE_SNAPSHOT_URL=https://snapshots.example.com/snapshot/latest.json
 VITE_AUTH_MODE=public
-VITE_API_BASE_URL=https://relay.example.com/api/history
+VITE_API_BASE_URL=https://history.example.com/api/history
 VITE_PHASE3_EFFECTS_ENABLED=false
 VITE_PHASE3_EFFECT_RAIN_ENABLED=false
 VITE_PHASE3_EFFECT_SNOW_ENABLED=false
@@ -39,16 +39,16 @@ npm run test:phase1-acceptance
 
 ## Phase 1 acceptance gate
 
-`npm run test:phase1-acceptance` is the focused acceptance gate for plan21 / rollout Phase 1. It makes the required checks explicit without changing the authoritative docs.
+`npm run test:phase1-acceptance` is the focused acceptance gate for the spectator UI Phase 1 behavior. The updated delivery-track pivot after Unit 28 is documented in Units 29+; this command remains the practical UI go/no-go check.
 
 The automated gate covers:
 
 - desktop + mobile initial shell layout on one shared map host
 - 100-agent snapshot reflection within the Phase 1 15-second budget
-- selected agent detail + `/api/history?agent_id=...&limit=20`
-- conversation log expansion from the same detail flow
+- selected agent detail remains coherent even when `/api/history` is empty or degraded
+- populated `/api/history?agent_id=...&limit=20` checks and conversation log expansion are additive comparisons when ingest/backfill is available
 - quiet-period freshness (`generated_at` refresh prevents stale before the 60-second threshold)
-- **Unit 27 dependency**: relay `/ws` disconnect/reconnect lifecycle, freshness continuity during downtime, and first-snapshot state rebuild after reconnect
+- **Units 29/31 alignment**: fixed-cadence snapshot publishing, driven by a **sub-minute-capable publisher trigger**, plus direct R2 polling keep freshness inside the 15-second budget without requiring relay `/ws` uptime
 
 Run the full suite with `npm test`; use `npm run test:phase1-acceptance` when you want the Phase 1 go/no-go gate only.
 
@@ -113,10 +113,11 @@ The following checks still need staging/preview infrastructure and cannot be ful
    - Verify the first direct browser fetch to `snapshot_url` succeeds with `credentials: 'include'`.
    - If the first fetch still redirects/challenges on the R2 domain, treat the deployment as invalid rather than adding a snapshot proxy.
 
-3. **Live `/ws` disconnect recovery scenario**
-   - With the deployed worker and UI open, force the relay websocket to disconnect (for example by restarting or temporarily blocking the upstream `/ws` origin).
-   - Confirm the UI keeps the previous render and does not enter stale before the 60-second threshold as long as `/api/snapshot` heartbeat refresh keeps `generated_at` moving.
-   - Restore `/ws`, then confirm the first post-reconnect snapshot rebuilds live state/conversation state and that reconnect observability is emitted (`relay.ws.disconnect_total`, `relay.ws.connect_duration_ms`, `relay.ws.event_gap_ms`).
+3. **Fixed-cadence publish continuity scenario**
+    - With the deployed worker and UI open, observe at least three consecutive publish intervals during a quiet period and confirm `generated_at` continues to advance from fixed-cadence `/api/snapshot` polling driven by a **sub-minute-capable trigger** (for example a Durable Object alarm, external cron, or always-on scheduler).
+    - Confirm the UI keeps the previous render and does not enter stale before the 60-second threshold while the R2 object keeps refreshing on the 5-second cadence.
+    - The daily Worker `scheduled()` cron that exists for retention is **not** this publisher trigger and does not satisfy the 5-second freshness requirement by itself.
+    - If relay `/ws` is also enabled in that deployment, temporarily interrupt it and confirm the primary R2 polling path still serves fresh snapshots; relay reconnect metrics remain additive rather than launch-blocking.
 
 ## Cloudflare Worker deployment
 
@@ -130,9 +131,11 @@ It also includes placeholder R2 bucket names for snapshot publishing:
 - `bucket_name = "replace-with-real-snapshot-bucket"`
 - `preview_bucket_name = "replace-with-real-snapshot-bucket-preview"`
 
-Before any real deploy, create or identify the relay history D1 database and replace both values with the IDs Wrangler returns.
+Before any real deploy, create or identify the UI history D1 database and replace both values with the IDs Wrangler returns.
 
 The checked-in `wrangler.toml` also schedules the worker `scheduled()` handler once per day at `03:00 UTC` so D1 history retention keeps running. Keep that cron (or an equivalent daily schedule) enabled in production.
+
+That daily `scheduled()` cron is **retention-only**. It is not the snapshot publisher. Production readiness additionally requires a separate **sub-minute-capable 5-second trigger** (for example a Durable Object alarm, external cron, or always-on scheduler) that keeps snapshot publishing running even during quiet periods.
 
 Example:
 
@@ -151,13 +154,13 @@ npx wrangler secret put KW_ADMIN_KEY
 npx wrangler deploy
 ```
 
-At minimum, deployment also requires `KW_BASE_URL` plus any non-default relay settings used by the worker. When Pages and Worker `/api/history` are cross-origin, also set `HISTORY_CORS_ALLOWED_ORIGINS` to the exact Pages origin list. `HISTORY_RETENTION_DAYS` remains optional and defaults to `180`, but if you override it the deployed worker and cron schedule should use the same retention policy.
+At minimum, deployment also requires `KW_BASE_URL`, any non-default snapshot-publisher settings used by the worker, and the separate **sub-minute-capable fixed-cadence publisher trigger wiring** described above. When Pages and Worker `/api/history` are cross-origin, also set `HISTORY_CORS_ALLOWED_ORIGINS` to the exact Pages origin list. `HISTORY_RETENTION_DAYS` remains optional and defaults to `180`, but if you override it the deployed worker and cron schedule should use the same retention policy.
 
 The checked-in D1 schema lives at `schema/history.sql`, and the deployable Wrangler migration lives at `migrations/0001_plan05_history_schema.sql`.
 
-## Relay alert wiring and readiness gate
+## Optional relay alert wiring
 
-Unit 28 keeps relay alerting as checked-in artifacts plus a validation gate so production deploys cannot be marked ready while alert wiring is incomplete.
+Units 29+ shift the **primary** readiness story to scheduled snapshot publishing, R2/CDN freshness, and auth-mode correctness. Unit 28's relay alert artifacts remain useful only for deployments that intentionally keep the optional `/ws` relay path enabled.
 
 Authoritative repo-owned artifacts:
 
@@ -174,13 +177,14 @@ npm run relay:readiness
 npm run relay:readiness -- --target=production --manifest worker/ops/relay-production-readiness.example.json --wrangler worker/test/fixtures/wrangler.production.example.toml
 ```
 
-`npm run relay:readiness` by itself validates only the checked-in catalog/drill artifacts. Production readiness validation is fail-closed: use `--target=production` together with `--manifest`, and keep the wrangler path explicit when reviewing a deployable config.
+`npm run relay:readiness` by itself validates only the checked-in catalog/drill artifacts for the optional relay path. Primary polling/R2 readiness still requires the separate operator checks documented above and in Units 29+; production relay validation remains fail-closed when that path is enabled.
 
-Production gate expectations:
+Optional relay gate expectations:
 
-- `relay.ws.disconnect_total{handshake_status=auth_rejected}` stays on the immediate pager route.
-- `network` / `timeout` websocket failures only escalate on the sustained paging route once freshness/heartbeat evidence shows the outage persisted.
+- primary readiness alerts use the full primary `ui.*` metric set from Units 10/29+: `ui.snapshot.refresh_failure_total{reason}`, `ui.snapshot.generated_age_ms`, `ui.snapshot.published_age_ms`, `ui.r2.publish_failure_total`, `ui.r2.publish_failure_streak`, `ui.d1.retention_run_total{result=success}`, and `ui.d1.retention_deleted_rows`.
+- `relay.ws.disconnect_total{handshake_status=auth_rejected}` stays on the immediate pager route when the optional `/ws` relay path is enabled.
+- `network` / `timeout` websocket failures only escalate on the sustained paging route once the primary `ui.*` freshness signals show the outage persisted.
 - the immediate auth/config pager route and the sustained outage pager route must resolve to different production destinations.
-- retention cron silence (`relay.d1.retention_run_total{result=success}` absent for 2 days), large retention backlog cleanup (`relay.d1.retention_deleted_rows` crossing the review threshold), and R2 retry-brake saturation (`relay.r2.publish_failure_streak >= 5`, matching the 60-second cap) are explicit gate items.
+- retention cron silence (`ui.d1.retention_run_total{result=success}` absent for 2 days), large retention backlog cleanup (`ui.d1.retention_deleted_rows` crossing the review threshold), and R2 retry-brake saturation (`ui.r2.publish_failure_streak >= 5`, matching the 60-second cap) are explicit gate items.
 - the production manifest must include real notification destinations, provider rule references, staging drill receipts with both observed alert IDs and observed route IDs for every required alert path, and pre-production sign-off.
 - production validation also fails if `wrangler.toml` omits the required `HISTORY_DB` / `SNAPSHOT_BUCKET` bindings, still has placeholder D1/R2 bindings, or if the daily `03:00 UTC` retention cron is missing.

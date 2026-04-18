@@ -2,13 +2,13 @@
 
 ## 1. 目的
 
-本書はエージェント詳細オーバーレイで使用する履歴取得 API と、その裏側の D1 永続化形式を定義する。
+本書はエージェント詳細オーバーレイで使用する履歴取得 API と、その裏側の D1 永続化形式を定義する。current-state UI の primary path は 13-ui-relay-backend.md の polling + R2/CDN であり、本 API は detail overlay 向けの additive 機能として扱う。
 
 ## 2. 永続化対象イベント
 
 ### 2.1 保存対象
 
-`/ws` で配信されるイベントのうち、UI 表示に使うものを保存する。
+optional relay `/ws` ingest、publisher-side import/backfill、または同等の ingest pipeline が取り込めるイベントのうち、UI 表示に使うものを保存する。relay が無効で別 ingest も無い配備では D1 が空でも current-state UI の成立条件は変わらない。
 
 | イベント種別 | 保存 | 備考 |
 |-------------|------|------|
@@ -135,18 +135,18 @@ UI はまず `summary_emoji`, `summary_title`, `summary_text` を一覧表示し
 | `conversation_ended` | `final_speaker_agent_id` があればそれを `subject`、残りの `participant_agent_ids`=`participant`。`final_speaker_agent_id` がなければ `participant_agent_ids` 全員=`participant` |
 | `conversation_pending_join_cancelled` | `agent_id`=`target` |
 
-「同時点の会話参加者集合」は、イベント payload に完全な参加者一覧がない場合に Durable Object の `BridgeState.conversations` から解決する。seed source は 13-ui-relay-backend.md §3.3 のとおり `WorldSnapshot.conversations` であり、`latest_snapshot` はこの解決には使わない。
+「同時点の会話参加者集合」は、イベント payload に完全な参加者一覧がない場合に ingest pipeline が保持する `conversation_mirror[conversation_id]`（13-ui-relay-backend.md §3.1 の `RelayConversationState` と同等で、optional `closing_reason` を含みうる mirror state）から解決する。seed source は 13-ui-relay-backend.md §3.3 のとおり `WorldSnapshot.conversations` であり、`latest_snapshot` はこの解決には使わない。
 
 ingest 時の順序は以下で固定する。
 
-1. 現在の `BridgeState.conversations[conversation_id]` を読み、incoming event を適用した **next state** をローカルに作る
+1. 現在の `conversation_mirror[conversation_id]` を読み、incoming event を適用した **next state** をローカルに作る
 2. agent link / conversation link の解決はこの next state を使う。したがって `conversation_turn_started` / `conversation_inactive_check` の participant 補完は「event 適用後」の authoritative 集合になる
 3. `world_events` 1 行 + link 表（`world_event_agents` / `world_event_conversations`）+ `server_event_fired` 時の `server_event_instances` UPSERT を **同一の D1 batch / トランザクションで atomic に書き込む**。partial write を許容しない
-4. D1 batch 成功後にだけ next state を `BridgeState.conversations` へ commit する。batch のいずれか 1 文でも失敗した場合は mirror 更新を破棄し、観測された失敗を 13-ui-relay-backend.md §9.1 のメトリクスへ記録したうえで次回 snapshot 再同期を待つ
+4. D1 batch 成功後にだけ next state を `conversation_mirror` へ commit する。batch のいずれか 1 文でも失敗した場合は mirror 更新を破棄し、観測された失敗を 13-ui-relay-backend.md §9.1 のメトリクスへ記録したうえで次回 snapshot 再同期を待つ
 
 next state の更新規則は次のとおり。
 
-| イベント種別 | `BridgeState.conversations` への反映 |
+| イベント種別 | `conversation_mirror` への反映 |
 |-------------|--------------------------------------|
 | `conversation_requested` | `{ status: 'pending', initiator_agent_id, participant_agent_ids: [initiator_agent_id, target_agent_id] }` を作成/置換 |
 | `conversation_accepted` | `{ status: 'active', initiator_agent_id, participant_agent_ids }` を作成/置換する。`current_speaker_agent_id` は既存値があれば維持し、なければ次の `conversation_turn_started` / snapshot 再同期で補正する |
@@ -155,13 +155,13 @@ next state の更新規則は次のとおり。
 | `conversation_join` | payload の `participant_agent_ids` で participant 集合を置換し、`status: 'active'` を維持する |
 | `conversation_leave` | payload の `participant_agent_ids` で participant 集合を置換する。`next_speaker_agent_id` があれば `current_speaker_agent_id` も更新する |
 | `conversation_inactive_check` | participant 集合は変更しない。link 解決時だけ current mirror を参照する |
-| `conversation_interval_interrupted` | payload の `participant_agent_ids` があれば participant 集合を同期し、`next_speaker_agent_id` を `current_speaker_agent_id` へ反映する。`closing: true` でも status の確定は後続の `conversation_closing` を待つ |
+| `conversation_interval_interrupted` | payload の `participant_agent_ids` があれば participant 集合を同期し、`next_speaker_agent_id` を `current_speaker_agent_id` へ反映する。`closing: true` でも `status` / `closing_reason` の確定は後続の `conversation_closing` または `conversation_ended` を待つ |
 | `conversation_turn_started` | participant 集合は維持したまま `current_speaker_agent_id` を更新する |
-| `conversation_closing` | payload の `participant_agent_ids` で participant 集合を置換し、`status: 'closing'`, `current_speaker_agent_id`, `closing_reason` を更新する。`conversation_closing.reason` は `'ended_by_agent' \| 'max_turns' \| 'server_event'` の 3 値のみ |
-| `conversation_ended` | mirror に存在すれば `status: 'closing'`, `closing_reason: event.reason` を一時更新したうえで link を解決し、解決後に mirror から削除する。`conversation_ended.reason` は `ConversationClosureReason` 全 5 値（`'turn_timeout'` / `'participant_logged_out'` を含む）。これにより `conversation_closing` を経由しない直接終了経路でも `closing_reason` が観測できる |
+| `conversation_closing` | payload の `participant_agent_ids` で participant 集合を置換し、`status: 'closing'`, `current_speaker_agent_id`, `closing_reason` を更新する。`RelayConversationState.closing_reason` に入る `conversation_closing.reason` は `'ended_by_agent' \| 'max_turns' \| 'server_event'` の 3 値のみ |
+| `conversation_ended` | mirror に存在すれば `status: 'closing'`, `closing_reason: event.reason` を **削除前の一時 state** として更新したうえで link を解決し、解決後に mirror から削除する。`conversation_ended.reason` は `ConversationClosureReason` 全 5 値（`'turn_timeout'` / `'participant_logged_out'` を含む）。これにより 13-ui-relay-backend.md §3.3 と同様、`conversation_closing` を経由しない直接終了経路でも `closing_reason` が観測できる |
 | `conversation_pending_join_cancelled` | mirror 変更なし |
 
-これにより `conversation_turn_started` や `conversation_inactive_check` も、直前 event の join / leave / closing がまだ `latest_snapshot` に反映されていなくても、正しい participant 集合で全参加者の agent timeline に現れる。
+これにより `conversation_turn_started` や `conversation_inactive_check` も、直前 event の join / leave / closing がまだ `latest_snapshot` に反映されていなくても、正しい participant 集合で全参加者の agent timeline に現れる。mirror 実装の実体は Durable Object に限らず、relay worker・queue consumer・import job などでもよい。
 
 ### 4.3 `server_event_instances`
 
@@ -186,7 +186,7 @@ ON CONFLICT(server_event_id) DO UPDATE SET
   last_occurred_at = MAX(server_event_instances.last_occurred_at, excluded.last_occurred_at);
 ```
 
-DO の cold start 復元は `server_event_instances_recent_idx` を使って `ORDER BY first_occurred_at DESC, server_event_id DESC LIMIT 3` を読む。これにより 180 日分の `world_events` に対する full scan / `GROUP BY server_event_id` を回避する。
+ingest pipeline の cold start 復元は `server_event_instances_recent_idx` を使って `ORDER BY first_occurred_at DESC, server_event_id DESC LIMIT 3` を読む。これにより 180 日分の `world_events` に対する full scan / `GROUP BY server_event_id` を回避する。
 
 ### 4.4 `payload_json`
 
