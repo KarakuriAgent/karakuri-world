@@ -1,5 +1,5 @@
 {
-  "version": "unit-28-v1",
+  "version": "unit-29-v1",
   "drills": [
     {
       "id": "auth-rejected-handshake",
@@ -19,7 +19,7 @@
         "evaluation_at": "2026-07-01T00:05:00.000Z",
         "samples": [
           {
-            "metric": "relay.d1.retention_run_total",
+            "metric": "ui.d1.retention_run_total",
             "kind": "counter",
             "timestamp": "2026-07-01T00:00:00.000Z",
             "value": 1,
@@ -45,7 +45,7 @@
       "summary": "Verify network disconnects page only after the outage becomes sustained and then create a history-gap follow-up on recovery.",
       "staging_injection": [
         "Block staging relay egress to the upstream /ws origin while leaving the worker running.",
-        "Keep the fault active past the sustained window so heartbeat refresh failures accumulate and generated freshness degrades.",
+        "Keep the fault active past the sustained window so fixed-cadence refresh failures accumulate and generated freshness degrades.",
         "Restore network connectivity, then capture the reconnect-duration and event-gap evidence plus the notification receipts."
       ],
       "expected_alert_ids": [
@@ -61,7 +61,7 @@
         "evaluation_at": "2026-07-01T12:15:00.000Z",
         "samples": [
           {
-            "metric": "relay.d1.retention_run_total",
+            "metric": "ui.d1.retention_run_total",
             "kind": "counter",
             "timestamp": "2026-07-01T00:00:00.000Z",
             "value": 1,
@@ -80,52 +80,40 @@
             }
           },
           {
-            "metric": "relay.snapshot.refresh_failure_total",
+            "metric": "ui.snapshot.refresh_failure_total",
             "kind": "counter",
             "timestamp": "2026-07-01T12:02:00.000Z",
             "value": 1,
             "tags": {
-              "reason": "heartbeat"
+              "reason": "fixed-cadence"
             }
           },
           {
-            "metric": "relay.snapshot.refresh_failure_total",
+            "metric": "ui.snapshot.refresh_failure_total",
             "kind": "counter",
             "timestamp": "2026-07-01T12:07:00.000Z",
             "value": 1,
             "tags": {
-              "reason": "heartbeat"
+              "reason": "fixed-cadence"
             }
           },
           {
-            "metric": "relay.snapshot.refresh_failure_total",
+            "metric": "ui.snapshot.refresh_failure_total",
             "kind": "counter",
             "timestamp": "2026-07-01T12:12:00.000Z",
             "value": 1,
             "tags": {
-              "reason": "heartbeat"
+              "reason": "fixed-cadence"
             }
           },
           {
-            "metric": "relay.heartbeat.failure_streak",
-            "kind": "gauge",
-            "timestamp": "2026-07-01T12:05:00.000Z",
-            "value": 2
-          },
-          {
-            "metric": "relay.heartbeat.failure_streak",
-            "kind": "gauge",
-            "timestamp": "2026-07-01T12:15:00.000Z",
-            "value": 3
-          },
-          {
-            "metric": "relay.snapshot.generated_age_ms",
+            "metric": "ui.snapshot.generated_age_ms",
             "kind": "gauge",
             "timestamp": "2026-07-01T12:00:00.000Z",
             "value": 61000
           },
           {
-            "metric": "relay.snapshot.generated_age_ms",
+            "metric": "ui.snapshot.generated_age_ms",
             "kind": "gauge",
             "timestamp": "2026-07-01T12:15:00.000Z",
             "value": 91000
@@ -164,7 +152,7 @@
         "evaluation_at": "2026-07-01T01:20:00.000Z",
         "samples": [
           {
-            "metric": "relay.d1.retention_run_total",
+            "metric": "ui.d1.retention_run_total",
             "kind": "counter",
             "timestamp": "2026-07-01T00:00:00.000Z",
             "value": 1,
@@ -173,37 +161,37 @@
             }
           },
           {
-            "metric": "relay.r2.publish_failure_total",
+            "metric": "ui.r2.publish_failure_total",
             "kind": "counter",
             "timestamp": "2026-07-01T01:11:00.000Z",
             "value": 1
           },
           {
-            "metric": "relay.r2.publish_failure_total",
+            "metric": "ui.r2.publish_failure_total",
             "kind": "counter",
             "timestamp": "2026-07-01T01:14:00.000Z",
             "value": 1
           },
           {
-            "metric": "relay.r2.publish_failure_total",
+            "metric": "ui.r2.publish_failure_total",
             "kind": "counter",
             "timestamp": "2026-07-01T01:18:00.000Z",
             "value": 1
           },
           {
-            "metric": "relay.r2.publish_failure_streak",
+            "metric": "ui.r2.publish_failure_streak",
             "kind": "gauge",
             "timestamp": "2026-07-01T01:10:00.000Z",
             "value": 5
           },
           {
-            "metric": "relay.r2.publish_failure_streak",
+            "metric": "ui.r2.publish_failure_streak",
             "kind": "gauge",
             "timestamp": "2026-07-01T01:20:00.000Z",
             "value": 6
           },
           {
-            "metric": "relay.snapshot.published_age_ms",
+            "metric": "ui.snapshot.published_age_ms",
             "kind": "gauge",
             "timestamp": "2026-07-01T01:20:00.000Z",
             "value": 25000
@@ -231,7 +219,7 @@
         "evaluation_at": "2026-07-04T03:00:00.000Z",
         "samples": [
           {
-            "metric": "relay.d1.retention_run_total",
+            "metric": "ui.d1.retention_run_total",
             "kind": "counter",
             "timestamp": "2026-07-01T02:59:00.000Z",
             "value": 1,
@@ -240,13 +228,13 @@
             }
           },
           {
-            "metric": "relay.d1.retention_deleted_rows",
+            "metric": "ui.d1.retention_deleted_rows",
             "kind": "gauge",
             "timestamp": "2026-07-01T02:59:00.000Z",
             "value": 42
           },
           {
-            "metric": "relay.d1.retention_run_total",
+            "metric": "ui.d1.retention_run_total",
             "kind": "counter",
             "timestamp": "2026-07-04T02:30:00.000Z",
             "value": 1,
@@ -275,7 +263,7 @@
         "evaluation_at": "2026-07-05T04:00:00.000Z",
         "samples": [
           {
-            "metric": "relay.d1.retention_run_total",
+            "metric": "ui.d1.retention_run_total",
             "kind": "counter",
             "timestamp": "2026-07-05T03:59:00.000Z",
             "value": 1,
@@ -284,7 +272,7 @@
             }
           },
           {
-            "metric": "relay.d1.retention_deleted_rows",
+            "metric": "ui.d1.retention_deleted_rows",
             "kind": "gauge",
             "timestamp": "2026-07-05T03:59:00.000Z",
             "value": 18500
@@ -311,7 +299,7 @@
         "evaluation_at": "2026-07-01T03:10:00.000Z",
         "samples": [
           {
-            "metric": "relay.d1.retention_run_total",
+            "metric": "ui.d1.retention_run_total",
             "kind": "counter",
             "timestamp": "2026-07-01T00:00:00.000Z",
             "value": 1,

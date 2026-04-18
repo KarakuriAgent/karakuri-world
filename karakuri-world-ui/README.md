@@ -158,7 +158,7 @@ At minimum, deployment also requires `KW_BASE_URL`, any non-default snapshot-pub
 
 The checked-in D1 schema lives at `schema/history.sql`, and the deployable Wrangler migration lives at `migrations/0001_plan05_history_schema.sql`.
 
-## Optional relay alert wiring
+## Relay alert wiring and readiness gate
 
 Units 29+ shift the **primary** readiness story to scheduled snapshot publishing, R2/CDN freshness, and auth-mode correctness. Unit 28's relay alert artifacts remain useful only for deployments that intentionally keep the optional `/ws` relay path enabled.
 

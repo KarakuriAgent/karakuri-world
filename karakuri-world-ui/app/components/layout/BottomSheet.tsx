@@ -5,7 +5,7 @@ import type {
   SpectatorSnapshot,
 } from '../../../worker/src/contracts/spectator-snapshot.js';
 import type { HistoryCacheEntry, MobileSheetMode, SnapshotStoreState } from '../../store/snapshot-store.js';
-import { getOutstandingServerEventCount, getSidebarServerEvents } from '../../lib/recent-server-events.js';
+import { getOutstandingServerEventCount, getSidebarServerEventsState } from '../../lib/recent-server-events.js';
 import { AgentOverlay } from '../overlay/AgentOverlay.js';
 
 export interface BottomSheetProps {
@@ -81,7 +81,8 @@ export function BottomSheet({
   onModeChange,
 }: BottomSheetProps) {
   const dragStartY = useRef<number | null>(null);
-  const recentServerEvents = useMemo(() => getSidebarServerEvents(snapshot), [snapshot]);
+  const serverEventsState = useMemo(() => getSidebarServerEventsState(snapshot), [snapshot]);
+  const recentServerEvents = serverEventsState.events;
   const activeServerEventCount = getOutstandingServerEventCount(snapshot);
   const hasSelectedAgent = Boolean(selectedAgent);
 
@@ -176,9 +177,27 @@ export function BottomSheet({
             <div className="flex h-full flex-col gap-4 overflow-hidden" data-testid="mobile-list-panel">
               <section className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-sm font-medium text-slate-200">直近サーバーイベント</h2>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-sm font-medium text-slate-200">直近サーバーイベント</h2>
+                    {serverEventsState.is_degraded_fallback ? (
+                      <span
+                        className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-200"
+                        data-testid="mobile-server-events-fallback-badge"
+                      >
+                        フォールバック表示
+                      </span>
+                    ) : null}
+                  </div>
                   <span className="text-xs text-slate-400">{recentServerEvents.length} 件</span>
                 </div>
+                {serverEventsState.is_degraded_fallback ? (
+                  <div
+                    className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100"
+                    data-testid="mobile-server-events-fallback-note"
+                  >
+                    直近履歴を復元できなかったため、進行中イベントを暫定表示しています。
+                  </div>
+                ) : null}
                 {recentServerEvents.length ? (
                   <div className="space-y-2">
                     {recentServerEvents.map((event) => (

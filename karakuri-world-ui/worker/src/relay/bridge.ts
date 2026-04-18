@@ -25,6 +25,7 @@ export interface BridgeState {
   latest_snapshot?: SpectatorSnapshot;
   conversations: Record<string, BridgeConversationState>;
   recent_server_events: SpectatorRecentServerEvent[];
+  active_server_event_ids: string[];
   last_event_at?: number;
   last_publish_at?: number;
   last_refresh_at?: number;
@@ -32,9 +33,12 @@ export interface BridgeState {
   refresh_in_flight: boolean;
   refresh_queued: boolean;
   refresh_queued_reason?: SnapshotRefreshReason;
+  refresh_alarm_at?: number;
   publish_alarm_at?: number;
   heartbeat_alarm_at?: number;
   websocket_reconnect_alarm_at?: number;
+  publish_in_flight: boolean;
+  publish_queued: boolean;
   publish_failure_streak: number;
   heartbeat_failure_streak: number;
   disconnect_started_at?: number;
@@ -72,7 +76,7 @@ export interface BridgeDependencies {
   ) => Promise<void>;
 }
 
-type SnapshotRefreshReason = 'boot' | 'heartbeat' | 'world-event';
+type SnapshotRefreshReason = 'boot' | 'fixed-cadence' | 'world-event' | 'manual';
 type ConversationWorldEvent = Extract<WorldEvent, { conversation_id: string }>;
 type DisconnectReason = 'close' | 'error' | 'idle';
 type HandshakeStatus = 'auth_rejected' | 'not_found' | 'server_error' | 'network' | 'timeout' | 'server_close';
@@ -92,8 +96,12 @@ function mergeQueuedRefreshReason(
     return 'world-event';
   }
 
-  if (currentReason === 'heartbeat' || nextReason === 'heartbeat') {
-    return 'heartbeat';
+  if (currentReason === 'manual' || nextReason === 'manual') {
+    return 'manual';
+  }
+
+  if (currentReason === 'fixed-cadence' || nextReason === 'fixed-cadence') {
+    return 'fixed-cadence';
   }
 
   return 'boot';
@@ -230,7 +238,6 @@ interface SnapshotPublishInput {
 }
 
 const PUBLISH_BACKOFF_MAX_MS = 60_000;
-const HEARTBEAT_BACKOFF_MAX_MS = 300_000;
 const WEBSOCKET_RECONNECT_BACKOFF_MAX_MS = 30_000;
 const WEBSOCKET_RECONNECT_JITTER_RATIO = 0.2;
 const SNAPSHOT_CONTENT_TYPE = 'application/json; charset=utf-8';
@@ -1332,8 +1339,8 @@ interface PersistedOutageRuntimeState {
   latest_snapshot: SpectatorSnapshot;
   last_publish_at?: number;
   last_refresh_at?: number;
+  refresh_alarm_at?: number;
   publish_alarm_at?: number;
-  heartbeat_alarm_at?: number;
   publish_failure_streak: number;
   heartbeat_failure_streak: number;
 }
@@ -1352,9 +1359,12 @@ export function createBridgeState(): BridgeState {
   return {
     conversations: {},
     recent_server_events: [],
+    active_server_event_ids: [],
     reconnect_attempt: 0,
     refresh_in_flight: false,
     refresh_queued: false,
+    publish_in_flight: false,
+    publish_queued: false,
     publish_failure_streak: 0,
     heartbeat_failure_streak: 0,
   };
@@ -1645,6 +1655,47 @@ function mergeRecentServerEvent(
     .slice(0, 3);
 }
 
+function mergeRecentServerEventsFromSnapshot(
+  recentServerEvents: SpectatorRecentServerEvent[],
+  previousActiveServerEventIds: readonly string[],
+  serverEvents: WorldSnapshot['server_events'],
+  generatedAt: number,
+): SpectatorRecentServerEvent[] {
+  const previousActiveSet = new Set(previousActiveServerEventIds);
+  const byId = new Map(
+    recentServerEvents.map((event) => [
+      event.server_event_id,
+      {
+        ...event,
+        is_active: false,
+      },
+    ]),
+  );
+
+  for (const serverEvent of serverEvents) {
+    const existing = byId.get(serverEvent.server_event_id);
+
+    if (existing) {
+      existing.description = serverEvent.description;
+      existing.is_active = true;
+      continue;
+    }
+
+    if (!previousActiveSet.has(serverEvent.server_event_id)) {
+      byId.set(serverEvent.server_event_id, {
+        server_event_id: serverEvent.server_event_id,
+        description: serverEvent.description,
+        occurred_at: generatedAt,
+        is_active: true,
+      });
+    }
+  }
+
+  return [...byId.values()]
+    .sort((left, right) => right.occurred_at - left.occurred_at || right.server_event_id.localeCompare(left.server_event_id))
+    .slice(0, 3);
+}
+
 export async function restoreRecentServerEvents(db?: D1DatabaseLike): Promise<SpectatorRecentServerEvent[]> {
   if (!db) {
     return [];
@@ -1746,12 +1797,13 @@ export class UIBridgeDurableObject {
       } catch {}
     }
 
-    if (this.bridgeState.heartbeat_alarm_at !== undefined && this.bridgeState.heartbeat_alarm_at <= now) {
-      this.bridgeState.heartbeat_alarm_at = now + this.config.snapshotHeartbeatIntervalMs;
-      await this.refreshSnapshot('heartbeat');
+    if (this.bridgeState.refresh_alarm_at !== undefined && this.bridgeState.refresh_alarm_at <= now) {
+      this.bridgeState.refresh_alarm_at = undefined;
+      await this.refreshSnapshot('fixed-cadence');
     }
 
     if (this.bridgeState.publish_alarm_at !== undefined && this.bridgeState.publish_alarm_at <= this.dependencies.now()) {
+      this.bridgeState.publish_alarm_at = undefined;
       await this.publishLatestSnapshot();
     }
 
@@ -1810,10 +1862,13 @@ export class UIBridgeDurableObject {
       recent_server_events: persistedState.latest_snapshot.recent_server_events.map((event) => ({ ...event })),
     };
     this.bridgeState.recent_server_events = this.bridgeState.latest_snapshot.recent_server_events.map((event) => ({ ...event }));
+    this.bridgeState.active_server_event_ids = this.bridgeState.latest_snapshot.server_events.map(
+      (event) => event.server_event_id,
+    );
     this.bridgeState.last_publish_at = persistedState.last_publish_at;
     this.bridgeState.last_refresh_at = persistedState.last_refresh_at;
+    this.bridgeState.refresh_alarm_at = persistedState.refresh_alarm_at;
     this.bridgeState.publish_alarm_at = persistedState.publish_alarm_at;
-    this.bridgeState.heartbeat_alarm_at = persistedState.heartbeat_alarm_at;
     this.bridgeState.publish_failure_streak = persistedState.publish_failure_streak;
     this.bridgeState.heartbeat_failure_streak = persistedState.heartbeat_failure_streak;
   }
@@ -1848,8 +1903,8 @@ export class UIBridgeDurableObject {
       heartbeat_failure_streak: this.bridgeState.heartbeat_failure_streak,
       ...(this.bridgeState.last_publish_at !== undefined ? { last_publish_at: this.bridgeState.last_publish_at } : {}),
       ...(this.bridgeState.last_refresh_at !== undefined ? { last_refresh_at: this.bridgeState.last_refresh_at } : {}),
+      ...(this.bridgeState.refresh_alarm_at !== undefined ? { refresh_alarm_at: this.bridgeState.refresh_alarm_at } : {}),
       ...(this.bridgeState.publish_alarm_at !== undefined ? { publish_alarm_at: this.bridgeState.publish_alarm_at } : {}),
-      ...(this.bridgeState.heartbeat_alarm_at !== undefined ? { heartbeat_alarm_at: this.bridgeState.heartbeat_alarm_at } : {}),
     } satisfies PersistedOutageRuntimeState);
   }
 
@@ -1871,16 +1926,11 @@ export class UIBridgeDurableObject {
         await this.connectWebSocket();
       } catch (error) {
         await this.transitionToReconnectState();
-        throw error;
       }
-      return;
-    }
-
-    if (this.bridgeState.websocket_reconnect_alarm_at <= this.dependencies.now()) {
+    } else if (this.bridgeState.websocket_reconnect_alarm_at <= this.dependencies.now()) {
       try {
         await this.connectWebSocket(true);
       } catch {}
-      return;
     }
 
     await this.rescheduleAlarm();
@@ -2076,14 +2126,21 @@ export class UIBridgeDurableObject {
     }
 
     const now = this.dependencies.now();
-    const activeServerEventIds = new Set(worldSnapshot.server_events.map((event) => event.server_event_id));
+    const activeServerEventIds = worldSnapshot.server_events.map((event) => event.server_event_id);
+    const activeServerEventIdSet = new Set(activeServerEventIds);
 
     this.actionEmojiIndex = buildActionEmojiIndex(worldSnapshot);
     this.bridgeState.conversations = rebuildConversationMirror(worldSnapshot, now);
-    this.bridgeState.recent_server_events = this.bridgeState.recent_server_events.map((event) => ({
+    this.bridgeState.recent_server_events = mergeRecentServerEventsFromSnapshot(
+      this.bridgeState.recent_server_events,
+      this.bridgeState.active_server_event_ids,
+      worldSnapshot.server_events,
+      worldSnapshot.generated_at,
+    ).map((event) => ({
       ...event,
-      is_active: activeServerEventIds.has(event.server_event_id),
+      is_active: activeServerEventIdSet.has(event.server_event_id),
     }));
+    this.bridgeState.active_server_event_ids = activeServerEventIds;
     this.bridgeState.latest_snapshot = buildSpectatorSnapshot({
       world_snapshot: worldSnapshot,
       recent_server_events: this.bridgeState.recent_server_events,
@@ -2091,9 +2148,6 @@ export class UIBridgeDurableObject {
     });
     this.bridgeState.last_refresh_at = now;
     this.bridgeState.heartbeat_failure_streak = 0;
-    this.dependencies.observability.gauge('relay.heartbeat.failure_streak', 0);
-    await this.scheduleHeartbeat();
-    await this.schedulePublish();
     await this.persistOutageRuntimeState();
     return true;
   }
@@ -2116,37 +2170,20 @@ export class UIBridgeDurableObject {
       await this.enqueueSerializedOperation(async () => {
         await this.applySnapshot(worldSnapshot);
       });
+      await this.scheduleFixedCadence();
+      await this.publishLatestSnapshot();
       refreshSucceeded = true;
     } catch (error) {
-      this.dependencies.observability.counter('relay.snapshot.refresh_failure_total', { reason });
-      const heartbeatFailureStreak = this.bridgeState.heartbeat_failure_streak;
-      if (reason === 'heartbeat') {
-        this.bridgeState.heartbeat_failure_streak += 1;
-        const nextHeartbeatFailureStreak = this.bridgeState.heartbeat_failure_streak;
-        this.dependencies.observability.gauge(
-          'relay.heartbeat.failure_streak',
-          nextHeartbeatFailureStreak,
-        );
-        this.bridgeState.heartbeat_alarm_at =
-          this.dependencies.now() +
-          calculateBackoff(
-            this.config.snapshotHeartbeatIntervalMs,
-            nextHeartbeatFailureStreak,
-            HEARTBEAT_BACKOFF_MAX_MS,
-          );
-        await this.persistOutageRuntimeState();
-        await this.rescheduleAlarm();
+      await this.scheduleFixedCadence();
+      this.runObservabilitySafely(() => {
+        this.dependencies.observability.counter('ui.snapshot.refresh_failure_total', { reason });
+      });
+      this.emitSnapshotFreshnessMetricsSafely();
+      this.runObservabilitySafely(() => {
         this.dependencies.observability.log('error', 'relay snapshot refresh failed', {
           reason,
           error: describeError(error),
-          heartbeat_failure_streak: nextHeartbeatFailureStreak,
         });
-        return;
-      }
-      this.dependencies.observability.log('error', 'relay snapshot refresh failed', {
-        reason,
-        error: describeError(error),
-        heartbeat_failure_streak: heartbeatFailureStreak,
       });
     } finally {
       this.bridgeState.refresh_in_flight = false;
@@ -2156,44 +2193,40 @@ export class UIBridgeDurableObject {
         this.bridgeState.refresh_queued = false;
         this.bridgeState.refresh_queued_reason = undefined;
 
-        if (!(refreshSucceeded && queuedReason === 'heartbeat')) {
+        if (!(refreshSucceeded && queuedReason === 'fixed-cadence')) {
           await this.refreshSnapshot(queuedReason);
         }
       }
     }
   }
 
-  private async scheduleHeartbeat(): Promise<void> {
-    this.bridgeState.heartbeat_alarm_at =
-      (this.bridgeState.last_refresh_at ?? this.dependencies.now()) + this.config.snapshotHeartbeatIntervalMs;
+  private async scheduleFixedCadence(): Promise<void> {
+    this.bridgeState.refresh_alarm_at = this.dependencies.now() + this.config.snapshotPublishIntervalMs;
     await this.rescheduleAlarm();
   }
 
-  private async schedulePublish(): Promise<void> {
-    if (!this.bridgeState.latest_snapshot) {
-      return;
-    }
+  private isPublishBackoffActive(now = this.dependencies.now()): boolean {
+    return this.bridgeState.publish_alarm_at !== undefined && this.bridgeState.publish_alarm_at > now;
+  }
 
-    const now = this.dependencies.now();
-    const throttledPublishAt =
-      this.bridgeState.last_publish_at === undefined ? now : this.bridgeState.last_publish_at + this.config.snapshotPublishIntervalMs;
-    const nextPublishAt =
-      this.bridgeState.publish_failure_streak > 0 && this.bridgeState.publish_alarm_at !== undefined
-        ? this.bridgeState.publish_alarm_at
-        : this.bridgeState.publish_alarm_at === undefined
-          ? throttledPublishAt
-          : Math.min(this.bridgeState.publish_alarm_at, throttledPublishAt);
+  private runObservabilitySafely(callback: () => void): void {
+    try {
+      callback();
+    } catch {}
+  }
 
-    if (nextPublishAt <= now) {
-      await this.publishLatestSnapshot();
-      return;
-    }
-
-    this.bridgeState.publish_alarm_at = nextPublishAt;
-    await this.rescheduleAlarm();
+  private emitSnapshotFreshnessMetricsSafely(snapshot = this.bridgeState.latest_snapshot): void {
+    this.runObservabilitySafely(() => {
+      this.emitSnapshotFreshnessMetrics(snapshot);
+    });
   }
 
   private async publishLatestSnapshot(): Promise<void> {
+    if (this.bridgeState.publish_in_flight) {
+      this.bridgeState.publish_queued = true;
+      return;
+    }
+
     const latestSnapshot = this.bridgeState.latest_snapshot;
 
     if (!latestSnapshot) {
@@ -2201,9 +2234,15 @@ export class UIBridgeDurableObject {
       return;
     }
 
+    if (this.isPublishBackoffActive()) {
+      await this.persistOutageRuntimeState();
+      await this.rescheduleAlarm();
+      return;
+    }
+
+    this.bridgeState.publish_in_flight = true;
+
     const publishedAt = this.dependencies.now();
-    const publishedAgeMs =
-      latestSnapshot.published_at > 0 ? Math.max(0, publishedAt - latestSnapshot.published_at) : 0;
     const snapshotToPublish = {
       ...latestSnapshot,
       recent_server_events: latestSnapshot.recent_server_events.map((event) => ({ ...event })),
@@ -2228,37 +2267,60 @@ export class UIBridgeDurableObject {
       this.bridgeState.last_publish_at = publishedAt;
       this.bridgeState.publish_alarm_at = undefined;
       this.bridgeState.publish_failure_streak = 0;
-      this.dependencies.observability.gauge('relay.r2.publish_failure_streak', 0);
-      this.dependencies.observability.gauge(
-        'relay.snapshot.generated_age_ms',
-        Math.max(0, this.dependencies.now() - snapshotToPublish.generated_at),
-      );
-      this.dependencies.observability.gauge(
-        'relay.snapshot.published_age_ms',
-        publishedAgeMs,
-      );
+      this.runObservabilitySafely(() => {
+        this.dependencies.observability.gauge('ui.r2.publish_failure_streak', 0);
+      });
+      this.emitSnapshotFreshnessMetricsSafely(snapshotToPublish);
     } catch (error) {
       this.bridgeState.publish_failure_streak += 1;
-      this.dependencies.observability.counter('relay.r2.publish_failure_total');
-      this.dependencies.observability.gauge('relay.r2.publish_failure_streak', this.bridgeState.publish_failure_streak);
-      this.bridgeState.publish_alarm_at = Math.max(
-        publishedAt,
-        (this.bridgeState.last_publish_at ?? publishedAt) +
-          calculateBackoff(
-            this.config.snapshotPublishIntervalMs,
-            this.bridgeState.publish_failure_streak,
-            PUBLISH_BACKOFF_MAX_MS,
-          ),
-      );
-      this.dependencies.observability.log('error', 'relay snapshot publish failed', {
-        publish_failure_streak: this.bridgeState.publish_failure_streak,
-        publish_alarm_at: this.bridgeState.publish_alarm_at,
-        error: describeError(error),
+      this.bridgeState.publish_alarm_at =
+        publishedAt +
+        calculateBackoff(
+          this.config.snapshotPublishIntervalMs,
+          this.bridgeState.publish_failure_streak,
+          PUBLISH_BACKOFF_MAX_MS,
+        );
+      this.runObservabilitySafely(() => {
+        this.dependencies.observability.counter('ui.r2.publish_failure_total');
       });
+      this.runObservabilitySafely(() => {
+        this.dependencies.observability.gauge('ui.r2.publish_failure_streak', this.bridgeState.publish_failure_streak);
+      });
+      this.emitSnapshotFreshnessMetricsSafely();
+      this.runObservabilitySafely(() => {
+        this.dependencies.observability.log('error', 'relay snapshot publish failed', {
+          publish_failure_streak: this.bridgeState.publish_failure_streak,
+          publish_alarm_at: this.bridgeState.publish_alarm_at,
+          error: describeError(error),
+        });
+      });
+    } finally {
+      this.bridgeState.publish_in_flight = false;
+
+      const shouldDrainQueuedPublish = this.bridgeState.publish_queued;
+      this.bridgeState.publish_queued = false;
+
+      if (shouldDrainQueuedPublish) {
+        await this.publishLatestSnapshot();
+        return;
+      }
+
+      await this.persistOutageRuntimeState();
+      await this.rescheduleAlarm();
+    }
+  }
+
+  private emitSnapshotFreshnessMetrics(snapshot = this.bridgeState.latest_snapshot): void {
+    if (!snapshot) {
+      return;
     }
 
-    await this.persistOutageRuntimeState();
-    await this.rescheduleAlarm();
+    const now = this.dependencies.now();
+    this.dependencies.observability.gauge('ui.snapshot.generated_age_ms', Math.max(0, now - snapshot.generated_at));
+    this.dependencies.observability.gauge(
+      'ui.snapshot.published_age_ms',
+      snapshot.published_at > 0 ? Math.max(0, now - snapshot.published_at) : 0,
+    );
   }
 
   private handleSocketDisconnect(reason: DisconnectReason, handshakeStatus: HandshakeStatus, websocket: RelayWebSocket): void {
@@ -2288,8 +2350,8 @@ export class UIBridgeDurableObject {
 
   private async rescheduleAlarm(): Promise<void> {
     const nextAlarmAt = [
+      this.bridgeState.refresh_alarm_at,
       this.bridgeState.publish_alarm_at,
-      this.bridgeState.heartbeat_alarm_at,
       this.bridgeState.websocket_reconnect_alarm_at,
     ].reduce<number | undefined>((earliest, candidate) => {
       if (candidate === undefined) {

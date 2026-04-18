@@ -120,13 +120,13 @@ describe('relay retention observability', () => {
       cutoff_ms: 2_207_408_000_000,
     });
     expect(observability.metrics).toContainEqual({
-      name: 'relay.d1.retention_run_total',
+      name: 'ui.d1.retention_run_total',
       kind: 'counter',
       value: 1,
       tags: { result: 'success' },
     });
     expect(observability.metrics).toContainEqual({
-      name: 'relay.d1.retention_deleted_rows',
+      name: 'ui.d1.retention_deleted_rows',
       kind: 'gauge',
       value: 2,
     });
@@ -148,7 +148,7 @@ describe('relay retention observability', () => {
     ).rejects.toThrow('Injected retention failure');
 
     expect(observability.metrics).toContainEqual({
-      name: 'relay.d1.retention_run_total',
+      name: 'ui.d1.retention_run_total',
       kind: 'counter',
       value: 1,
       tags: { result: 'failure' },
@@ -171,7 +171,7 @@ describe('relay retention observability', () => {
     );
 
     expect(observability.metrics).toContainEqual({
-      name: 'relay.d1.retention_run_total',
+      name: 'ui.d1.retention_run_total',
       kind: 'counter',
       value: 1,
       tags: { result: 'failure' },
@@ -230,7 +230,7 @@ describe('relay retention observability', () => {
       ).rejects.toThrow('HISTORY_RETENTION_DAYS must be a positive integer');
 
       expect(infoSpy).toHaveBeenCalledWith(
-        expect.stringContaining('"name":"relay.d1.retention_run_total","kind":"counter","value":1,"tags":{"result":"failure"}'),
+        expect.stringContaining('"name":"ui.d1.retention_run_total","kind":"counter","value":1,"tags":{"result":"failure"}'),
       );
       expect(errorSpy).toHaveBeenCalledWith(
         expect.stringContaining('"message":"relay history retention failed"'),

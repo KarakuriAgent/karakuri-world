@@ -1193,6 +1193,41 @@ describe('App shell bootstrap', () => {
     expect(screen.getByTestId('desktop-sidebar-server-event-count')).toHaveTextContent('未解決 1 件');
     expect(screen.getByTestId('desktop-server-event-status-event-historical-flagged-active')).toHaveTextContent('進行中');
     expect(screen.getByTestId('desktop-server-event-status-event-missing-from-active-list')).toHaveTextContent('履歴');
+    expect(screen.queryByTestId('desktop-server-events-fallback-badge')).not.toBeInTheDocument();
+  });
+
+  it('marks fallback recent server events as degraded in desktop and mobile shells', async () => {
+    const store = createSnapshotStore({
+      snapshotUrl: env.snapshotUrl,
+      authMode: env.authMode,
+      initialSnapshot: createReadySnapshot({
+        recent_server_events: [],
+        server_events: [
+          {
+            server_event_id: 'event-active',
+            description: 'Fallback active event',
+            delivered_agent_ids: ['alice'],
+            pending_agent_ids: [],
+          },
+        ],
+      }),
+    });
+
+    render(<App env={env} store={store} autoStartPolling={false} />);
+
+    expect(screen.getByTestId('desktop-server-events-fallback-badge')).toHaveTextContent('フォールバック表示');
+    expect(screen.getByTestId('desktop-server-events-fallback-note')).toHaveTextContent(
+      '直近履歴を復元できなかったため、進行中イベントを暫定表示しています。',
+    );
+
+    fireEvent.click(screen.getByTestId('mobile-bottom-sheet-handle'));
+
+    await waitFor(() => expect(screen.getByTestId('mobile-bottom-sheet')).toHaveAttribute('data-sheet-mode', 'list'));
+    expect(screen.getByTestId('mobile-server-events-fallback-badge')).toHaveTextContent('フォールバック表示');
+    expect(screen.getByTestId('mobile-server-events-fallback-note')).toHaveTextContent(
+      '直近履歴を復元できなかったため、進行中イベントを暫定表示しています。',
+    );
+    expect(screen.getAllByText('Fallback active event')).toHaveLength(2);
   });
 
   it('sorts agents with non-idle entries first and then by agent name', () => {

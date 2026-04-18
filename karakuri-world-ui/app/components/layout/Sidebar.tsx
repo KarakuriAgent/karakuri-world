@@ -3,7 +3,7 @@ import type {
   SpectatorSnapshot,
 } from '../../../worker/src/contracts/spectator-snapshot.js';
 
-import { getOutstandingServerEventCount, getSidebarServerEvents } from '../../lib/recent-server-events.js';
+import { getOutstandingServerEventCount, getSidebarServerEventsState } from '../../lib/recent-server-events.js';
 
 export interface SidebarProps {
   snapshot?: SpectatorSnapshot;
@@ -13,7 +13,8 @@ export interface SidebarProps {
 }
 
 export function Sidebar({ snapshot, agents, selectedAgentId, onSelectAgent }: SidebarProps) {
-  const recentServerEvents = getSidebarServerEvents(snapshot);
+  const serverEventsState = getSidebarServerEventsState(snapshot);
+  const recentServerEvents = serverEventsState.events;
   const outstandingServerEventCount = getOutstandingServerEventCount(snapshot);
 
   return (
@@ -34,7 +35,17 @@ export function Sidebar({ snapshot, agents, selectedAgentId, onSelectAgent }: Si
 
       <section className="space-y-3 border-b border-slate-800 py-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-white">サーバーイベント</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-white">サーバーイベント</h2>
+            {serverEventsState.is_degraded_fallback ? (
+              <span
+                className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-200"
+                data-testid="desktop-server-events-fallback-badge"
+              >
+                フォールバック表示
+              </span>
+            ) : null}
+          </div>
           <span
             className="rounded-full bg-slate-800 px-2 py-1 text-xs text-slate-300"
             data-testid="desktop-sidebar-server-event-count"
@@ -42,6 +53,14 @@ export function Sidebar({ snapshot, agents, selectedAgentId, onSelectAgent }: Si
             未解決 {outstandingServerEventCount} 件
           </span>
         </div>
+        {serverEventsState.is_degraded_fallback ? (
+          <p
+            className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100"
+            data-testid="desktop-server-events-fallback-note"
+          >
+            直近履歴を復元できなかったため、進行中イベントを暫定表示しています。
+          </p>
+        ) : null}
         {recentServerEvents.length ? (
           <ul className="space-y-2 text-sm text-slate-200">
             {recentServerEvents.map((event) => (

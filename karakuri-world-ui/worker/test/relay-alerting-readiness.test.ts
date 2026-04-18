@@ -53,7 +53,7 @@ describe('relay alerting readiness', () => {
     const retentionSilenceAlert = spec.alerts.find((alert: { id: string }) => alert.id === 'relay-retention-silence-page');
     expect(retentionSilenceAlert.condition).toMatchObject({
       type: 'absent_counter',
-      metric: 'relay.d1.retention_run_total',
+      metric: 'ui.d1.retention_run_total',
       missing_for_days: 2,
     });
 
@@ -63,14 +63,14 @@ describe('relay alerting readiness', () => {
     });
     expect(retentionBacklogAlert.condition).toMatchObject({
       type: 'gauge',
-      metric: 'relay.d1.retention_deleted_rows',
+      metric: 'ui.d1.retention_deleted_rows',
       min_value: 10000,
     });
 
     const retryBrakeAlert = spec.alerts.find((alert: { id: string }) => alert.id === 'relay-r2-backoff-saturation-page');
     expect(retryBrakeAlert.condition).toMatchObject({
       type: 'gauge',
-      metric: 'relay.r2.publish_failure_streak',
+      metric: 'ui.r2.publish_failure_streak',
       min_value: 5,
     });
   });

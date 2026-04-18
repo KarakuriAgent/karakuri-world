@@ -65,7 +65,7 @@ export async function runHistoryRetention(
 
   if (!db) {
     const error = new Error('HISTORY_DB is required for relay history retention');
-    observability.counter('relay.d1.retention_run_total', { result: 'failure' });
+    observability.counter('ui.d1.retention_run_total', { result: 'failure' });
     observability.log('error', 'relay history retention failed', {
       cutoff_ms: cutoffMs,
       error: error.message,
@@ -81,8 +81,8 @@ export async function runHistoryRetention(
     await executeWrite(db, bindStatement(db, DELETE_SERVER_EVENT_INSTANCES_QUERY, cutoffMs));
 
     const deletedRows = deletedWorldEvents + deletedServerEventInstances;
-    observability.counter('relay.d1.retention_run_total', { result: 'success' });
-    observability.gauge('relay.d1.retention_deleted_rows', deletedRows);
+    observability.counter('ui.d1.retention_run_total', { result: 'success' });
+    observability.gauge('ui.d1.retention_deleted_rows', deletedRows);
     observability.log('info', 'relay history retention completed', {
       cutoff_ms: cutoffMs,
       deleted_rows: deletedRows,
@@ -96,7 +96,7 @@ export async function runHistoryRetention(
       cutoff_ms: cutoffMs,
     };
   } catch (error) {
-    observability.counter('relay.d1.retention_run_total', { result: 'failure' });
+    observability.counter('ui.d1.retention_run_total', { result: 'failure' });
     observability.log('error', 'relay history retention failed', {
       cutoff_ms: cutoffMs,
       error: error instanceof Error ? error.message : String(error),

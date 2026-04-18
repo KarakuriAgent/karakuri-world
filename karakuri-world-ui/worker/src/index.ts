@@ -41,7 +41,7 @@ export default {
       }
 
       if (error instanceof Error && /HISTORY_RETENTION_DAYS/.test(error.message)) {
-        observability.counter('relay.d1.retention_run_total', { result: 'failure' });
+        observability.counter('ui.d1.retention_run_total', { result: 'failure' });
         observability.log('error', 'relay history retention failed', {
           error: error.message,
         });

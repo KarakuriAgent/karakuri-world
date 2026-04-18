@@ -235,7 +235,7 @@ export function validateAlertCatalog(spec, drills) {
   }
 
   const retryBrakeAlert = findAlert(spec, 'relay-r2-backoff-saturation-page');
-  if (retryBrakeAlert?.condition?.type !== 'gauge' || retryBrakeAlert.condition?.metric !== 'relay.r2.publish_failure_streak' || retryBrakeAlert.condition?.min_value < 5) {
+  if (retryBrakeAlert?.condition?.type !== 'gauge' || retryBrakeAlert.condition?.metric !== 'ui.r2.publish_failure_streak' || retryBrakeAlert.condition?.min_value < 5) {
     issues.push('relay-r2-backoff-saturation-page must alert once publish_failure_streak reaches the 60-second retry ceiling');
   }
 

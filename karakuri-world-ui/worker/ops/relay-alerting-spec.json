@@ -1,19 +1,18 @@
 {
-  "version": "unit-28-v1",
+  "version": "unit-29-v1",
   "required_signals": [
     "relay.ws.disconnect_total",
     "relay.ws.connect_duration_ms",
     "relay.ws.event_gap_ms",
-    "relay.snapshot.refresh_failure_total",
-    "relay.r2.publish_failure_total",
-    "relay.r2.publish_failure_streak",
-    "relay.heartbeat.failure_streak",
+    "ui.snapshot.refresh_failure_total",
+    "ui.r2.publish_failure_total",
+    "ui.r2.publish_failure_streak",
     "relay.d1.ingest_failure_total",
-    "relay.d1.retention_run_total",
-    "relay.d1.retention_deleted_rows",
+    "ui.d1.retention_run_total",
+    "ui.d1.retention_deleted_rows",
     "relay.event.unknown_total",
-    "relay.snapshot.generated_age_ms",
-    "relay.snapshot.published_age_ms"
+    "ui.snapshot.generated_age_ms",
+    "ui.snapshot.published_age_ms"
   ],
   "routes": [
     {
@@ -62,7 +61,7 @@
       "route": "relay-sustained-pager",
       "severity": "critical",
       "page_policy": "sustained_15m",
-      "clear_condition": "Network disconnects stop and heartbeat/freshness signals recover for 15 minutes.",
+      "clear_condition": "Network disconnects stop and primary polling/R2 freshness signals recover for 15 minutes.",
       "condition": {
         "type": "all_of",
         "conditions": [
@@ -70,7 +69,10 @@
             "type": "counter",
             "metric": "relay.ws.disconnect_total",
             "match_tags": {
-              "handshake_status": ["network", "timeout"]
+              "handshake_status": [
+                "network",
+                "timeout"
+              ]
             },
             "min_occurrences": 1,
             "within_minutes": 15
@@ -80,22 +82,16 @@
             "conditions": [
               {
                 "type": "counter",
-                "metric": "relay.snapshot.refresh_failure_total",
+                "metric": "ui.snapshot.refresh_failure_total",
                 "match_tags": {
-                  "reason": "heartbeat"
+                  "reason": "fixed-cadence"
                 },
                 "min_occurrences": 3,
                 "within_minutes": 15
               },
               {
                 "type": "gauge",
-                "metric": "relay.heartbeat.failure_streak",
-                "min_value": 2,
-                "sustained_minutes": 10
-              },
-              {
-                "type": "gauge",
-                "metric": "relay.snapshot.generated_age_ms",
+                "metric": "ui.snapshot.generated_age_ms",
                 "min_value": 60000,
                 "sustained_minutes": 15
               }
@@ -135,26 +131,20 @@
       "route": "relay-sustained-pager",
       "severity": "critical",
       "page_policy": "sustained_10m",
-      "clear_condition": "generated_age_ms, published_age_ms, and heartbeat failure streak return below thresholds for 10 minutes.",
+      "clear_condition": "generated_age_ms and published_age_ms return below thresholds for 10 minutes.",
       "condition": {
         "type": "any_of",
         "conditions": [
           {
             "type": "gauge",
-            "metric": "relay.snapshot.generated_age_ms",
+            "metric": "ui.snapshot.generated_age_ms",
             "min_value": 60000,
             "sustained_minutes": 15
           },
           {
             "type": "gauge",
-            "metric": "relay.snapshot.published_age_ms",
+            "metric": "ui.snapshot.published_age_ms",
             "min_value": 30000,
-            "sustained_minutes": 10
-          },
-          {
-            "type": "gauge",
-            "metric": "relay.heartbeat.failure_streak",
-            "min_value": 2,
             "sustained_minutes": 10
           }
         ]
@@ -172,13 +162,13 @@
         "conditions": [
           {
             "type": "counter",
-            "metric": "relay.r2.publish_failure_total",
+            "metric": "ui.r2.publish_failure_total",
             "min_occurrences": 3,
             "within_minutes": 10
           },
           {
             "type": "gauge",
-            "metric": "relay.snapshot.published_age_ms",
+            "metric": "ui.snapshot.published_age_ms",
             "min_value": 30000,
             "sustained_minutes": 10
           }
@@ -194,7 +184,7 @@
       "clear_condition": "publish_failure_streak drops below the 60-second-cap threshold and stays recovered for 15 minutes.",
       "condition": {
         "type": "gauge",
-        "metric": "relay.r2.publish_failure_streak",
+        "metric": "ui.r2.publish_failure_streak",
         "min_value": 5,
         "sustained_minutes": 10
       }
@@ -222,7 +212,7 @@
       "clear_condition": "A subsequent retention success is observed.",
       "condition": {
         "type": "counter",
-        "metric": "relay.d1.retention_run_total",
+        "metric": "ui.d1.retention_run_total",
         "match_tags": {
           "result": "failure"
         },
@@ -239,7 +229,7 @@
       "clear_condition": "The next successful retention run deletes below the backlog threshold.",
       "condition": {
         "type": "gauge",
-        "metric": "relay.d1.retention_deleted_rows",
+        "metric": "ui.d1.retention_deleted_rows",
         "min_value": 10000,
         "within_minutes": 1440
       }
@@ -253,7 +243,7 @@
       "clear_condition": "A retention success sample appears again.",
       "condition": {
         "type": "absent_counter",
-        "metric": "relay.d1.retention_run_total",
+        "metric": "ui.d1.retention_run_total",
         "match_tags": {
           "result": "success"
         },
