@@ -120,19 +120,26 @@ The following checks still need staging/preview infrastructure and cannot be ful
 
 ## Cloudflare Worker deployment
 
-`wrangler.toml` is checked in with non-deployable placeholder D1 IDs:
+`wrangler.toml` is git-ignored and must be generated locally from the tracked template `wrangler.toml.example`:
+
+```bash
+cd karakuri-world-ui
+cp wrangler.toml.example wrangler.toml
+```
+
+`wrangler.toml.example` carries non-deployable placeholder D1 IDs:
 
 - `database_id = "00000000-0000-0000-0000-000000000000"`
 - `preview_database_id = "00000000-0000-0000-0000-000000000000"`
 
-It also includes placeholder R2 bucket names for snapshot publishing:
+and placeholder R2 bucket names for snapshot publishing:
 
 - `bucket_name = "replace-with-real-snapshot-bucket"`
 - `preview_bucket_name = "replace-with-real-snapshot-bucket-preview"`
 
-Before any real deploy, create or identify the UI history D1 database and replace both values with the IDs Wrangler returns.
+Before any real deploy, create or identify the UI history D1 database and replace both values in your local `wrangler.toml` with the IDs Wrangler returns.
 
-The checked-in `wrangler.toml` also schedules the worker `scheduled()` handler once per day at `03:00 UTC` so D1 history retention keeps running. Keep that cron (or an equivalent daily schedule) enabled in production.
+The template also schedules the worker `scheduled()` handler once per day at `03:00 UTC` so D1 history retention keeps running. Keep that cron (or an equivalent daily schedule) enabled in production.
 
 That daily `scheduled()` cron is **retention-only**. It is not the snapshot publisher. Production readiness additionally requires a separate **sub-minute-capable 5-second trigger** (for example a Durable Object alarm, external cron, or always-on scheduler) that keeps snapshot publishing running even during quiet periods.
 
@@ -145,15 +152,23 @@ npx wrangler r2 bucket create <real-snapshot-bucket>
 npx wrangler r2 bucket create <real-snapshot-bucket-preview>
 ```
 
-Then update `wrangler.toml` with the emitted `database_id` / `preview_database_id` and the real R2 bucket names, and configure the required runtime values:
+Then update `wrangler.toml` with the emitted `database_id` / `preview_database_id` and the real R2 bucket names, set required secrets (once), and deploy:
 
 ```bash
-npx wrangler d1 migrations apply HISTORY_DB --remote
 npx wrangler secret put KW_ADMIN_KEY
-npx wrangler deploy
+npm run deploy:prod
 ```
 
-At minimum, deployment also requires `KW_BASE_URL`, any non-default snapshot-publisher settings used by the worker, and the separate **sub-minute-capable fixed-cadence publisher trigger wiring** described above. When Pages and Worker `/api/history` are cross-origin, also set `HISTORY_CORS_ALLOWED_ORIGINS` to the exact Pages origin list. `HISTORY_RETENTION_DAYS` remains optional and defaults to `180`, but if you override it the deployed worker and cron schedule should use the same retention policy.
+`deploy:prod` は以下を順に実行するラッパ：
+
+1. `wrangler.toml` にプレースホルダ値（`00000000-...` / `replace-with-real-...`）が残っていたら fail-closed で停止
+2. `npx wrangler d1 migrations apply HISTORY_DB --remote` で D1 マイグレーションを適用
+3. `npx wrangler deploy` でデプロイ
+4. Worker URL に対して 1 回 `curl` を打ち、DO の `boot()` → `refreshSnapshot('boot')` → `rescheduleAlarm()` をトリガ
+
+この 4 つ目のウォームアップを踏まないと、次に誰かが Worker を叩くまで R2 への publish が始まらない。ウォームアップ後は DO alarm 自身が 5 秒間隔の publisher trigger として自走するため、外部 cron を追加で配線する必要はない。
+
+At minimum, deployment also requires `KW_BASE_URL` and any non-default snapshot-publisher settings used by the worker. When Pages and Worker `/api/history` are cross-origin, also set `HISTORY_CORS_ALLOWED_ORIGINS` to the exact Pages origin list. `HISTORY_RETENTION_DAYS` remains optional and defaults to `180`, but if you override it the deployed worker and cron schedule should use the same retention policy.
 
 The checked-in D1 schema lives at `schema/history.sql`, and the deployable Wrangler migration lives at `migrations/0001_plan05_history_schema.sql`.
 

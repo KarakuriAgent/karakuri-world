@@ -100,6 +100,9 @@ vi.mock('@pixi/react', () => ({
 }));
 
 vi.mock('pixi.js', () => ({
+  Assets: {
+    load: vi.fn(() => Promise.resolve(new MockTexture())),
+  },
   Container: class Container {},
   Graphics: class Graphics {},
   Sprite: class Sprite {},

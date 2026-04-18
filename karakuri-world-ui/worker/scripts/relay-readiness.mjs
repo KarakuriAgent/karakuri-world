@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import {
@@ -10,12 +10,20 @@ import {
 
 const SUPPORTED_TARGETS = new Set(['catalog', 'production']);
 
+function defaultWranglerPath() {
+  const deployable = resolve('wrangler.toml');
+  if (existsSync(deployable)) {
+    return deployable;
+  }
+  return resolve('wrangler.toml.example');
+}
+
 function parseArgs(argv) {
   const options = {
     target: 'catalog',
     spec: resolve('worker/ops/relay-alerting-spec.json'),
     drills: resolve('worker/ops/relay-synthetic-drills.json'),
-    wrangler: resolve('wrangler.toml'),
+    wrangler: defaultWranglerPath(),
     manifest: undefined,
   };
   const errors = [];

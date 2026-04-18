@@ -54,6 +54,11 @@ if [ ! -f "$DEBUG_STATE" ]; then
   fi
   echo "R2 バケット '$R2_NAME' を確認しました"
 
+  # ---- R2 CORS (debug のみワイルドカード許可) ----
+  echo ""
+  echo "R2 バケットに CORS ルールを適用中 (debug: AllowedOrigins=*)..."
+  npx -y wrangler r2 bucket cors set "$R2_NAME" --file scripts/r2-cors-debug.json --force
+
   # ---- Save state ----
   cat > "$DEBUG_STATE" <<EOF
 KW_BASE_URL=$KW_BASE_URL
@@ -107,6 +112,29 @@ if [ -z "${SNAPSHOT_URL:-}" ]; then
   exit 1
 fi
 
+# ==== Build CORS allowed origins for Vite dev ====
+# Vite dev が bind する localhost / 127.0.0.1 / LAN IP × 候補ポートを自動生成。
+# 追加で許可したい origin があれば DEBUG_CORS_EXTRA_ORIGINS にカンマ区切りで指定する。
+VITE_DEV_PORTS="${DEBUG_VITE_PORTS:-5173 5174}"
+LAN_IPS=$(node -e "const os=require('os');const a=Object.values(os.networkInterfaces()).flat().filter(n=>n&&n.family==='IPv4'&&!n.internal).map(n=>n.address);process.stdout.write(a.join(' '))" 2>/dev/null || true)
+
+CORS_ORIGINS=""
+append_origin() {
+  if [ -z "$1" ]; then return; fi
+  if [ -n "$CORS_ORIGINS" ]; then CORS_ORIGINS="$CORS_ORIGINS,"; fi
+  CORS_ORIGINS="${CORS_ORIGINS}$1"
+}
+for port in $VITE_DEV_PORTS; do
+  append_origin "http://localhost:$port"
+  append_origin "http://127.0.0.1:$port"
+  for ip in $LAN_IPS; do
+    append_origin "http://$ip:$port"
+  done
+done
+if [ -n "${DEBUG_CORS_EXTRA_ORIGINS:-}" ]; then
+  append_origin "$DEBUG_CORS_EXTRA_ORIGINS"
+fi
+
 # ==== Generate wrangler.debug.toml ====
 cat > "$DEBUG_WRANGLER" <<EOF
 name = "$WORKER_NAME"
@@ -116,6 +144,7 @@ compatibility_date = "2025-04-14"
 [vars]
 KW_BASE_URL = "$KW_BASE_URL"
 AUTH_MODE = "public"
+HISTORY_CORS_ALLOWED_ORIGINS = "$CORS_ORIGINS"
 
 [triggers]
 crons = ["0 3 * * *"]
@@ -183,6 +212,19 @@ VITE_AUTH_MODE=public
 VITE_API_BASE_URL=${WORKER_URL}/api/history
 VITE_PHASE3_EFFECTS_ENABLED=false
 EOF
+
+# ==== Warm up Worker DO so snapshot publishing alarms start ====
+# 初回 fetch で DO の boot() → refreshSnapshot('boot') → rescheduleAlarm() が走る。
+# これを踏まないと curl を手動で叩くまで R2 への publish が始まらない。
+echo ""
+echo "Worker DO をウォームアップ中 ($WORKER_URL)..."
+WARMUP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$WORKER_URL/" || echo "000")
+if [ "$WARMUP_STATUS" = "204" ] || [ "$WARMUP_STATUS" = "200" ]; then
+  echo "Worker DO ウォームアップ完了 (HTTP $WARMUP_STATUS)"
+else
+  echo "Warning: Worker DO ウォームアップの応答が想定外でした (HTTP $WARMUP_STATUS)"
+  echo "  R2 への初回 publish が遅延する場合があります。"
+fi
 
 echo ""
 echo "===== デバッグ環境の準備完了 ====="

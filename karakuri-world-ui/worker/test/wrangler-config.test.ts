@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-const wranglerConfigPath = fileURLToPath(new URL('../../wrangler.toml', import.meta.url));
+const wranglerConfigPath = fileURLToPath(new URL('../../wrangler.toml.example', import.meta.url));
 const readmePath = fileURLToPath(new URL('../../README.md', import.meta.url));
 const schemaPath = fileURLToPath(new URL('../../schema/history.sql', import.meta.url));
 const migrationPath = fileURLToPath(new URL('../../migrations/0001_plan05_history_schema.sql', import.meta.url));
@@ -36,7 +36,7 @@ describe('wrangler configuration', () => {
     expect(config).toContain('Replace these placeholder bucket names with the real R2 bucket names');
     expect(config).toContain('bucket_name = "replace-with-real-snapshot-bucket"');
     expect(config).toContain('preview_bucket_name = "replace-with-real-snapshot-bucket-preview"');
-    expect(readme).toContain('`wrangler.toml` is checked in with non-deployable placeholder D1 IDs');
+    expect(readme).toContain('`wrangler.toml` is git-ignored and must be generated locally from the tracked template `wrangler.toml.example`');
     expect(readme).toContain('placeholder R2 bucket names for snapshot publishing');
     expect(readme).toContain('npx wrangler d1 create karakuri-world-ui-history');
     expect(readme).toContain('npx wrangler r2 bucket create <real-snapshot-bucket>');

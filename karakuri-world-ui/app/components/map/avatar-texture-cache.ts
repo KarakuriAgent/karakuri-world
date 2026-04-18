@@ -1,4 +1,4 @@
-import { Texture } from 'pixi.js';
+import { Assets, Texture } from 'pixi.js';
 
 export type AvatarTextureStatus = 'idle' | 'pending' | 'ready' | 'error';
 
@@ -14,12 +14,12 @@ interface AvatarTextureCacheEntry extends AvatarTextureSnapshot {
   retry_after_ms?: number;
 }
 
-type AvatarTextureLoader = (url: string) => Texture;
+type AvatarTextureLoader = (url: string) => Texture | Promise<Texture>;
 
 const AVATAR_TEXTURE_ERROR_RETRY_MS = 30_000;
 const avatarTextureCache = new Map<string, AvatarTextureCacheEntry>();
 
-let avatarTextureLoader: AvatarTextureLoader = (url) => Texture.from(url);
+let avatarTextureLoader: AvatarTextureLoader = (url) => Assets.load<Texture>(url);
 
 function toError(error: unknown, url: string): Error {
   if (error instanceof Error) {
@@ -29,7 +29,11 @@ function toError(error: unknown, url: string): Error {
   return new Error('Failed to load avatar texture: ' + url);
 }
 
-function waitForTexture(texture: Texture, url: string): Promise<Texture> {
+function waitForTexture(texture: Texture | undefined, url: string): Promise<Texture> {
+  if (!texture) {
+    return Promise.reject(new Error('Avatar texture unavailable: ' + url));
+  }
+
   if (texture.width > 0 && texture.height > 0) {
     return Promise.resolve(texture);
   }
@@ -38,12 +42,12 @@ function waitForTexture(texture: Texture, url: string): Promise<Texture> {
     const source = texture.source as {
       on?: (eventName: string, listener: (...args: unknown[]) => void) => void;
       off?: (eventName: string, listener: (...args: unknown[]) => void) => void;
-    };
+    } | undefined;
 
     const cleanup = () => {
       texture.off?.('update', handleReady);
-      source.off?.('update', handleReady);
-      source.off?.('error', handleError);
+      source?.off?.('update', handleReady);
+      source?.off?.('error', handleError);
     };
     const handleReady = () => {
       cleanup();
@@ -55,8 +59,8 @@ function waitForTexture(texture: Texture, url: string): Promise<Texture> {
     };
 
     texture.on?.('update', handleReady);
-    source.on?.('update', handleReady);
-    source.on?.('error', handleError);
+    source?.on?.('update', handleReady);
+    source?.on?.('error', handleError);
   });
 }
 
@@ -113,13 +117,22 @@ export function loadAvatarTexture(url: string): Promise<Texture> {
     return Promise.reject(cachedEntry.error);
   }
 
-  const texture = avatarTextureLoader(url);
   const entry: AvatarTextureCacheEntry = {
     status: 'pending',
-    texture,
   };
 
-  entry.promise = waitForTexture(texture, url)
+  const loaderResult = avatarTextureLoader(url);
+  const readyPromise = loaderResult instanceof Promise
+    ? loaderResult.then((texture) => {
+        entry.texture = texture;
+        return waitForTexture(texture, url);
+      })
+    : (() => {
+        entry.texture = loaderResult;
+        return waitForTexture(loaderResult, url);
+      })();
+
+  entry.promise = readyPromise
     .then((loadedTexture) => {
       entry.status = 'ready';
       entry.texture = loadedTexture;
@@ -156,5 +169,5 @@ export function setAvatarTextureLoaderForTests(loader: AvatarTextureLoader): voi
 
 export function resetAvatarTextureCacheForTests(): void {
   avatarTextureCache.clear();
-  avatarTextureLoader = (url) => Texture.from(url);
+  avatarTextureLoader = (url) => Assets.load<Texture>(url);
 }

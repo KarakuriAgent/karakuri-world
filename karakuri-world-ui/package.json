@@ -12,7 +12,8 @@
     "test:phase1-acceptance": "vitest run app/test/phase1-acceptance.test.tsx worker/test/relay-bootstrap.test.ts -t \"Phase 1 acceptance\"",
     "relay:readiness": "node worker/scripts/relay-readiness.mjs",
     "debug:start": "bash scripts/debug-start.sh",
-    "debug:stop": "bash scripts/debug-stop.sh"
+    "debug:stop": "bash scripts/debug-stop.sh",
+    "deploy:prod": "bash scripts/deploy-prod.sh"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.2",
