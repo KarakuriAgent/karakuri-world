@@ -1,12 +1,7 @@
 {
-  "spec_version": "unit-29-v1",
+  "spec_version": "unit-31-v1",
   "environment": "production",
   "route_bindings": {
-    "relay-config-pager": {
-      "destination_ref": "REPLACE_ME",
-      "owner": "REPLACE_ME",
-      "validated_at": null
-    },
     "relay-sustained-pager": {
       "destination_ref": "REPLACE_ME",
       "owner": "REPLACE_ME",
@@ -21,8 +16,9 @@
   "alert_rule_receipts": {},
   "staging_drill_receipts": {},
   "deployment_checklist": {
-    "auth_rejected_route_verified_at": null,
-    "network_disconnect_route_verified_at": null,
+    "r2_custom_domain_verified_at": null,
+    "cache_rules_edge_ttl_verified_at": null,
+    "auth_mode_smoke_verified_at": null,
     "retention_silence_verified_at": null,
     "r2_retry_brake_verified_at": null,
     "notification_receipts_verified_at": null,

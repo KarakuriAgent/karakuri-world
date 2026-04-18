@@ -1,12 +1,7 @@
 {
-  "spec_version": "unit-29-v1",
+  "spec_version": "unit-31-v1",
   "environment": "production",
   "route_bindings": {
-    "relay-config-pager": {
-      "destination_ref": "pager://spectator-ui-config",
-      "owner": "spectator-ui-oncall",
-      "validated_at": "2026-07-10T09:00:00.000Z"
-    },
     "relay-sustained-pager": {
       "destination_ref": "pager://spectator-ui-sustained",
       "owner": "spectator-ui-oncall",
@@ -19,18 +14,6 @@
     }
   },
   "alert_rule_receipts": {
-    "relay-ws-auth-rejected-page": {
-      "provider_rule_ref": "alerts/relay-ws-auth-rejected-page",
-      "validated_at": "2026-07-10T10:00:00.000Z"
-    },
-    "relay-ws-network-sustained-page": {
-      "provider_rule_ref": "alerts/relay-ws-network-sustained-page",
-      "validated_at": "2026-07-10T10:02:00.000Z"
-    },
-    "relay-history-gap-review-ticket": {
-      "provider_rule_ref": "alerts/relay-history-gap-review-ticket",
-      "validated_at": "2026-07-10T10:04:00.000Z"
-    },
     "relay-snapshot-freshness-page": {
       "provider_rule_ref": "alerts/relay-snapshot-freshness-page",
       "validated_at": "2026-07-10T10:06:00.000Z"
@@ -43,10 +26,6 @@
       "provider_rule_ref": "alerts/relay-r2-backoff-saturation-page",
       "validated_at": "2026-07-10T10:10:00.000Z"
     },
-    "relay-d1-ingest-failure-ticket": {
-      "provider_rule_ref": "alerts/relay-d1-ingest-failure-ticket",
-      "validated_at": "2026-07-10T10:12:00.000Z"
-    },
     "relay-retention-failure-ticket": {
       "provider_rule_ref": "alerts/relay-retention-failure-ticket",
       "validated_at": "2026-07-10T10:14:00.000Z"
@@ -58,34 +37,18 @@
     "relay-retention-silence-page": {
       "provider_rule_ref": "alerts/relay-retention-silence-page",
       "validated_at": "2026-07-10T10:16:00.000Z"
-    },
-    "relay-unknown-event-ticket": {
-      "provider_rule_ref": "alerts/relay-unknown-event-ticket",
-      "validated_at": "2026-07-10T10:18:00.000Z"
     }
   },
   "staging_drill_receipts": {
-    "auth-rejected-handshake": {
+    "polling-freshness-failure": {
       "environment": "staging",
-      "performed_at": "2026-07-09T11:00:00.000Z",
-      "evidence_ref": "artifact://relay-drills/auth-rejected-handshake",
-      "observed_alert_ids": ["relay-ws-auth-rejected-page"],
-      "observed_route_ids": ["relay-config-pager"],
-      "validated_by": "spectator-ui-oncall"
-    },
-    "network-disconnect-sustained": {
-      "environment": "staging",
-      "performed_at": "2026-07-09T12:30:00.000Z",
-      "evidence_ref": "artifact://relay-drills/network-disconnect-sustained",
+      "performed_at": "2026-07-09T10:30:00.000Z",
+      "evidence_ref": "artifact://relay-drills/polling-freshness-failure",
       "observed_alert_ids": [
-        "relay-ws-network-sustained-page",
-        "relay-history-gap-review-ticket",
+        "relay-r2-publish-failure-page",
         "relay-snapshot-freshness-page"
       ],
-      "observed_route_ids": [
-        "relay-ops-ticket",
-        "relay-sustained-pager"
-      ],
+      "observed_route_ids": ["relay-sustained-pager"],
       "validated_by": "spectator-ui-oncall"
     },
     "r2-publish-retry-brake": {
@@ -122,22 +85,12 @@
       ],
       "observed_route_ids": ["relay-ops-ticket"],
       "validated_by": "spectator-ui-ops"
-    },
-    "event-ingest-failure": {
-      "environment": "staging",
-      "performed_at": "2026-07-09T16:15:00.000Z",
-      "evidence_ref": "artifact://relay-drills/event-ingest-failure",
-      "observed_alert_ids": [
-        "relay-d1-ingest-failure-ticket",
-        "relay-unknown-event-ticket"
-      ],
-      "observed_route_ids": ["relay-ops-ticket"],
-      "validated_by": "spectator-ui-ops"
     }
   },
   "deployment_checklist": {
-    "auth_rejected_route_verified_at": "2026-07-10T11:00:00.000Z",
-    "network_disconnect_route_verified_at": "2026-07-10T11:02:00.000Z",
+    "r2_custom_domain_verified_at": "2026-07-10T11:00:00.000Z",
+    "cache_rules_edge_ttl_verified_at": "2026-07-10T11:01:00.000Z",
+    "auth_mode_smoke_verified_at": "2026-07-10T11:02:00.000Z",
     "retention_silence_verified_at": "2026-07-10T11:04:00.000Z",
     "r2_retry_brake_verified_at": "2026-07-10T11:06:00.000Z",
     "notification_receipts_verified_at": "2026-07-10T11:08:00.000Z",

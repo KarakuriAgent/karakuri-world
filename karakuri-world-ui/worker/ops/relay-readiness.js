@@ -162,7 +162,9 @@ export function validateAlertCatalog(spec, drills) {
       issues.push(`alert ${alert.id} references missing route ${alert.route}`);
     }
 
-    collectConditionMetrics(alert.condition, alertSignals);
+    if (alert.tier !== 'relay_optional') {
+      collectConditionMetrics(alert.condition, alertSignals);
+    }
   }
 
   for (const drill of drills) {
@@ -214,6 +216,10 @@ export function validateAlertCatalog(spec, drills) {
   }
 
   for (const alertId of alertIds) {
+    const alertSpec = (spec.alerts ?? []).find((a) => a.id === alertId);
+    if (alertSpec?.tier === 'relay_optional') {
+      continue;
+    }
     if (!drillCoveredAlerts.has(alertId)) {
       issues.push(`alert ${alertId} must be covered by at least one synthetic drill`);
     }
@@ -246,6 +252,10 @@ function validateRouteBindings(spec, manifest, issues) {
   const bindings = manifest.route_bindings ?? {};
 
   for (const route of spec.routes) {
+    if (route.tier === 'relay_optional') {
+      continue;
+    }
+
     const binding = bindings[route.id];
 
     if (!binding) {
@@ -284,6 +294,10 @@ function validateAlertReceipts(spec, manifest, issues) {
   const receipts = manifest.alert_rule_receipts ?? {};
 
   for (const alert of spec.alerts) {
+    if (alert.tier === 'relay_optional') {
+      continue;
+    }
+
     const receipt = receipts[alert.id];
 
     if (!receipt) {
@@ -306,6 +320,10 @@ function validateDrillReceipts(spec, drills, manifest, issues) {
   const coveredAlerts = new Set();
 
   for (const drill of drills) {
+    if (drill.tier === 'relay_optional') {
+      continue;
+    }
+
     const receipt = receipts[drill.id];
 
     if (!receipt) {
@@ -355,6 +373,9 @@ function validateDrillReceipts(spec, drills, manifest, issues) {
   }
 
   for (const alert of spec.alerts) {
+    if (alert.tier === 'relay_optional') {
+      continue;
+    }
     if (!coveredAlerts.has(alert.id)) {
       issues.push(`staging_drill_receipts must cover alert ${alert.id}`);
     }

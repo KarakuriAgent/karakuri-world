@@ -86,14 +86,13 @@ describe('relay alerting readiness', () => {
     }
   });
 
-  it('requires every alert path to stay covered by at least one staged drill', () => {
+  it('requires every primary alert path to stay covered by at least one staged drill', () => {
     const { spec, drills } = loadCatalog();
-    const brokenDrills = drills.filter((drill: { id: string }) => drill.id !== 'event-ingest-failure');
+    const brokenDrills = drills.filter((drill: { id: string }) => drill.id !== 'r2-publish-retry-brake');
 
     expect(validateAlertCatalog(spec, brokenDrills)).toEqual(
       expect.arrayContaining([
-        'alert relay-d1-ingest-failure-ticket must be covered by at least one synthetic drill',
-        'alert relay-unknown-event-ticket must be covered by at least one synthetic drill',
+        'alert relay-r2-backoff-saturation-page must be covered by at least one synthetic drill',
       ]),
     );
   });
@@ -110,10 +109,12 @@ describe('relay alerting readiness', () => {
 
     expect(issues).toEqual(
       expect.arrayContaining([
-        'route binding relay-config-pager must define a non-placeholder destination_ref',
-        'missing alert_rule_receipt for relay-ws-auth-rejected-page',
-        'missing staging_drill_receipt for auth-rejected-handshake',
-        'deployment_checklist.auth_rejected_route_verified_at must be an ISO timestamp',
+        'route binding relay-sustained-pager must define a non-placeholder destination_ref',
+        'missing alert_rule_receipt for relay-snapshot-freshness-page',
+        'missing staging_drill_receipt for polling-freshness-failure',
+        'deployment_checklist.r2_custom_domain_verified_at must be an ISO timestamp',
+        'deployment_checklist.cache_rules_edge_ttl_verified_at must be an ISO timestamp',
+        'deployment_checklist.auth_mode_smoke_verified_at must be an ISO timestamp',
         'wrangler.toml still contains placeholder D1 database IDs',
         'wrangler.toml still contains placeholder R2 bucket names',
       ]),
@@ -224,22 +225,19 @@ preview_bucket_name = "CHANGE_ME"
     );
   });
 
-  it('rejects production manifests that collapse the config pager and sustained pager into one destination or record the wrong route receipt', () => {
+  it('rejects production manifests that omit a required primary route binding or record mismatched drill routes', () => {
     const { spec, drills } = loadCatalog();
     const exampleManifest = loadJson(exampleManifestPath);
+    const routeBindings = exampleManifest.route_bindings as Record<string, unknown>;
+    const { 'relay-ops-ticket': _removed, ...remainingBindings } = routeBindings;
+    const drillReceipts = exampleManifest.staging_drill_receipts as Record<string, Record<string, unknown>>;
     const brokenManifest = {
       ...exampleManifest,
-      route_bindings: {
-        ...exampleManifest.route_bindings,
-        'relay-sustained-pager': {
-          ...exampleManifest.route_bindings['relay-sustained-pager'],
-          destination_ref: exampleManifest.route_bindings['relay-config-pager'].destination_ref,
-        },
-      },
+      route_bindings: remainingBindings,
       staging_drill_receipts: {
-        ...exampleManifest.staging_drill_receipts,
-        'auth-rejected-handshake': {
-          ...exampleManifest.staging_drill_receipts['auth-rejected-handshake'],
+        ...drillReceipts,
+        'retention-cron-silence': {
+          ...drillReceipts['retention-cron-silence'],
           observed_route_ids: ['relay-sustained-pager'],
         },
       },
@@ -253,9 +251,8 @@ preview_bucket_name = "CHANGE_ME"
       }),
     ).toEqual(
       expect.arrayContaining([
-        'relay-config-pager and relay-sustained-pager must resolve to different destinations',
-        'staging_drill_receipt auth-rejected-handshake must record routes relay-config-pager',
-        'staging_drill_receipts must cover alert relay-ws-auth-rejected-page',
+        'missing route binding for relay-ops-ticket',
+        'staging_drill_receipt retention-cron-silence must record routes relay-ops-ticket, relay-sustained-pager',
       ]),
     );
   });
