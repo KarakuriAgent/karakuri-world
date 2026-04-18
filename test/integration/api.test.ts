@@ -142,10 +142,7 @@ describe('REST API', () => {
       timezone: 'Asia/Tokyo',
       local_date: '2026-01-01',
       local_time: '09:00:00',
-      season: 'winter',
-      season_label: '冬',
-      day_in_season: 32,
-      display_label: '冬・32日目',
+      display_label: '2026-01-01 09:00 (Asia/Tokyo)',
     });
     expect(snapshot.data.map_render_theme).toMatchObject({
       cell_size: 96,

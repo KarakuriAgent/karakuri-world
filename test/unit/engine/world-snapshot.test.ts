@@ -30,23 +30,17 @@ describe('world snapshot helpers', () => {
       timezone: 'Asia/Tokyo',
       local_date: '2026-01-01',
       local_time: '09:00:00',
-      season: 'winter',
-      season_label: '冬',
-      day_in_season: 32,
-      display_label: '冬・32日目',
+      display_label: '2026-01-01 09:00 (Asia/Tokyo)',
     });
   });
 
-  it('counts season days across a year boundary', () => {
+  it('formats display_label from local date and time', () => {
     const snapshot = buildWorldCalendarSnapshot(Date.parse('2026-02-28T14:59:59Z'), 'Asia/Tokyo');
 
     expect(snapshot).toMatchObject({
       local_date: '2026-02-28',
       local_time: '23:59:59',
-      season: 'winter',
-      season_label: '冬',
-      day_in_season: 90,
-      display_label: '冬・90日目',
+      display_label: '2026-02-28 23:59 (Asia/Tokyo)',
     });
   });
 
@@ -61,10 +55,7 @@ describe('world snapshot helpers', () => {
       timezone: 'Asia/Tokyo',
       local_date: '2026-06-15',
       local_time: '12:04:05',
-      season: 'summer',
-      season_label: '夏',
-      day_in_season: 15,
-      display_label: '夏・15日目',
+      display_label: '2026-06-15 12:04 (Asia/Tokyo)',
     });
     expect(snapshot.map_render_theme).toEqual(getMapRenderTheme());
   });

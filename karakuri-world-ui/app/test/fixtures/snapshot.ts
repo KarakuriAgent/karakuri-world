@@ -12,10 +12,7 @@ export function createFixtureSnapshot(): SpectatorSnapshot {
       timezone: 'Asia/Tokyo',
       local_date: '2026-06-20',
       local_time: '18:30:00',
-      season: 'summer',
-      season_label: '夏',
-      day_in_season: 20,
-      display_label: '夏・20日目',
+      display_label: '2026-06-20 18:30 (Asia/Tokyo)',
     },
     map: {
       rows: 2,

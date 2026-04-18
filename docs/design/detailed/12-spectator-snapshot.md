@@ -15,10 +15,7 @@ interface WorldCalendarSnapshot {
   timezone: string;
   local_date: string; // YYYY-MM-DD
   local_time: string; // HH:mm:ss
-  season: 'spring' | 'summer' | 'autumn' | 'winter';
-  season_label: '春' | '夏' | '秋' | '冬';
-  day_in_season: number; // 1始まり
-  display_label: string; // 例: "春・3日目"
+  display_label: string; // 例: "2026-06-20 18:30 (Asia/Tokyo)"
 }
 
 interface MapRenderTheme {
@@ -265,18 +262,13 @@ interface SpectatorSnapshot {
 
 ## 4. 派生値の算出ルール
 
-### 4.1 季節と日付
+### 4.1 日付と時刻
 
-ゲーム内日付は `ServerConfig.timezone` を正本とする実時間連動モデルで定義する。永続化された専用カレンダー状態は持たない。
+ゲーム内日付・時刻は `ServerConfig.timezone` を正本とする実時間連動モデルで定義する。永続化された専用カレンダー状態は持たない。
 
-- `local_date`: `generated_at` を `timezone` でローカル日付へ変換
-- `season`: 気象学的季節を採用する
-  - 3〜5 月: `spring`
-  - 6〜8 月: `summer`
-  - 9〜11 月: `autumn`
-  - 12〜2 月: `winter`
-- `day_in_season`: 季節開始日からの 1 始まり日数
-- `display_label`: `{season_label}・{day_in_season}日目`
+- `local_date`: `generated_at` を `timezone` でローカル日付 (`YYYY-MM-DD`) へ変換
+- `local_time`: `generated_at` を `timezone` でローカル時刻 (`HH:mm:ss`) へ変換
+- `display_label`: `{local_date} {HH}:{mm} ({timezone})` 形式（例: `2026-06-20 18:30 (Asia/Tokyo)`）。Discord の perception 表示と同一フォーマット
 
 この方式により本体サーバーが既に持つ `timezone` と現在時刻だけで UI 表示を決定できる。
 

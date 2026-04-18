@@ -13,10 +13,7 @@ const worldSnapshot: WorldSnapshot = {
     timezone: 'Asia/Tokyo',
     local_date: '2026-06-15',
     local_time: '12:04:05',
-    season: 'summer',
-    season_label: '夏',
-    day_in_season: 15,
-    display_label: '夏・15日目',
+    display_label: '2026-06-15 12:04 (Asia/Tokyo)',
   },
   map: {
     rows: 2,

@@ -105,7 +105,7 @@ describe('App shell bootstrap', () => {
     render(<App env={env} store={createReadyStore()} autoStartPolling={false} />);
 
     const sidebar = screen.getByTestId('desktop-sidebar');
-    expect(within(sidebar).getByText('夏・20日目')).toBeInTheDocument();
+    expect(within(sidebar).getByText('2026-06-20 18:30 (Asia/Tokyo)')).toBeInTheDocument();
     expect(within(sidebar).getByText('Harvest Festival')).toBeInTheDocument();
     expect(within(sidebar).getByText('Alice')).toBeInTheDocument();
 

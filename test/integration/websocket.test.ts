@@ -125,10 +125,7 @@ describe('websocket integration', () => {
       timezone: 'Asia/Tokyo',
       local_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       local_time: expect.stringMatching(/^\d{2}:\d{2}:\d{2}$/),
-      season: expect.stringMatching(/^(spring|summer|autumn|winter)$/),
-      season_label: expect.stringMatching(/^(春|夏|秋|冬)$/),
-      day_in_season: expect.any(Number),
-      display_label: expect.stringMatching(/.+・\d+日目$/),
+      display_label: expect.stringMatching(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2} \(.+\)$/),
     });
     expect(snapshotMessage.data.map_render_theme).toMatchObject({
       cell_size: 96,

@@ -28,10 +28,7 @@ function createSnapshot(): WorldSnapshot {
       timezone: 'Asia/Tokyo',
       local_date: '2026-01-01',
       local_time: '14:30:00',
-      season: 'winter',
-      season_label: '冬',
-      day_in_season: 32,
-      display_label: '冬・32日目',
+      display_label: '2026-01-01 14:30 (Asia/Tokyo)',
     },
     map_render_theme: {
       cell_size: 96,

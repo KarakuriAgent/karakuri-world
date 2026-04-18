@@ -163,9 +163,6 @@ const worldCalendarSnapshotSchema = z.object({
   timezone: z.string(),
   local_date: z.string(),
   local_time: z.string(),
-  season: z.enum(['spring', 'summer', 'autumn', 'winter']),
-  season_label: z.enum(['春', '夏', '秋', '冬']),
-  day_in_season: z.number().int().positive(),
   display_label: z.string(),
 });
 

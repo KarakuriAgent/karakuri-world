@@ -44,10 +44,7 @@ function createWorldSnapshot(generatedAt = 1_750_000_000_000, overrides: Record<
       timezone: 'Asia/Tokyo',
       local_date: '2026-06-15',
       local_time: '12:04:05',
-      season: 'summer' as const,
-      season_label: '夏' as const,
-      day_in_season: 15,
-      display_label: '夏・15日目',
+      display_label: '2026-06-15 12:04 (Asia/Tokyo)',
     },
     map: {
       rows: 1,

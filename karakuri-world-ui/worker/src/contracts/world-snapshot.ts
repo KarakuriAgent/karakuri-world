@@ -13,9 +13,6 @@ export interface WorldCalendarSnapshot {
   timezone: string;
   local_date: string;
   local_time: string;
-  season: 'spring' | 'summer' | 'autumn' | 'winter';
-  season_label: '春' | '夏' | '秋' | '冬';
-  day_in_season: number;
   display_label: string;
 }
 
