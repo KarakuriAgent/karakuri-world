@@ -1,5 +1,7 @@
 # karakuri-world-ui
 
+> 日本語版は [README.ja.md](./README.ja.md) を参照。
+
 ## Spectator UI dev/build environment
 
 The Vite app is fail-fast by design: both `npm run dev` and `npm run build` stop immediately unless all required browser-side variables are present.

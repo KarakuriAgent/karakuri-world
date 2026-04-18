@@ -50,8 +50,10 @@ WARMUP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$WORKER_UR
 if [ "$WARMUP_STATUS" = "204" ] || [ "$WARMUP_STATUS" = "200" ]; then
   echo "Worker DO ウォームアップ完了 (HTTP $WARMUP_STATUS)"
 else
-  echo "Warning: Worker DO ウォームアップの応答が想定外でした (HTTP $WARMUP_STATUS)"
-  echo "  しばらく時間を置いてから手動で curl -i $WORKER_URL/ を試してください。"
+  echo "Error: Worker DO ウォームアップの応答が想定外でした (HTTP $WARMUP_STATUS)"
+  echo "  DO の alarm 連鎖が起動しないまま snapshot publisher が休眠状態となるため、デプロイを失敗扱いにします。"
+  echo "  原因を解消したうえで再実行するか、手動で curl -i $WORKER_URL/ を成功させてから利用してください。"
+  exit 1
 fi
 
 echo ""

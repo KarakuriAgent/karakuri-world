@@ -196,6 +196,18 @@ export function encodeSpectatorSnapshot(snapshot: SpectatorSnapshot): string {
 }
 
 export function decodeSpectatorSnapshot(input: string | unknown): SpectatorSnapshot {
-  const parsed = typeof input === 'string' ? JSON.parse(input) : input;
+  let parsed: unknown;
+
+  if (typeof input === 'string') {
+    try {
+      parsed = JSON.parse(input);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(`decodeSpectatorSnapshot: invalid JSON (${reason})`);
+    }
+  } else {
+    parsed = input;
+  }
+
   return spectatorSnapshotSchema.parse(parsed) as SpectatorSnapshot;
 }

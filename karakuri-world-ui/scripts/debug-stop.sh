@@ -23,8 +23,10 @@ fi
 # ==== Cleanup local files ====
 rm -f "$DEBUG_WRANGLER"
 rm -f .env.local
-sed -i '/^SECRETS_SET=true$/d' "$DEBUG_STATE" 2>/dev/null || true
-sed -i '/^WORKER_URL=/d' "$DEBUG_STATE" 2>/dev/null || true
+# sed -i は GNU/BSD で挙動が異なるため、grep -v でフィルタして書き戻す。
+if [ -f "$DEBUG_STATE" ]; then
+  grep -vE '^(SECRETS_SET=true|WORKER_URL=)' "$DEBUG_STATE" > "$DEBUG_STATE.tmp" && mv "$DEBUG_STATE.tmp" "$DEBUG_STATE"
+fi
 
 echo ""
 echo "===== デバッグ環境を停止しました ====="

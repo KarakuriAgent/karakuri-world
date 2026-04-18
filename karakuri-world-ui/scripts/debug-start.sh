@@ -24,7 +24,8 @@ if [ ! -f "$DEBUG_STATE" ]; then
   echo "D1 データベースを作成中..."
   D1_OUTPUT=$(npx -y wrangler d1 create "$D1_NAME" 2>&1) || true
   echo "$D1_OUTPUT"
-  D1_ID=$(echo "$D1_OUTPUT" | grep -oP 'database_id = "\K[^"]+' | head -1 || true)
+  # awk を使って database_id = "<uuid>" の値を POSIX 互換で抽出する（macOS BSD grep には -P が無い）。
+  D1_ID=$(echo "$D1_OUTPUT" | awk -F '"' '/^database_id[[:space:]]*=/ { print $2; exit }' || true)
 
   if [ -z "$D1_ID" ]; then
     echo "既存の D1 を検索中..."
@@ -97,7 +98,8 @@ if [ "${SETUP_PHASE:-}" = "resources_created" ]; then
     exit 1
   fi
 
-  sed -i '/^SETUP_PHASE=/d' "$DEBUG_STATE"
+  # sed -i は GNU/BSD で挙動が異なるため、grep -v でフィルタして書き戻す。
+  grep -v '^SETUP_PHASE=' "$DEBUG_STATE" > "$DEBUG_STATE.tmp" && mv "$DEBUG_STATE.tmp" "$DEBUG_STATE"
   echo "SNAPSHOT_URL=$SNAPSHOT_URL" >> "$DEBUG_STATE"
   echo "SETUP_PHASE=configured" >> "$DEBUG_STATE"
 
@@ -186,10 +188,13 @@ echo "Worker をデプロイ中..."
 DEPLOY_OUTPUT=$(npx -y wrangler deploy -c "$DEBUG_WRANGLER" 2>&1)
 echo "$DEPLOY_OUTPUT"
 
-# Extract Worker URL
-WORKER_URL=$(echo "$DEPLOY_OUTPUT" | grep -oP 'https://[^\s]+\.workers\.dev' | head -1 || true)
+# Extract Worker URL（BSD grep も受け付ける ERE に寄せる）
+WORKER_URL=$(echo "$DEPLOY_OUTPUT" | grep -oE 'https://[^[:space:]]+\.workers\.dev' | head -1 || true)
 if [ -n "$WORKER_URL" ]; then
-  sed -i '/^WORKER_URL=/d' "$DEBUG_STATE" 2>/dev/null || true
+  # sed -i の GNU/BSD 非互換を避けるため grep -v でフィルタして書き戻す。
+  if [ -f "$DEBUG_STATE" ]; then
+    grep -v '^WORKER_URL=' "$DEBUG_STATE" > "$DEBUG_STATE.tmp" && mv "$DEBUG_STATE.tmp" "$DEBUG_STATE"
+  fi
   echo "WORKER_URL=$WORKER_URL" >> "$DEBUG_STATE"
 fi
 

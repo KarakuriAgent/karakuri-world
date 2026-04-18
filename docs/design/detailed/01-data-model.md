@@ -130,8 +130,8 @@ interface ActionConfigBase {
   name: string; // アクション名（例: "武器を鍛造する"）
   description: string; // アクションの説明
   emoji?: string; // 任意。UI/通知で使う代表絵文字
-  cost_money?: number; // 開始時に消費する所持金
-  reward_money?: number; // 完了時に付与する所持金
+  cost_money?: number; // 開始時に消費する所持金（通貨の最小単位・非負整数。小数は不可）
+  reward_money?: number; // 完了時に付与する所持金（通貨の最小単位・非負整数。小数は不可）
   required_items?: ItemRequirement[]; // 開始時に消費する必要アイテム
   reward_items?: ItemRequirement[]; // 完了時に付与する報酬アイテム
 }
@@ -270,7 +270,7 @@ interface IdleReminderConfig {
 
 ```typescript
 interface EconomyConfig {
-  initial_money?: number; // login時の初期所持金。未設定時は 0
+  initial_money?: number; // login時の初期所持金（通貨の最小単位・非負整数）。未設定時は 0
   max_inventory_slots?: number; // 所持品スロット上限。未設定時は無制限
   item_use_duration_ms?: number; // 汎用 item_use の所要時間。未設定時は 600_000
 }

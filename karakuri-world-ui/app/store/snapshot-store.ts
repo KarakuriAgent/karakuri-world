@@ -769,6 +769,19 @@ export function createSnapshotStore({
         if (comparison < 0) {
           return;
         }
+
+        if (comparison === 0) {
+          setIfActive(
+            () => ({
+              snapshot_status: 'ready',
+              last_success_at: Date.now(),
+              is_stale: false,
+            }),
+            lifecycleId,
+          );
+          applyStaleState(previousSnapshot, lifecycleId);
+          return;
+        }
       }
 
       const snapshotWithSharedStaticRefs = preserveStaticSnapshotReferences(previousSnapshot, nextSnapshot);

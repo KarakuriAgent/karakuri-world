@@ -6,12 +6,12 @@ export interface AvatarTextureSnapshot {
   status: AvatarTextureStatus;
   texture?: Texture;
   error?: Error;
-  retryAfterMs?: number;
+  retryAfterAtMs?: number;
 }
 
 interface AvatarTextureCacheEntry extends AvatarTextureSnapshot {
   promise?: Promise<Texture>;
-  retry_after_ms?: number;
+  retry_after_at_ms?: number;
 }
 
 type AvatarTextureLoader = (url: string) => Texture | Promise<Texture>;
@@ -65,7 +65,7 @@ function waitForTexture(texture: Texture | undefined, url: string): Promise<Text
 }
 
 function shouldExpireErrorEntry(entry: AvatarTextureCacheEntry): boolean {
-  return entry.status === 'error' && typeof entry.retry_after_ms === 'number' && entry.retry_after_ms <= Date.now();
+  return entry.status === 'error' && typeof entry.retry_after_at_ms === 'number' && entry.retry_after_at_ms <= Date.now();
 }
 
 function getFreshAvatarTextureEntry(url: string): AvatarTextureCacheEntry | undefined {
@@ -98,7 +98,7 @@ export function getAvatarTextureSnapshot(url?: string): AvatarTextureSnapshot {
     status: entry.status,
     ...(entry.texture ? { texture: entry.texture } : {}),
     ...(entry.error ? { error: entry.error } : {}),
-    ...(typeof entry.retry_after_ms === 'number' ? { retryAfterMs: entry.retry_after_ms } : {}),
+    ...(typeof entry.retry_after_at_ms === 'number' ? { retryAfterAtMs: entry.retry_after_at_ms } : {}),
   };
 }
 
@@ -138,14 +138,14 @@ export function loadAvatarTexture(url: string): Promise<Texture> {
       entry.texture = loadedTexture;
       entry.error = undefined;
       entry.promise = undefined;
-      entry.retry_after_ms = undefined;
+      entry.retry_after_at_ms = undefined;
       return loadedTexture;
     })
     .catch((error) => {
       entry.status = 'error';
       entry.error = toError(error, url);
       entry.promise = undefined;
-      entry.retry_after_ms = Date.now() + AVATAR_TEXTURE_ERROR_RETRY_MS;
+      entry.retry_after_at_ms = Date.now() + AVATAR_TEXTURE_ERROR_RETRY_MS;
       throw entry.error;
     });
 

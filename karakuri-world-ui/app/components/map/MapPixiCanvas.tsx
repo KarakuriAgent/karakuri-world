@@ -274,17 +274,6 @@ export function getGroupPopoverStyle(
   };
 }
 
-function getGroupPopoverMaxHeight(
-  hostSize: { width: number; height: number },
-  popoverStyle: { left: number; top: number } | undefined,
-): number | undefined {
-  if (!popoverStyle || hostSize.height <= 0) {
-    return undefined;
-  }
-
-  return Math.max(hostSize.height - popoverStyle.top - MAP_GROUP_POPOVER_MARGIN_PX, 1);
-}
-
 interface LabelTextSpriteModel extends MapTextRenderModel {
   key: string;
   style: TextStyle;
@@ -407,11 +396,11 @@ const AgentAvatarVisual = memo(function AgentAvatarVisual({ avatar }: { avatar: 
   }, [avatar.avatarUrl, retryAttempt]);
 
   useEffect(() => {
-    if (!avatar.avatarUrl || textureSnapshot.status !== 'error' || typeof textureSnapshot.retryAfterMs !== 'number') {
+    if (!avatar.avatarUrl || textureSnapshot.status !== 'error' || typeof textureSnapshot.retryAfterAtMs !== 'number') {
       return;
     }
 
-    const retryDelay = Math.max(textureSnapshot.retryAfterMs - Date.now(), 0);
+    const retryDelay = Math.max(textureSnapshot.retryAfterAtMs - Date.now(), 0);
     const timeoutId = window.setTimeout(() => {
       setRetryAttempt((currentAttempt) => currentAttempt + 1);
     }, retryDelay);
@@ -419,7 +408,7 @@ const AgentAvatarVisual = memo(function AgentAvatarVisual({ avatar }: { avatar: 
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [avatar.avatarUrl, textureSnapshot.retryAfterMs, textureSnapshot.status]);
+  }, [avatar.avatarUrl, textureSnapshot.retryAfterAtMs, textureSnapshot.status]);
 
   const texture = textureSnapshot.status === 'ready' ? textureSnapshot.texture : undefined;
   const handleMaskRef = useCallback((graphic: Graphics | null) => {
@@ -741,9 +730,13 @@ export function MapPixiCanvas({
   const groupPopoverStyle = openGroup
     ? getGroupPopoverStyle(openGroup, hostSize, viewportViewState, groupPopoverSize)
     : undefined;
+  const groupPopoverTop = groupPopoverStyle?.top;
   const groupPopoverSurfaceStyle = useMemo(() => {
     const availableWidth = Math.max(hostSize.width - MAP_GROUP_POPOVER_MARGIN_PX * 2, 0);
-    const maxHeight = getGroupPopoverMaxHeight(hostSize, groupPopoverStyle);
+    const maxHeight =
+      typeof groupPopoverTop === 'number' && hostSize.height > 0
+        ? Math.max(hostSize.height - groupPopoverTop - MAP_GROUP_POPOVER_MARGIN_PX, 1)
+        : undefined;
     const style: {
       maxHeight?: number;
       maxWidth?: number;
@@ -760,7 +753,7 @@ export function MapPixiCanvas({
     }
 
     return Object.keys(style).length > 0 ? style : undefined;
-  }, [groupPopoverStyle, hostSize.height, hostSize.width]);
+  }, [groupPopoverTop, hostSize.height, hostSize.width]);
 
   return (
     <div
