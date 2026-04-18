@@ -2171,6 +2171,7 @@ export class UIBridgeDurableObject {
         await this.applySnapshot(worldSnapshot);
       });
       await this.scheduleFixedCadence();
+      this.emitSnapshotFreshnessMetricsSafely();
       await this.publishLatestSnapshot();
       refreshSucceeded = true;
     } catch (error) {
