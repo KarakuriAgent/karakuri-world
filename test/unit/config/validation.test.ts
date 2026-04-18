@@ -114,6 +114,28 @@ describe('config validation', () => {
     expect(() => parseConfig(validConfig)).not.toThrow();
   });
 
+  it('accepts action emoji metadata', () => {
+    const baseMap = createTestMapConfig();
+    const validConfig = createTestConfig({
+      map: {
+        ...baseMap,
+        buildings: [
+          {
+            ...baseMap.buildings[0],
+            actions: [
+              {
+                ...baseMap.buildings[0].actions[0],
+                emoji: '⚙️',
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(() => parseConfig(validConfig)).not.toThrow();
+  });
+
   it('rejects invalid action duration schemas', () => {
     const baseMap = createTestMapConfig();
     const invalidCases = [

@@ -25,6 +25,7 @@ export const actionConfigSchema = z
     action_id: z.string().min(1),
     name: z.string().min(1),
     description: z.string().min(1),
+    emoji: z.string().min(1).optional(),
     hours: hoursSchema.optional(),
     cost_money: nonNegativeIntSchema.optional(),
     reward_money: nonNegativeIntSchema.optional(),

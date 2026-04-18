@@ -35,6 +35,7 @@ export function createTestMapConfig(): MapConfig {
             action_id: 'polish-gears',
             name: 'Gears polishing',
             description: 'Carefully polish the workshop gears.',
+            emoji: '⚙️',
             duration_ms: 1500,
           },
           {

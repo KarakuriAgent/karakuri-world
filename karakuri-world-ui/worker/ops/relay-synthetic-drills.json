@@ -1,0 +1,233 @@
+{
+  "version": "unit-32-v1",
+  "drills": [
+    {
+      "id": "polling-freshness-failure",
+      "summary": "Verify that primary polling-path freshness failure alerts fire without any relay WebSocket signals.",
+      "staging_injection": [
+        "Block the relay worker's outbound requests to /api/snapshot so all fixed-cadence refresh attempts fail.",
+        "Hold the fault long enough for generated_age_ms to cross the sustained threshold and for at least three publish failures to accumulate.",
+        "Restore /api/snapshot access and confirm both freshness alerts clear."
+      ],
+      "expected_alert_ids": [
+        "relay-r2-publish-failure-page",
+        "relay-snapshot-freshness-page"
+      ],
+      "expected_route_ids": [
+        "relay-sustained-pager"
+      ],
+      "verification": {
+        "evaluation_at": "2026-07-01T02:20:00.000Z",
+        "samples": [
+          {
+            "metric": "ui.d1.retention_run_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T00:00:00.000Z",
+            "value": 1,
+            "tags": {
+              "result": "success"
+            }
+          },
+          {
+            "metric": "ui.snapshot.refresh_failure_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T02:05:00.000Z",
+            "value": 1,
+            "tags": {
+              "reason": "fixed-cadence"
+            }
+          },
+          {
+            "metric": "ui.r2.publish_failure_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T02:11:00.000Z",
+            "value": 1
+          },
+          {
+            "metric": "ui.r2.publish_failure_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T02:12:00.000Z",
+            "value": 1
+          },
+          {
+            "metric": "ui.r2.publish_failure_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T02:16:00.000Z",
+            "value": 1
+          },
+          {
+            "metric": "ui.snapshot.generated_age_ms",
+            "kind": "gauge",
+            "timestamp": "2026-07-01T02:05:00.000Z",
+            "value": 65000
+          },
+          {
+            "metric": "ui.snapshot.generated_age_ms",
+            "kind": "gauge",
+            "timestamp": "2026-07-01T02:20:00.000Z",
+            "value": 95000
+          },
+          {
+            "metric": "ui.snapshot.published_age_ms",
+            "kind": "gauge",
+            "timestamp": "2026-07-01T02:05:00.000Z",
+            "value": 32000
+          },
+          {
+            "metric": "ui.snapshot.published_age_ms",
+            "kind": "gauge",
+            "timestamp": "2026-07-01T02:20:00.000Z",
+            "value": 58000
+          }
+        ]
+      }
+    },
+    {
+      "id": "r2-publish-retry-brake",
+      "summary": "Verify persistent R2 publish failures trigger both the failure alert and the retry-brake saturation alert.",
+      "staging_injection": [
+        "Force staging SNAPSHOT_BUCKET writes to fail continuously (for example by revoking write access or swapping in a failing test bucket binding).",
+        "Hold the fault long enough for at least three publish failures and for publish_failure_streak to reach the 60-second retry cap.",
+        "Restore writes and capture the alert receipts plus the recovery clear evidence."
+      ],
+      "expected_alert_ids": [
+        "relay-r2-backoff-saturation-page",
+        "relay-r2-publish-failure-page"
+      ],
+      "expected_route_ids": [
+        "relay-sustained-pager"
+      ],
+      "verification": {
+        "evaluation_at": "2026-07-01T01:20:00.000Z",
+        "samples": [
+          {
+            "metric": "ui.d1.retention_run_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T00:00:00.000Z",
+            "value": 1,
+            "tags": {
+              "result": "success"
+            }
+          },
+          {
+            "metric": "ui.r2.publish_failure_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T01:11:00.000Z",
+            "value": 1
+          },
+          {
+            "metric": "ui.r2.publish_failure_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T01:14:00.000Z",
+            "value": 1
+          },
+          {
+            "metric": "ui.r2.publish_failure_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T01:18:00.000Z",
+            "value": 1
+          },
+          {
+            "metric": "ui.r2.publish_failure_streak",
+            "kind": "gauge",
+            "timestamp": "2026-07-01T01:10:00.000Z",
+            "value": 5
+          },
+          {
+            "metric": "ui.r2.publish_failure_streak",
+            "kind": "gauge",
+            "timestamp": "2026-07-01T01:20:00.000Z",
+            "value": 6
+          },
+          {
+            "metric": "ui.snapshot.published_age_ms",
+            "kind": "gauge",
+            "timestamp": "2026-07-01T01:20:00.000Z",
+            "value": 25000
+          }
+        ]
+      }
+    },
+    {
+      "id": "retention-cron-silence",
+      "summary": "Verify retention failure and retention-silence paths before production.",
+      "staging_injection": [
+        "Pause or misroute the staging scheduled retention trigger so no success sample is emitted for more than two days, or replay the equivalent alert-evaluation fixture in the chosen monitoring stack.",
+        "Inject one failing retention run to confirm the failure ticket path while silence is still active.",
+        "Restore the cron, force one successful retention run, and record the clear notification."
+      ],
+      "expected_alert_ids": [
+        "relay-retention-failure-ticket",
+        "relay-retention-silence-page"
+      ],
+      "expected_route_ids": [
+        "relay-ops-ticket",
+        "relay-sustained-pager"
+      ],
+      "verification": {
+        "evaluation_at": "2026-07-04T03:00:00.000Z",
+        "samples": [
+          {
+            "metric": "ui.d1.retention_run_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T02:59:00.000Z",
+            "value": 1,
+            "tags": {
+              "result": "success"
+            }
+          },
+          {
+            "metric": "ui.d1.retention_deleted_rows",
+            "kind": "gauge",
+            "timestamp": "2026-07-01T02:59:00.000Z",
+            "value": 42
+          },
+          {
+            "metric": "ui.d1.retention_run_total",
+            "kind": "counter",
+            "timestamp": "2026-07-04T02:30:00.000Z",
+            "value": 1,
+            "tags": {
+              "result": "failure"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "retention-backlog-recovery",
+      "summary": "Verify a recovered retention run that deletes a large backlog opens an ops follow-up ticket.",
+      "staging_injection": [
+        "Pause staging retention long enough to build a meaningful backlog of expired rows.",
+        "Restore the retention cron and capture the first successful run where deleted_rows crosses the backlog threshold.",
+        "Record the ticket receipt plus the retention run evidence so operators can review the delayed cleanup."
+      ],
+      "expected_alert_ids": [
+        "relay-retention-backlog-ticket"
+      ],
+      "expected_route_ids": [
+        "relay-ops-ticket"
+      ],
+      "verification": {
+        "evaluation_at": "2026-07-05T04:00:00.000Z",
+        "samples": [
+          {
+            "metric": "ui.d1.retention_run_total",
+            "kind": "counter",
+            "timestamp": "2026-07-05T03:59:00.000Z",
+            "value": 1,
+            "tags": {
+              "result": "success"
+            }
+          },
+          {
+            "metric": "ui.d1.retention_deleted_rows",
+            "kind": "gauge",
+            "timestamp": "2026-07-05T03:59:00.000Z",
+            "value": 18500
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -121,6 +121,8 @@ interface ConversationJoinRequest {
 
 成功時点では joiner を `pending_participant_agent_ids` に積み、`current_conversation_id` / state だけ先に `in_conversation` へ遷移する。`conversation_join` の発火、スレッド名更新、snapshot 反映は `applyPendingJoiners` が走るタイミング（`conversation_interval` タイマーの発火、`/leave` 応答または inactive_check タイムアウト後の継続ポイント、3人以上会話での `/end` 後に次回発火する `conversation_interval`）まで遅延する。`conversation_join` はその反映タイミングを表す内部イベントで、エージェント宛の専用通知は join 要求時にも適用時にも送らない（参加者は apply 後の最初のターン通知で新しい参加者一覧を知る）。
 
+反映タイミングで joiner 自身がログアウト済みなら `conversation_pending_join_cancelled(reason: "participant_logged_out")`、`current_conversation_id` や state がずれて会話へ入れない状態なら `conversation_pending_join_cancelled(reason: "agent_unavailable")` を発火して参加を取り消す。
+
 ### 5.2 発言
 
 `POST /api/agents/conversation/speak`
@@ -135,6 +137,7 @@ interface ConversationSpeakRequest {
 - 自分のターンのときだけ実行可能
 - pending joiner は `applyPendingJoiners` で次のターン境界に反映されるまで `participant_agent_ids` に含まれないため、同ターン内の発言配信では次話者候補にも participants 表示にも登場しない
 - 発言後は `conversation_interval` タイマーが作られ、配信後に次話者へターンが移る
+- `conversation_interval` タイマー発火時は、まず pending joiner 反映を試みたうえで、通常どおり次話者へターンを渡せるかを判定する。発言は聞き手へ届けつつ、通常ターン継続ではなく closing / ログアウト後の再開処理へ移る場合は `conversation_interval_interrupted` を発火し、その直後に `conversation_closing` または `conversation_turn_started` を続けて発火する
 - 指名された話者だけが actionable な通知を受け、他の参加者は FYI を受け取る
 
 ### 5.3 自発終了 / 退出
@@ -188,8 +191,9 @@ closing 中は最後のメッセージ担当者へ順番にターンを渡し、
 - 参加者がログアウトしたら、その参加者を会話から除外
 - 残りが 1 人以下なら `conversation_ended(reason: "participant_logged_out")`
 - 残りが 2 人以上なら `conversation_leave(reason: "logged_out")` を発火して継続
+- 発言配信待ちの `conversation_interval` 中に参加者ログアウトで通常ターン継続先が変わった場合は、残りの聞き手へ `conversation_interval_interrupted` を発火してから、再開先に `conversation_turn_started`（または server_event closing 中なら `conversation_closing`）を送る
 - 継続する場合、再開した話者へターン再開通知を送る
-- pending joiner がログアウトや会話終了に巻き込まれて参加できなかった場合は、`conversation_pending_join_cancelled(reason: "participant_logged_out")` で join 取消を通知する
+- pending joiner がログアウトや会話終了に巻き込まれて参加できなかった場合は、`conversation_pending_join_cancelled(reason: "participant_logged_out")` で join 取消を通知する。joiner の state 不整合により反映不能だった場合は `reason: "agent_unavailable"` を使う
 
 ## 8. 主なイベント
 
@@ -202,12 +206,15 @@ type ConversationEvent =
   | { type: 'conversation_join'; conversation_id: string; agent_id: string; agent_name: string; participant_agent_ids: string[] }
   | { type: 'conversation_leave'; conversation_id: string; agent_id: string; agent_name: string; reason: 'voluntary' | 'inactive' | 'logged_out' | 'server_event'; participant_agent_ids: string[]; message?: string; next_speaker_agent_id?: string }
   | { type: 'conversation_inactive_check'; conversation_id: string; target_agent_ids: string[] }
+  | { type: 'conversation_interval_interrupted'; conversation_id: string; speaker_agent_id: string; listener_agent_ids: string[]; next_speaker_agent_id: string; participant_agent_ids: string[]; message: string; closing: boolean }
   | { type: 'conversation_turn_started'; conversation_id: string; current_speaker_agent_id: string }
   | { type: 'conversation_closing'; conversation_id: string; initiator_agent_id: string; participant_agent_ids: string[]; current_speaker_agent_id: string; reason: 'max_turns' | 'server_event' | 'ended_by_agent' }
   | { type: 'conversation_ended'; conversation_id: string; initiator_agent_id: string; participant_agent_ids: string[]; reason: 'max_turns' | 'turn_timeout' | 'server_event' | 'ended_by_agent' | 'participant_logged_out'; final_message?: string; final_speaker_agent_id?: string }
-  | { type: 'conversation_pending_join_cancelled'; conversation_id: string; agent_id: string; reason: 'max_turns' | 'turn_timeout' | 'server_event' | 'ended_by_agent' | 'participant_logged_out' };
+  | { type: 'conversation_pending_join_cancelled'; conversation_id: string; agent_id: string; reason: 'max_turns' | 'turn_timeout' | 'server_event' | 'ended_by_agent' | 'participant_logged_out' | 'agent_unavailable' };
 ```
 
-`conversation_join` は会話参加反映の内部イベントで、エージェント向け通知は発生しない。`conversation_pending_join_cancelled` は会話全体が終了する際に `pending_participant_agent_ids` に残っていた各 joiner へ送られる専用イベントで、対象 joiner 本人へ follow-up 通知を送り、#world-log には投稿しない。
+`conversation_join` は会話参加反映の内部イベントで、エージェント向け通知は発生しない。`conversation_interval_interrupted` は「発言自体は届くが、そのまま通常ターンへは進まない」ケースを表すイベントで、聞き手向け follow-up と後続の `conversation_turn_started` / `conversation_closing` の橋渡しに使う。`conversation_pending_join_cancelled` は会話全体の終了時だけでなく、pending join 反映時に joiner の state が不整合だった場合にも送られる専用イベントで、対象 joiner 本人へ follow-up 通知を送り、#world-log には投稿しない。
+
+UI 履歴用の D1 ingest では、`conversation_*` を「当該時点の会話参加者全員のタイムラインへ載るイベント」として扱う。payload に参加者一覧が含まれない `conversation_turn_started` / `conversation_inactive_check` は、イベント保存時点の authoritative な会話状態から参加者集合を補完して link する。この authoritative state は 13-ui-relay-backend.md §3.3 の `conversation_mirror`（`RelayConversationState` と同等の会話ミラー）を正本とし、seed / update / teardown 規則は 14-ui-history-api.md §4.2.1 を正本とする。
 
 詳細な通知文面は 10-discord-bot.md、API 形状は 08-rest-api.md、MCP ツールは 09-mcp-server.md を参照。

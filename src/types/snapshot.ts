@@ -27,6 +27,29 @@ export interface SnapshotWeather {
   temperature_celsius: number;
 }
 
+export interface WorldCalendarSnapshot {
+  timezone: string;
+  local_date: string;
+  local_time: string;
+  display_label: string;
+}
+
+export interface MapRenderTheme {
+  cell_size: number;
+  label_font_size: number;
+  node_id_font_size: number;
+  background_fill: string;
+  grid_stroke: string;
+  default_node_fill: string;
+  normal_node_fill: string;
+  wall_node_fill: string;
+  door_node_fill: string;
+  npc_node_fill: string;
+  building_palette: string[];
+  wall_text_color: string;
+  default_text_color: string;
+}
+
 export interface AgentSnapshot {
   agent_id: string;
   agent_name: string;
@@ -35,6 +58,9 @@ export interface AgentSnapshot {
   discord_channel_id: string;
   money: number;
   items: AgentItem[];
+  discord_bot_avatar_url?: string;
+  status_emoji: string;
+  current_conversation_id?: string;
   movement?: {
     from_node_id: NodeId;
     to_node_id: NodeId;
@@ -67,6 +93,8 @@ export interface ServerEventSnapshot {
 export interface WorldSnapshot {
   world: WorldConfig;
   map: MapConfig;
+  calendar: WorldCalendarSnapshot;
+  map_render_theme: MapRenderTheme;
   weather?: SnapshotWeather;
   agents: AgentSnapshot[];
   conversations: ConversationSnapshot[];

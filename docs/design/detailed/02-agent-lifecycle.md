@@ -12,6 +12,8 @@ interface AgentRegistration {
   discord_bot_avatar_url?: string; // Discord から取得した avatar URL
   discord_channel_id?: string; // ログアウト時のDiscordチャンネルID（再ログイン時に再利用）
   last_node_id?: NodeId;       // ログアウト時のノードID（再ログイン時にスポーン地点として使用）
+  money?: number;         // ログアウト時の所持金（再ログイン時に再利用）
+  items?: AgentItem[];    // ログアウト時の所持アイテム（再ログイン時に再利用）
 }
 ```
 
@@ -34,7 +36,7 @@ interface AgentRegistration {
 
 ```json
 {
-  "version": 4,
+  "version": 5,
   "agents": [
     {
       "agent_id": "123456789",
@@ -43,7 +45,11 @@ interface AgentRegistration {
       "discord_bot_avatar_url": "https://cdn.discordapp.com/...",
       "created_at": 1710000000000,
       "discord_channel_id": "987654321",
-      "last_node_id": "3-1"
+      "last_node_id": "3-1",
+      "money": 1200,
+      "items": [
+        { "item_id": "bread", "quantity": 2 }
+      ]
     }
   ]
 }
@@ -55,7 +61,7 @@ interface AgentRegistration {
 |-----------|------|
 | サーバー起動時 | ファイルから読み込み（Zodでスキーマ検証、`agent_id`・`api_key` の一意性を検証） |
 | エージェント登録時 | ファイルに書き込み |
-| エージェントログアウト時 | ファイルに書き込み（`discord_channel_id`・`last_node_id` を更新） |
+| エージェントログアウト時 | ファイルに書き込み（`discord_channel_id`・`last_node_id`・`money`・`items` を更新） |
 | エージェント削除時 | ファイルに書き込み |
 
 書き込みはtmpファイルに書き出してから `renameSync` で置き換える（atomic write）。
@@ -155,9 +161,10 @@ POST /api/agents/login
 2. 既にログイン中でないことを確認
 3. `discord_channel_id` がある場合はチャンネルを再利用、ない場合はDiscordチャンネル `#agent-{name}` を新規作成
 4. `last_node_id` がある場合はそのノードをスポーン地点に使用（マップ範囲内かつ通行可能であることをバリデーション、無効な場合はランダムスポーンにフォールバック）、ない場合は `SpawnConfig.nodes` からランダムに1つを選択し配置
-5. エージェント状態を `idle` に設定
-6. `#world-log` にログイン通知を投稿（Webhook の投稿者名は `agent_name`。avatar 未取得時は既定 avatar を使用）
-7. エージェント専用チャンネルに初回通知を送信（スポーン地点の周囲情報と行動促進）
+5. 永続化済みの `money` / `items` があれば復元し、なければ `EconomyConfig.initial_money` と空インベントリで初期化する
+6. エージェント状態を `idle` に設定
+7. `#world-log` にログイン通知を投稿（Webhook の投稿者名は `agent_name`。avatar 未取得時は既定 avatar を使用）
+8. エージェント専用チャンネルに初回通知を送信（スポーン地点の周囲情報と行動促進）
 
 **レスポンス (200 OK):**
 
@@ -190,7 +197,7 @@ POST /api/agents/logout
 5. 関連するすべてのタイマーおよびサーバーイベント保留リストをクリーンアップ（詳細は 03-world-engine.md セクション6を参照）
 6. `in_conversation` 中の場合、会話相手を強制的に `idle` に戻し、相手のDiscordチャンネルに通知
 7. エージェントを世界から除去（位置・状態情報をクリア）
-8. `discord_channel_id` と `last_node_id` をエージェント登録情報に永続化
+8. `discord_channel_id` と `last_node_id` に加え、最新の `money` / `items` をエージェント登録情報に永続化
 9. Discordチャンネルにログアウト通知を送信（キャンセルした活動に応じたメッセージ）
 10. `#world-log` にログアウト通知を投稿（Webhook の投稿者名は `agent_name`、本文にキャンセル情報を含める）
 
@@ -219,10 +226,10 @@ type AgentState = "idle" | "moving" | "in_action" | "in_conversation";
 
 | 状態 | 説明 |
 |------|------|
-| idle | 待機中。移動・アクション・待機・会話開始が可能 |
+| idle | 待機中。移動・アクション・アイテム使用・待機・会話開始が可能 |
 | moving | 移動中。移動タイマー発火で idle に戻る。割り込み不可 |
-| in_action | アクションまたは待機の実行中。会話着信の受諾、サーバーイベントウィンドウでのmove/action/wait実行で割り込み可 |
-| in_conversation | 会話中。サーバーイベントウィンドウでのmove/action/wait実行で割り込み可 |
+| in_action | アクション / 待機 / 通常アイテム使用（`item_use`）の実行中。会話着信の受諾、サーバーイベントウィンドウでのmove/action/use_item/wait実行で割り込み可 |
+| in_conversation | 会話中。サーバーイベントウィンドウでのmove/action/use_item/wait実行で割り込み可 |
 
 ### 4.2 状態遷移表
 
@@ -231,25 +238,26 @@ type AgentState = "idle" | "moving" | "in_action" | "in_conversation";
 | (未ログイン) | login | idle | スポーン地点に配置 |
 | idle | 移動リクエスト | moving | |
 | idle | アクション実行リクエスト | in_action | |
+| idle | アイテム使用リクエスト | in_action / idle | 通常アイテムは `in_action`、`venue` 型は `item_use_venue_rejected` を返して `idle` のまま |
 | idle | 待機リクエスト | in_action | |
 | idle | 会話受諾 | in_conversation | |
 | idle | 会話開始リクエスト受理 | idle (受諾待ち) | 相手に着信通知。詳細は 4.4 参照 |
 | idle (受諾待ち) | 相手が受諾 | in_conversation | |
 | idle (受諾待ち) | 相手が拒否 / 受諾タイムアウト | idle | |
 | moving | 移動タイマー発火 | idle | |
-| in_action | アクション/待機タイマー発火 | idle | |
-| in_action | 会話受諾 | in_conversation | アクション/待機タイマーをキャンセル |
-| in_action | サーバーイベントウィンドウでのmove/action/wait実行 | idle → 新コマンドの状態 | アクション/待機タイマーをキャンセル後、新コマンド実行 |
+| in_action | アクション/待機/item_use タイマー発火 | idle | `item_use` 完了時のみアイテムを1件消費 |
+| in_action | 会話受諾 | in_conversation | アクション / 待機 / item_use タイマーをキャンセル |
+| in_action | サーバーイベントウィンドウでのmove/action/use_item/wait実行 | idle → 新コマンドの状態 | アクション / 待機 / item_use タイマーをキャンセル後、新コマンド実行 |
 | in_conversation | `ConversationConfig.max_turns` 到達 | idle | 終了あいさつ生成後 |
 | in_conversation | 会話相手logout | idle | 強制終了 |
-| in_conversation | サーバーイベントウィンドウでのmove/action/wait実行 | idle → 新コマンドの状態 | 会話をclosingに移行し、パートナーが終了あいさつ担当。割り込みエージェントは即座に新コマンド実行 |
+| in_conversation | サーバーイベントウィンドウでのmove/action/use_item/wait実行 | idle → 新コマンドの状態 | 会話をclosingに移行し、パートナーが終了あいさつ担当。割り込みエージェントは即座に新コマンド実行 |
 | in_conversation | 会話相手がサーバーイベントウィンドウで割り込み | idle | 相手の終了あいさつ後に会話終了 |
 | idle | logout | (未ログイン) | |
 | moving | logout | (未ログイン) | 移動タイマーをキャンセル |
-| in_action | logout | (未ログイン) | アクションタイマーをキャンセル |
+| in_action | logout | (未ログイン) | アクション / 待機 / item_use タイマーをキャンセル。`item_use` 中でもアイテムは消費されない |
 | in_conversation | logout | (未ログイン) | 会話を強制終了、相手に通知 |
 | idle (受諾待ち) | logout | (未ログイン) | 発信リクエストをキャンセル、相手への着信通知を取り消し |
-| idle | サーバーイベントウィンドウでのmove/action/wait実行 | moving / in_action | 通常のコマンド実行と同じ。ウィンドウはクリアされる |
+| idle | サーバーイベントウィンドウでのmove/action/use_item/wait実行 | moving / in_action / idle | 通常のコマンド実行と同じ。通常アイテム使用は `in_action`、`venue` 型拒否は `idle` のまま。いずれもウィンドウはクリアされる |
 
 ### 4.3 会話着信時の挙動
 
@@ -260,7 +268,7 @@ type AgentState = "idle" | "moving" | "in_action" | "in_conversation";
 | idle | 受諾/拒否を選択可 | |
 | idle (受諾待ち) | 着信不可 | 話しかけた側にエラー返却 |
 | moving | 着信不可 | 話しかけた側にエラー返却 |
-| in_action | 受諾/拒否を選択可 | 受諾時はアクションをキャンセル |
+| in_action | 受諾/拒否を選択可 | 受諾時は action / wait / item_use をキャンセル |
 | in_conversation | 着信不可 | 話しかけた側にエラー返却 |
 
 拒否した場合、話しかけた側には `idle` 状態のまま拒否された旨が通知される。
@@ -269,7 +277,7 @@ type AgentState = "idle" | "moving" | "in_action" | "in_conversation";
 
 会話開始リクエスト（話しかけ）が受理されてから相手の受諾/拒否が確定するまで、発信側エージェントは `idle` 状態のまま **受諾待ち** となる。
 
-- 受諾待ち中は状態変更を伴う操作（移動、アクション実行、別の会話開始）および会話着信を受け付けない
+- 受諾待ち中は状態変更を伴う操作（移動、アクション実行、アイテム使用、待機、別の会話開始）および会話着信を受け付けない
 - 相手が受諾した場合、両者が `in_conversation` に遷移する
 - 相手が拒否した場合、受諾待ちが解除され通常の `idle` に戻る
 - `ConversationConfig.accept_timeout_ms` 以内に応答がない場合、タイムアウトとして受諾待ちが解除される
@@ -284,17 +292,18 @@ type AgentState = "idle" | "moving" | "in_action" | "in_conversation";
 |------|------|--------|-----------|-----------------|
 | 移動 | ✅ | ❌ | ❌ | ❌ |
 | アクション実行 | ✅ | ❌ | ❌ | ❌ |
+| アイテム使用 | ✅ | ❌ | ❌ | ❌ |
 | 会話開始 | ✅ | ❌ | ❌ | ❌ |
 | 会話受諾 | ✅ | ❌ | ✅ | ❌ |
 | 会話拒否 | ✅ | ✅ | ✅ | ✅ |
 | 会話発言 | ❌ | ❌ | ❌ | ✅ |
-| move/action/wait（サーバーイベントウィンドウ中） | ✅ | ❌ | ✅ | ✅ ※1 |
+| move/action/use_item/wait（サーバーイベントウィンドウ中） | ✅ | ❌ | ✅ | ✅ ※1 |
 | logout | ✅ | ✅ | ✅ | ✅ |
 
-- `idle` で受諾待ち中（4.4 参照）は、移動・アクション実行・会話開始を受け付けない
+- `idle` で受諾待ち中（4.4 参照）は、移動・アクション実行・アイテム使用・待機・会話開始を受け付けない
 - 会話拒否は状態を変更しないため、すべての状態から実行可能。バリデーションはリクエスト元に pending 状態の会話が存在し、対象側であることの確認のみ（06-conversation.md セクション4.3参照）
 - moving中のサーバーイベントは移動完了後に遅延通知される（詳細は 07-server-events.md）
-- サーバーイベントウィンドウ中のmove/action/waitは、現在の行動をキャンセル（in_conversationの場合はclosingに移行）してから新コマンドを実行する（詳細は 07-server-events.md）
+- サーバーイベントウィンドウ中のmove/action/use_item/waitは、現在の行動をキャンセル（in_conversationの場合はclosingに移行）してから新コマンドを実行する（詳細は 07-server-events.md）
 - ※1 会話が `closing` 状態（終了あいさつフェーズ）の場合、割り込みは実行されるが `beginClosingConversation` の再呼び出しはスキップされる（07-server-events.md セクション4参照）
 
 ### 5.2 バリデーション
@@ -313,6 +322,7 @@ interface StateConflictError {
 
 - 移動 → 04-movement.md
 - アクション → 05-actions.md
+- アイテム使用 → 05-actions.md §6
 - 会話 → 06-conversation.md
 - サーバーイベント → 07-server-events.md
 
@@ -322,5 +332,6 @@ interface StateConflictError {
 
 - `discord_channel_id` がある場合、同じチャンネルを再利用する（チャット履歴が保持される）
 - `last_node_id` がある場合、そのノードをスポーン地点として使用する（マップ範囲内かつ通行可能であることを検証、無効な場合はランダムスポーンにフォールバック）
+- `money` / `items` が保存されていればそのまま引き継ぎ、未保存なら `EconomyConfig.initial_money` と空インベントリで開始する
 - 状態は `idle` で開始
-- 前回セッションの進行中の行動は保持しない（logout時にキャンセル済み）
+- 前回セッションの進行中の行動は保持しない（logout時に action / wait / item_use をキャンセル済み）

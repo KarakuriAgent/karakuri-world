@@ -1,14 +1,28 @@
 import type { MapConfig, NodeConfig } from '../types/data-model.js';
+import type { MapRenderTheme } from '../types/snapshot.js';
 
-const CELL_SIZE = 96;
-const LABEL_FONT_SIZE = 14;
-const GRID_STROKE = '#94a3b8';
-const DEFAULT_NODE_FILL = '#bbf7d0';
-const NORMAL_NODE_FILL = '#f8fafc';
-const WALL_NODE_FILL = '#334155';
-const DOOR_NODE_FILL = '#b45309';
-const NPC_NODE_FILL = '#fde68a';
-const BUILDING_PALETTE = ['#dbeafe', '#e9d5ff', '#fce7f3', '#fee2e2', '#dcfce7', '#e0f2fe'];
+export const MAP_RENDER_THEME: MapRenderTheme = {
+  cell_size: 96,
+  label_font_size: 14,
+  node_id_font_size: 12,
+  background_fill: '#e2e8f0',
+  grid_stroke: '#94a3b8',
+  default_node_fill: '#bbf7d0',
+  normal_node_fill: '#f8fafc',
+  wall_node_fill: '#334155',
+  door_node_fill: '#b45309',
+  npc_node_fill: '#fde68a',
+  building_palette: ['#dbeafe', '#e9d5ff', '#fce7f3', '#fee2e2', '#dcfce7', '#e0f2fe'],
+  wall_text_color: '#f8fafc',
+  default_text_color: '#0f172a',
+};
+
+export function getMapRenderTheme(): MapRenderTheme {
+  return {
+    ...MAP_RENDER_THEME,
+    building_palette: [...MAP_RENDER_THEME.building_palette],
+  };
+}
 
 function escapeXml(value: string): string {
   return value
@@ -29,40 +43,40 @@ function hashString(value: string): number {
 
 function getBuildingFill(buildingId: string | undefined): string {
   if (!buildingId) {
-    return '#e2e8f0';
+    return MAP_RENDER_THEME.background_fill;
   }
-  return BUILDING_PALETTE[hashString(buildingId) % BUILDING_PALETTE.length];
+  return MAP_RENDER_THEME.building_palette[hashString(buildingId) % MAP_RENDER_THEME.building_palette.length];
 }
 
 function getNodeFill(node: NodeConfig | undefined): string {
   if (!node) {
-    return DEFAULT_NODE_FILL;
+    return MAP_RENDER_THEME.default_node_fill;
   }
 
   switch (node.type) {
     case 'normal':
-      return NORMAL_NODE_FILL;
+      return MAP_RENDER_THEME.normal_node_fill;
     case 'wall':
-      return WALL_NODE_FILL;
+      return MAP_RENDER_THEME.wall_node_fill;
     case 'door':
-      return DOOR_NODE_FILL;
+      return MAP_RENDER_THEME.door_node_fill;
     case 'building_interior':
       return getBuildingFill(node.building_id);
     case 'npc':
-      return NPC_NODE_FILL;
+      return MAP_RENDER_THEME.npc_node_fill;
   }
 }
 
 function getNodeTextColor(node: NodeConfig | undefined): string {
   if (node?.type === 'wall') {
-    return '#f8fafc';
+    return MAP_RENDER_THEME.wall_text_color;
   }
-  return '#0f172a';
+  return MAP_RENDER_THEME.default_text_color;
 }
 
 export function generateMapSvg(map: MapConfig): string {
-  const width = map.cols * CELL_SIZE;
-  const height = map.rows * CELL_SIZE;
+  const width = map.cols * MAP_RENDER_THEME.cell_size;
+  const height = map.rows * MAP_RENDER_THEME.cell_size;
   const labels: string[] = [];
   const cells: string[] = [];
 
@@ -70,18 +84,22 @@ export function generateMapSvg(map: MapConfig): string {
     for (let col = 1; col <= map.cols; col++) {
       const nodeId = `${row}-${col}` as const;
       const node = map.nodes[nodeId];
-      const x = (col - 1) * CELL_SIZE;
-      const y = (row - 1) * CELL_SIZE;
+      const x = (col - 1) * MAP_RENDER_THEME.cell_size;
+      const y = (row - 1) * MAP_RENDER_THEME.cell_size;
       const fill = getNodeFill(node);
       const textColor = getNodeTextColor(node);
 
-      cells.push(`<rect x="${x}" y="${y}" width="${CELL_SIZE}" height="${CELL_SIZE}" fill="${fill}" stroke="${GRID_STROKE}" stroke-width="1" />`);
-      cells.push(`<text x="${x + 8}" y="${y + 18}" font-size="12" font-family="Arial, sans-serif" fill="${textColor}">${nodeId}</text>`);
+      cells.push(
+        `<rect x="${x}" y="${y}" width="${MAP_RENDER_THEME.cell_size}" height="${MAP_RENDER_THEME.cell_size}" fill="${fill}" stroke="${MAP_RENDER_THEME.grid_stroke}" stroke-width="1" />`,
+      );
+      cells.push(
+        `<text x="${x + 8}" y="${y + 18}" font-size="${MAP_RENDER_THEME.node_id_font_size}" font-family="Arial, sans-serif" fill="${textColor}">${nodeId}</text>`,
+      );
 
       if (node?.label) {
         const escapedLabel = escapeXml(node.label);
         labels.push(
-          `<text x="${x + CELL_SIZE / 2}" y="${y + CELL_SIZE / 2}" font-size="${LABEL_FONT_SIZE}" font-family="Arial, sans-serif" fill="${textColor}" text-anchor="middle" dominant-baseline="middle">${escapedLabel}</text>`,
+          `<text x="${x + MAP_RENDER_THEME.cell_size / 2}" y="${y + MAP_RENDER_THEME.cell_size / 2}" font-size="${MAP_RENDER_THEME.label_font_size}" font-family="Arial, sans-serif" fill="${textColor}" text-anchor="middle" dominant-baseline="middle">${escapedLabel}</text>`,
         );
       }
     }
@@ -89,7 +107,7 @@ export function generateMapSvg(map: MapConfig): string {
 
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
-    `<rect width="${width}" height="${height}" fill="#e2e8f0" />`,
+    `<rect width="${width}" height="${height}" fill="${MAP_RENDER_THEME.background_fill}" />`,
     ...cells,
     ...labels,
     '</svg>',
@@ -102,7 +120,7 @@ export async function renderMapImage(map: MapConfig): Promise<Buffer> {
   const resvg = new Resvg(svg, {
     fitTo: {
       mode: 'width',
-      value: Math.max(map.cols * CELL_SIZE, 1),
+      value: Math.max(map.cols * MAP_RENDER_THEME.cell_size, 1),
     },
   });
   return Buffer.from(resvg.render().asPng());

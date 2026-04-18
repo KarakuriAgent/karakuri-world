@@ -155,7 +155,36 @@ interface NotificationAcceptedResponse {
 
 バリデーション・処理フローの詳細は 05-actions.md を参照。
 
-### 4.3 待機
+### 4.3 アイテム使用
+
+```
+POST /api/agents/use-item
+```
+
+認証: Agent（1.1）。ログイン状態制約: あり。
+
+リクエスト:
+
+```typescript
+interface ItemUseRequest {
+  item_id: string;
+}
+```
+
+レスポンス (200 OK):
+
+```typescript
+interface NotificationAcceptedResponse {
+  ok: true;
+  message: string;
+}
+```
+
+通常アイテムではタイマー駆動の使用処理を開始し、詳細結果は `item_use_started` / `item_use_completed` 通知で確定する。`venue` 型アイテムではレスポンス自体は同じく受理応答を返すが、タイマーや状態遷移は行わず、`item_use_venue_rejected` 通知で専用アクションを実行できる場所候補を返す。
+
+バリデーション・処理フローの詳細は 05-actions.md セクション6 を参照。
+
+### 4.4 待機
 
 ```
 POST /api/agents/wait
@@ -185,7 +214,7 @@ interface WaitResponse {
 |-----------|------------|------|
 | 409 | `state_conflict` | エージェントがidle状態でない、または会話着信保留中 |
 
-### 4.4 会話開始
+### 4.5 会話開始
 
 ```
 POST /api/agents/conversation/start
@@ -212,7 +241,7 @@ interface ConversationStartResponse {
 
 バリデーション・処理フローの詳細は 06-conversation.md セクション4.1 を参照。
 
-### 4.5 会話受諾
+### 4.6 会話受諾
 
 ```
 POST /api/agents/conversation/accept
@@ -238,7 +267,7 @@ interface ConversationAcceptResponse {
 
 バリデーション・処理フローの詳細は 06-conversation.md セクション4.2 を参照。
 
-### 4.6 会話拒否
+### 4.7 会話拒否
 
 ```
 POST /api/agents/conversation/reject
@@ -258,7 +287,7 @@ interface ConversationRejectResponse {
 
 バリデーション・処理フローの詳細は 06-conversation.md セクション4.3 を参照。
 
-### 4.7 会話発言
+### 4.8 会話発言
 
 ```
 POST /api/agents/conversation/speak
@@ -285,7 +314,7 @@ interface ConversationSpeakResponse {
 
 バリデーション・処理フローの詳細は 06-conversation.md セクション5.2 を参照。
 
-### 4.8 会話終了
+### 4.9 会話終了
 
 ```
 POST /api/agents/conversation/end
@@ -314,7 +343,7 @@ interface ConversationSpeakResponse {
 
 バリデーション・処理フローの詳細は 06-conversation.md セクション5.3, 7 を参照。
 
-### 4.9 会話参加
+### 4.10 会話参加
 
 ```
 POST /api/agents/conversation/join
@@ -338,7 +367,7 @@ interface ConversationJoinResponse {
 
 進行中 (`active`) の会話に近距離から参加する。参加は deferred join として扱われ、現在話者を割り込ませず次のターン境界で反映される。詳細は 06-conversation.md セクション5.1 を参照。
 
-### 4.10 inactive_check 継続
+### 4.11 inactive_check 継続
 
 ```
 POST /api/agents/conversation/stay
@@ -358,7 +387,7 @@ interface ConversationStayResponse {
 
 inactive_check に対して会話継続を返答する。詳細は 06-conversation.md セクション6 を参照。
 
-### 4.11 inactive_check 離脱
+### 4.12 inactive_check 離脱
 
 ```
 POST /api/agents/conversation/leave
@@ -502,7 +531,9 @@ interface FireServerEventResponse {
 
 処理の詳細は 07-server-events.md セクション2 を参照。
 
-## 7. UI向けAPI
+## 7. 公開スナップショット配信のバックエンドソース
+
+ブラウザ / UI の current-state 配信の primary path は、snapshot publisher が `GET /api/snapshot` を fixed cadence で取得して `SpectatorSnapshot` へ変換し、R2/CDN へ公開した JSON をクライアントが polling する方式とする。`GET /api/snapshot` と `GET /ws` はその publisher・任意の relay・管理者デバッグ用に残すバックエンド側ソースであり、ブラウザの直接 bootstrap / 汎用同期エンドポイントとしては扱わない。詳細は 12-spectator-snapshot.md と 17-ui-rollout.md を参照。
 
 ### 7.1 スナップショット取得
 
@@ -512,9 +543,15 @@ GET /api/snapshot
 
 認証: Admin（1.2）。
 
-世界の現在状態をスナップショットとして返す。WebSocket接続前の初期データ取得にも使用できる。
+世界の現在状態を内部 / 管理向け `WorldSnapshot` として返す。primary path では snapshot publisher がこれを fixed cadence で再取得し、公開用 `SpectatorSnapshot` を生成して R2/CDN へ反映する。管理者による調査や relay の初期 state 取得にも利用できるが、ブラウザが直接 current-state bootstrap に使う前提ではない。
 
-レスポンス (200 OK): `WorldSnapshot` 型（03-world-engine.md セクション7.1 で定義）。
+レスポンス (200 OK): `WorldSnapshot` 型（03-world-engine.md セクション 7.1、12-spectator-snapshot.md セクション 2.1/2.2 参照）。
+
+- `weather`, `calendar`, `map_render_theme` を含む
+- `agents` は `discord_bot_avatar_url?`, `status_emoji`, `current_conversation_id?` を含む
+- `GET /api/snapshot` は内部 / 管理向け `WorldSnapshot` 契約であり、`discord_channel_id`, `money`, `items` のような内部管理項目を含みうる
+- ブラウザ公開用の除外・整形は `12-spectator-snapshot.md` で定義する公開変換境界（fixed-cadence snapshot publisher、必要なら relay/history ingest mirror を含む）で行う
+- ブラウザ / UI は本エンドポイントを直接 polling せず、publisher が公開した R2/CDN 上の `SpectatorSnapshot` を取得する
 
 ### 7.2 WebSocket接続
 
@@ -522,11 +559,17 @@ GET /api/snapshot
 GET /ws
 ```
 
-認証: Admin（1.2）。WebSocket接続確立前のHTTPハンドシェイク時に `X-Admin-Key` ヘッダーで認証する。
+認証: Admin（1.2）。WebSocket 接続確立前の HTTP ハンドシェイク時に `X-Admin-Key` ヘッダーで認証する。
 
-WebSocket接続を確立する。接続確立後、サーバーは `WorldSnapshot` を送信し、以降はイベントをリアルタイムで配信する。
+バックエンド向け WebSocket 接続を確立する。接続確立直後に `type: 'snapshot'` を 1 回送信し、以降は `type: 'event'` をリアルタイムで配信する。想定利用者は admin-authenticated な relay / publisher 補助経路 / デバッグクライアントであり、ブラウザ UI の汎用 current-state sync エンドポイントとしては位置付けない。
 
-同期モデルの詳細は 03-world-engine.md セクション7 を参照。
+```typescript
+type WebSocketPayload =
+  | { type: 'snapshot'; data: WorldSnapshot }
+  | { type: 'event'; data: WorldEvent };
+```
+
+`type: 'snapshot'` の `data` には `GET /api/snapshot` と同じ内部 / 管理向け `WorldSnapshot` を入れる。`type: 'event'` も backend relay / ingest / debugging 用の内部イベントストリームとして扱い、ブラウザ公開 payload へはそのまま流さない。ブラウザ公開時のサニタイズは `12-spectator-snapshot.md` に従う公開変換レイヤー（fixed-cadence snapshot publisher、必要なら relay/history ingest mirror を含む）で行う。同期モデルの詳細は 03-world-engine.md セクション 7 と 17-ui-rollout.md を参照。
 
 ## 8. バリデーション
 
@@ -547,7 +590,8 @@ WebSocket接続を確立する。接続確立後、サーバーは `WorldSnapsho
 | POST /api/agents/logout | 02-agent-lifecycle.md §3.2 |
 | POST /api/agents/move | 04-movement.md §1.3 |
 | POST /api/agents/action | 05-actions.md §1.3 |
-| POST /api/agents/wait | 本ドキュメント §4.3 |
+| POST /api/agents/use-item | 05-actions.md §6.2 |
+| POST /api/agents/wait | 本ドキュメント §4.4 |
 | POST /api/agents/conversation/start | 06-conversation.md §4.1 |
 | POST /api/agents/conversation/accept | 06-conversation.md §4.2 |
 | POST /api/agents/conversation/join | 06-conversation.md §5.1 |
@@ -569,6 +613,7 @@ WebSocket接続を確立する。接続確立後、サーバーは `WorldSnapsho
 | POST | /api/agents/logout | Agent | - | 世界からログアウト |
 | POST | /api/agents/move | Agent | ✅ | 移動 |
 | POST | /api/agents/action | Agent | ✅ | アクション実行 |
+| POST | /api/agents/use-item | Agent | ✅ | アイテム使用 |
 | POST | /api/agents/wait | Agent | ✅ | 待機 |
 | GET | /api/agents/actions | Agent | ✅ | 利用可能アクション一覧 |
 | POST | /api/agents/conversation/start | Agent | ✅ | 会話開始 |
@@ -582,5 +627,5 @@ WebSocket接続を確立する。接続確立後、サーバーは `WorldSnapsho
 | GET | /api/agents/perception | Agent | ✅ | 知覚情報取得 |
 | GET | /api/agents/map | Agent | ✅ | マップ全体取得 |
 | GET | /api/agents/world-agents | Agent | ✅ | ログイン中エージェント一覧 |
-| GET | /api/snapshot | Admin | - | 世界スナップショット |
-| GET | /ws | Admin | - | WebSocket接続 |
+| GET | /api/snapshot | Admin | - | publisher / relay / デバッグ向け内部 `WorldSnapshot` 取得 |
+| GET | /ws | Admin | - | relay / デバッグ向けバックエンド WebSocket |

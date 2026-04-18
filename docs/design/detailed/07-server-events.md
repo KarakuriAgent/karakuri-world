@@ -35,24 +35,28 @@ Discord通知には以下を含める。
 
 ## 4. サーバーイベントウィンドウ
 
-`active_server_event_id` が入っている間、次の通知が来るまで `in_action` / `in_conversation` のエージェントも `move` / `action` / `wait` を実行できる。
+`active_server_event_id` が入っている間、次の通知が来るまで `in_action` / `in_conversation` のエージェントも `move` / `action` / `use_item` / `wait` を実行できる。`use_item` は通常アイテムなら他の行動系コマンドと同じ割り込み規則に従い、`venue` 型アイテムでは状態遷移なしの `item_use_venue_rejected` 通知だけを返す。
 
 ### 4.1 行動開始時の割り込み
 
 `handleServerEventInterruption(engine, agentId)` が前処理として動く。
 
 - pending conversation があればサーバーイベント専用のキャンセル経路で破棄し、`conversation_rejected`（`reason: "server_event"`）として両当事者へ後続通知できるようにする
-- `in_action` なら現在の action / wait をキャンセルする
+- `in_action` なら現在の action / wait / item_use をキャンセルする。`item_use` 中断時は `item_use_completed` を発行せず、開始前提のままアイテム消費も行わない
 - `in_conversation` でも pending joiner（`pending_participant_agent_ids` にだけ含まれ、まだターン境界で参加未反映の joiner）の場合は、その会話から自分だけ切り離して `idle` に戻す。active な会話本体は closing に進めない
 - それ以外の `in_conversation` なら、まだ closing でない場合に相手を farewell speaker にして `beginClosingConversation(..., 'server_event')` を呼ぶ
-- 対象エージェントを `idle` に戻し、`active_server_event_id` をクリアする
+- 対象エージェントを `idle` に戻し、`active_server_event_id` をクリアする。以後は新しい `move` / `action` / `use_item` / `wait` を通常どおり開始する
 
 ### 4.2 自動クリア
 
 次の通知が正常に届いたら `active_server_event_id` をクリアする。主な契機:
 
 - action / movement / wait 完了
+- `item_use_completed`
+- `item_use_venue_rejected`
 - conversation 中の follow-up 通知（reply prompt / closing prompt / ended 通知）
 - idle reminder
 
 `moving` 中に保留されていたイベントは、遅延 `server_event_fired` を同一エージェント向け通知キューに先に積み、その直後のエージェント向け通知（通常は `movement_completed`）も同じ順序で配信する。`active_server_event_id` はその後者の通知配信後にクリアする。
+
+idle 状態のエージェントがサーバーイベント通知を見て `move` / `action` / `use_item` / `wait` を選んだ場合は、割り込み前処理の時点で `active_server_event_id` を消費済みとしてクリアし、そのコマンドの成否は通常の通知系列へ委ねる。したがって通常アイテム使用では `item_use_started` 中にウィンドウを保持し続けず、`venue` 型拒否では `item_use_venue_rejected` が「次の通知」として window を閉じる。

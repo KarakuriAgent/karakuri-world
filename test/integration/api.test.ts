@@ -138,6 +138,17 @@ describe('REST API', () => {
       headers: { 'X-Admin-Key': ADMIN_KEY },
     });
     expect(snapshot.response.status).toBe(200);
+    expect(snapshot.data.calendar).toEqual({
+      timezone: 'Asia/Tokyo',
+      local_date: '2026-01-01',
+      local_time: '09:00:00',
+      display_label: '2026-01-01 09:00 (Asia/Tokyo)',
+    });
+    expect(snapshot.data.map_render_theme).toMatchObject({
+      cell_size: 96,
+      node_id_font_size: 12,
+      background_fill: '#e2e8f0',
+    });
     expect(snapshot.data.agents).toHaveLength(1);
 
     const left = await requestJson(app, '/api/agents/logout', {

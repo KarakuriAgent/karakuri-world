@@ -11,6 +11,7 @@ function createAgentSnapshot(overrides: Partial<AgentSnapshot>): AgentSnapshot {
     agent_name: 'agent',
     node_id: '3-1',
     state: 'idle',
+    status_emoji: '',
     discord_channel_id: 'channel',
     money: 0,
     items: [],
@@ -23,6 +24,27 @@ function createSnapshot(): WorldSnapshot {
   return {
     world: config.world,
     map: config.map,
+    calendar: {
+      timezone: 'Asia/Tokyo',
+      local_date: '2026-01-01',
+      local_time: '14:30:00',
+      display_label: '2026-01-01 14:30 (Asia/Tokyo)',
+    },
+    map_render_theme: {
+      cell_size: 96,
+      label_font_size: 14,
+      node_id_font_size: 12,
+      background_fill: '#e2e8f0',
+      grid_stroke: '#94a3b8',
+      default_node_fill: '#bbf7d0',
+      normal_node_fill: '#f8fafc',
+      wall_node_fill: '#334155',
+      door_node_fill: '#b45309',
+      npc_node_fill: '#fde68a',
+      building_palette: ['#dbeafe', '#e9d5ff', '#fce7f3', '#fee2e2', '#dcfce7', '#e0f2fe'],
+      wall_text_color: '#f8fafc',
+      default_text_color: '#0f172a',
+    },
     agents: [
       createAgentSnapshot({
         agent_id: 'agent-1',
