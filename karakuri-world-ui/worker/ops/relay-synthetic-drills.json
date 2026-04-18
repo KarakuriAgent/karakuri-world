@@ -1,0 +1,362 @@
+{
+  "version": "unit-28-v1",
+  "drills": [
+    {
+      "id": "auth-rejected-handshake",
+      "summary": "Verify auth_rejected handshakes route to the immediate pager.",
+      "staging_injection": [
+        "Temporarily rotate the staging relay admin credential so websocket upgrades return auth_rejected.",
+        "Wait for one failed websocket connect attempt and capture the first notification receipt.",
+        "Restore the valid credential immediately after the page is received."
+      ],
+      "expected_alert_ids": [
+        "relay-ws-auth-rejected-page"
+      ],
+      "expected_route_ids": [
+        "relay-config-pager"
+      ],
+      "verification": {
+        "evaluation_at": "2026-07-01T00:05:00.000Z",
+        "samples": [
+          {
+            "metric": "relay.d1.retention_run_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T00:00:00.000Z",
+            "value": 1,
+            "tags": {
+              "result": "success"
+            }
+          },
+          {
+            "metric": "relay.ws.disconnect_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T00:04:00.000Z",
+            "value": 1,
+            "tags": {
+              "reason": "error",
+              "handshake_status": "auth_rejected"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "network-disconnect-sustained",
+      "summary": "Verify network disconnects page only after the outage becomes sustained and then create a history-gap follow-up on recovery.",
+      "staging_injection": [
+        "Block staging relay egress to the upstream /ws origin while leaving the worker running.",
+        "Keep the fault active past the sustained window so heartbeat refresh failures accumulate and generated freshness degrades.",
+        "Restore network connectivity, then capture the reconnect-duration and event-gap evidence plus the notification receipts."
+      ],
+      "expected_alert_ids": [
+        "relay-ws-network-sustained-page",
+        "relay-history-gap-review-ticket",
+        "relay-snapshot-freshness-page"
+      ],
+      "expected_route_ids": [
+        "relay-sustained-pager",
+        "relay-ops-ticket"
+      ],
+      "verification": {
+        "evaluation_at": "2026-07-01T12:15:00.000Z",
+        "samples": [
+          {
+            "metric": "relay.d1.retention_run_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T00:00:00.000Z",
+            "value": 1,
+            "tags": {
+              "result": "success"
+            }
+          },
+          {
+            "metric": "relay.ws.disconnect_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T12:00:00.000Z",
+            "value": 1,
+            "tags": {
+              "reason": "error",
+              "handshake_status": "network"
+            }
+          },
+          {
+            "metric": "relay.snapshot.refresh_failure_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T12:02:00.000Z",
+            "value": 1,
+            "tags": {
+              "reason": "heartbeat"
+            }
+          },
+          {
+            "metric": "relay.snapshot.refresh_failure_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T12:07:00.000Z",
+            "value": 1,
+            "tags": {
+              "reason": "heartbeat"
+            }
+          },
+          {
+            "metric": "relay.snapshot.refresh_failure_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T12:12:00.000Z",
+            "value": 1,
+            "tags": {
+              "reason": "heartbeat"
+            }
+          },
+          {
+            "metric": "relay.heartbeat.failure_streak",
+            "kind": "gauge",
+            "timestamp": "2026-07-01T12:05:00.000Z",
+            "value": 2
+          },
+          {
+            "metric": "relay.heartbeat.failure_streak",
+            "kind": "gauge",
+            "timestamp": "2026-07-01T12:15:00.000Z",
+            "value": 3
+          },
+          {
+            "metric": "relay.snapshot.generated_age_ms",
+            "kind": "gauge",
+            "timestamp": "2026-07-01T12:00:00.000Z",
+            "value": 61000
+          },
+          {
+            "metric": "relay.snapshot.generated_age_ms",
+            "kind": "gauge",
+            "timestamp": "2026-07-01T12:15:00.000Z",
+            "value": 91000
+          },
+          {
+            "metric": "relay.ws.connect_duration_ms",
+            "kind": "gauge",
+            "timestamp": "2026-07-01T12:15:00.000Z",
+            "value": 900000
+          },
+          {
+            "metric": "relay.ws.event_gap_ms",
+            "kind": "gauge",
+            "timestamp": "2026-07-01T12:15:00.000Z",
+            "value": 900000
+          }
+        ]
+      }
+    },
+    {
+      "id": "r2-publish-retry-brake",
+      "summary": "Verify persistent R2 publish failures trigger both the failure alert and the retry-brake saturation alert.",
+      "staging_injection": [
+        "Force staging SNAPSHOT_BUCKET writes to fail continuously (for example by revoking write access or swapping in a failing test bucket binding).",
+        "Hold the fault long enough for at least three publish failures and for publish_failure_streak to reach the 60-second retry cap.",
+        "Restore writes and capture the alert receipts plus the recovery clear evidence."
+      ],
+      "expected_alert_ids": [
+        "relay-r2-publish-failure-page",
+        "relay-r2-backoff-saturation-page"
+      ],
+      "expected_route_ids": [
+        "relay-sustained-pager"
+      ],
+      "verification": {
+        "evaluation_at": "2026-07-01T01:20:00.000Z",
+        "samples": [
+          {
+            "metric": "relay.d1.retention_run_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T00:00:00.000Z",
+            "value": 1,
+            "tags": {
+              "result": "success"
+            }
+          },
+          {
+            "metric": "relay.r2.publish_failure_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T01:11:00.000Z",
+            "value": 1
+          },
+          {
+            "metric": "relay.r2.publish_failure_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T01:14:00.000Z",
+            "value": 1
+          },
+          {
+            "metric": "relay.r2.publish_failure_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T01:18:00.000Z",
+            "value": 1
+          },
+          {
+            "metric": "relay.r2.publish_failure_streak",
+            "kind": "gauge",
+            "timestamp": "2026-07-01T01:10:00.000Z",
+            "value": 5
+          },
+          {
+            "metric": "relay.r2.publish_failure_streak",
+            "kind": "gauge",
+            "timestamp": "2026-07-01T01:20:00.000Z",
+            "value": 6
+          },
+          {
+            "metric": "relay.snapshot.published_age_ms",
+            "kind": "gauge",
+            "timestamp": "2026-07-01T01:20:00.000Z",
+            "value": 25000
+          }
+        ]
+      }
+    },
+    {
+      "id": "retention-cron-silence",
+      "summary": "Verify retention failure and retention-silence paths before production.",
+      "staging_injection": [
+        "Pause or misroute the staging scheduled retention trigger so no success sample is emitted for more than two days, or replay the equivalent alert-evaluation fixture in the chosen monitoring stack.",
+        "Inject one failing retention run to confirm the failure ticket path while silence is still active.",
+        "Restore the cron, force one successful retention run, and record the clear notification."
+      ],
+      "expected_alert_ids": [
+        "relay-retention-failure-ticket",
+        "relay-retention-silence-page"
+      ],
+      "expected_route_ids": [
+        "relay-ops-ticket",
+        "relay-sustained-pager"
+      ],
+      "verification": {
+        "evaluation_at": "2026-07-04T03:00:00.000Z",
+        "samples": [
+          {
+            "metric": "relay.d1.retention_run_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T02:59:00.000Z",
+            "value": 1,
+            "tags": {
+              "result": "success"
+            }
+          },
+          {
+            "metric": "relay.d1.retention_deleted_rows",
+            "kind": "gauge",
+            "timestamp": "2026-07-01T02:59:00.000Z",
+            "value": 42
+          },
+          {
+            "metric": "relay.d1.retention_run_total",
+            "kind": "counter",
+            "timestamp": "2026-07-04T02:30:00.000Z",
+            "value": 1,
+            "tags": {
+              "result": "failure"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "retention-backlog-recovery",
+      "summary": "Verify a recovered retention run that deletes a large backlog opens an ops follow-up ticket.",
+      "staging_injection": [
+        "Pause staging retention long enough to build a meaningful backlog of expired rows.",
+        "Restore the retention cron and capture the first successful run where deleted_rows crosses the backlog threshold.",
+        "Record the ticket receipt plus the retention run evidence so operators can review the delayed cleanup."
+      ],
+      "expected_alert_ids": [
+        "relay-retention-backlog-ticket"
+      ],
+      "expected_route_ids": [
+        "relay-ops-ticket"
+      ],
+      "verification": {
+        "evaluation_at": "2026-07-05T04:00:00.000Z",
+        "samples": [
+          {
+            "metric": "relay.d1.retention_run_total",
+            "kind": "counter",
+            "timestamp": "2026-07-05T03:59:00.000Z",
+            "value": 1,
+            "tags": {
+              "result": "success"
+            }
+          },
+          {
+            "metric": "relay.d1.retention_deleted_rows",
+            "kind": "gauge",
+            "timestamp": "2026-07-05T03:59:00.000Z",
+            "value": 18500
+          }
+        ]
+      }
+    },
+    {
+      "id": "event-ingest-failure",
+      "summary": "Verify repeated event ingest failures and unknown event types open the non-paging follow-up path.",
+      "staging_injection": [
+        "Inject a durable-object event ingest failure (for example via a failing D1 stub or an intentionally invalid schema migration in staging).",
+        "Replay or emit one allowlist-missing websocket event type so unknown_total increments.",
+        "Capture the ticket receipts and attach the failing event payload/log evidence."
+      ],
+      "expected_alert_ids": [
+        "relay-d1-ingest-failure-ticket",
+        "relay-unknown-event-ticket"
+      ],
+      "expected_route_ids": [
+        "relay-ops-ticket"
+      ],
+      "verification": {
+        "evaluation_at": "2026-07-01T03:10:00.000Z",
+        "samples": [
+          {
+            "metric": "relay.d1.retention_run_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T00:00:00.000Z",
+            "value": 1,
+            "tags": {
+              "result": "success"
+            }
+          },
+          {
+            "metric": "relay.d1.ingest_failure_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T03:02:00.000Z",
+            "value": 1,
+            "tags": {
+              "event_type": "movement_completed"
+            }
+          },
+          {
+            "metric": "relay.d1.ingest_failure_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T03:05:00.000Z",
+            "value": 1,
+            "tags": {
+              "event_type": "movement_completed"
+            }
+          },
+          {
+            "metric": "relay.d1.ingest_failure_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T03:09:00.000Z",
+            "value": 1,
+            "tags": {
+              "event_type": "movement_completed"
+            }
+          },
+          {
+            "metric": "relay.event.unknown_total",
+            "kind": "counter",
+            "timestamp": "2026-07-01T03:06:00.000Z",
+            "value": 1,
+            "tags": {
+              "event_type": "future_event_type"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

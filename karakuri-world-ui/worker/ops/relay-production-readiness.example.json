@@ -1,0 +1,149 @@
+{
+  "spec_version": "unit-28-v1",
+  "environment": "production",
+  "route_bindings": {
+    "relay-config-pager": {
+      "destination_ref": "pager://spectator-ui-config",
+      "owner": "spectator-ui-oncall",
+      "validated_at": "2026-07-10T09:00:00.000Z"
+    },
+    "relay-sustained-pager": {
+      "destination_ref": "pager://spectator-ui-sustained",
+      "owner": "spectator-ui-oncall",
+      "validated_at": "2026-07-10T09:05:00.000Z"
+    },
+    "relay-ops-ticket": {
+      "destination_ref": "ticket://spectator-ui-ops",
+      "owner": "spectator-ui-ops",
+      "validated_at": "2026-07-10T09:10:00.000Z"
+    }
+  },
+  "alert_rule_receipts": {
+    "relay-ws-auth-rejected-page": {
+      "provider_rule_ref": "alerts/relay-ws-auth-rejected-page",
+      "validated_at": "2026-07-10T10:00:00.000Z"
+    },
+    "relay-ws-network-sustained-page": {
+      "provider_rule_ref": "alerts/relay-ws-network-sustained-page",
+      "validated_at": "2026-07-10T10:02:00.000Z"
+    },
+    "relay-history-gap-review-ticket": {
+      "provider_rule_ref": "alerts/relay-history-gap-review-ticket",
+      "validated_at": "2026-07-10T10:04:00.000Z"
+    },
+    "relay-snapshot-freshness-page": {
+      "provider_rule_ref": "alerts/relay-snapshot-freshness-page",
+      "validated_at": "2026-07-10T10:06:00.000Z"
+    },
+    "relay-r2-publish-failure-page": {
+      "provider_rule_ref": "alerts/relay-r2-publish-failure-page",
+      "validated_at": "2026-07-10T10:08:00.000Z"
+    },
+    "relay-r2-backoff-saturation-page": {
+      "provider_rule_ref": "alerts/relay-r2-backoff-saturation-page",
+      "validated_at": "2026-07-10T10:10:00.000Z"
+    },
+    "relay-d1-ingest-failure-ticket": {
+      "provider_rule_ref": "alerts/relay-d1-ingest-failure-ticket",
+      "validated_at": "2026-07-10T10:12:00.000Z"
+    },
+    "relay-retention-failure-ticket": {
+      "provider_rule_ref": "alerts/relay-retention-failure-ticket",
+      "validated_at": "2026-07-10T10:14:00.000Z"
+    },
+    "relay-retention-backlog-ticket": {
+      "provider_rule_ref": "alerts/relay-retention-backlog-ticket",
+      "validated_at": "2026-07-10T10:15:00.000Z"
+    },
+    "relay-retention-silence-page": {
+      "provider_rule_ref": "alerts/relay-retention-silence-page",
+      "validated_at": "2026-07-10T10:16:00.000Z"
+    },
+    "relay-unknown-event-ticket": {
+      "provider_rule_ref": "alerts/relay-unknown-event-ticket",
+      "validated_at": "2026-07-10T10:18:00.000Z"
+    }
+  },
+  "staging_drill_receipts": {
+    "auth-rejected-handshake": {
+      "environment": "staging",
+      "performed_at": "2026-07-09T11:00:00.000Z",
+      "evidence_ref": "artifact://relay-drills/auth-rejected-handshake",
+      "observed_alert_ids": ["relay-ws-auth-rejected-page"],
+      "observed_route_ids": ["relay-config-pager"],
+      "validated_by": "spectator-ui-oncall"
+    },
+    "network-disconnect-sustained": {
+      "environment": "staging",
+      "performed_at": "2026-07-09T12:30:00.000Z",
+      "evidence_ref": "artifact://relay-drills/network-disconnect-sustained",
+      "observed_alert_ids": [
+        "relay-ws-network-sustained-page",
+        "relay-history-gap-review-ticket",
+        "relay-snapshot-freshness-page"
+      ],
+      "observed_route_ids": [
+        "relay-ops-ticket",
+        "relay-sustained-pager"
+      ],
+      "validated_by": "spectator-ui-oncall"
+    },
+    "r2-publish-retry-brake": {
+      "environment": "staging",
+      "performed_at": "2026-07-09T14:00:00.000Z",
+      "evidence_ref": "artifact://relay-drills/r2-publish-retry-brake",
+      "observed_alert_ids": [
+        "relay-r2-publish-failure-page",
+        "relay-r2-backoff-saturation-page"
+      ],
+      "observed_route_ids": ["relay-sustained-pager"],
+      "validated_by": "spectator-ui-oncall"
+    },
+    "retention-cron-silence": {
+      "environment": "staging",
+      "performed_at": "2026-07-09T15:30:00.000Z",
+      "evidence_ref": "artifact://relay-drills/retention-cron-silence",
+      "observed_alert_ids": [
+        "relay-retention-failure-ticket",
+        "relay-retention-silence-page"
+      ],
+      "observed_route_ids": [
+        "relay-ops-ticket",
+        "relay-sustained-pager"
+      ],
+      "validated_by": "spectator-ui-ops"
+    },
+    "retention-backlog-recovery": {
+      "environment": "staging",
+      "performed_at": "2026-07-09T15:50:00.000Z",
+      "evidence_ref": "artifact://relay-drills/retention-backlog-recovery",
+      "observed_alert_ids": [
+        "relay-retention-backlog-ticket"
+      ],
+      "observed_route_ids": ["relay-ops-ticket"],
+      "validated_by": "spectator-ui-ops"
+    },
+    "event-ingest-failure": {
+      "environment": "staging",
+      "performed_at": "2026-07-09T16:15:00.000Z",
+      "evidence_ref": "artifact://relay-drills/event-ingest-failure",
+      "observed_alert_ids": [
+        "relay-d1-ingest-failure-ticket",
+        "relay-unknown-event-ticket"
+      ],
+      "observed_route_ids": ["relay-ops-ticket"],
+      "validated_by": "spectator-ui-ops"
+    }
+  },
+  "deployment_checklist": {
+    "auth_rejected_route_verified_at": "2026-07-10T11:00:00.000Z",
+    "network_disconnect_route_verified_at": "2026-07-10T11:02:00.000Z",
+    "retention_silence_verified_at": "2026-07-10T11:04:00.000Z",
+    "r2_retry_brake_verified_at": "2026-07-10T11:06:00.000Z",
+    "notification_receipts_verified_at": "2026-07-10T11:08:00.000Z",
+    "synthetic_drill_receipts_verified_at": "2026-07-10T11:10:00.000Z",
+    "wrangler_cron_verified_at": "2026-07-10T11:12:00.000Z",
+    "preproduction_signoff_by": "spectator-ui-release-manager",
+    "preproduction_signoff_at": "2026-07-10T11:15:00.000Z"
+  }
+}

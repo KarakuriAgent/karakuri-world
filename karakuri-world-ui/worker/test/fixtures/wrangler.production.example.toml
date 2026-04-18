@@ -1,0 +1,25 @@
+name = "karakuri-world-ui"
+main = "worker/src/index.ts"
+compatibility_date = "2025-04-14"
+
+[triggers]
+crons = ["0 3 * * *"]
+
+[[durable_objects.bindings]]
+name = "UI_BRIDGE"
+class_name = "UIBridgeDurableObject"
+
+[[migrations]]
+tag = "plan04-ui-bridge"
+new_sqlite_classes = ["UIBridgeDurableObject"]
+
+[[d1_databases]]
+binding = "HISTORY_DB"
+database_name = "karakuri-world-ui-history"
+database_id = "11111111-1111-1111-1111-111111111111"
+preview_database_id = "22222222-2222-2222-2222-222222222222"
+
+[[r2_buckets]]
+binding = "SNAPSHOT_BUCKET"
+bucket_name = "karakuri-world-ui-snapshot-prod"
+preview_bucket_name = "karakuri-world-ui-snapshot-preview"

@@ -1,0 +1,289 @@
+{
+  "version": "unit-28-v1",
+  "required_signals": [
+    "relay.ws.disconnect_total",
+    "relay.ws.connect_duration_ms",
+    "relay.ws.event_gap_ms",
+    "relay.snapshot.refresh_failure_total",
+    "relay.r2.publish_failure_total",
+    "relay.r2.publish_failure_streak",
+    "relay.heartbeat.failure_streak",
+    "relay.d1.ingest_failure_total",
+    "relay.d1.retention_run_total",
+    "relay.d1.retention_deleted_rows",
+    "relay.event.unknown_total",
+    "relay.snapshot.generated_age_ms",
+    "relay.snapshot.published_age_ms"
+  ],
+  "routes": [
+    {
+      "id": "relay-config-pager",
+      "notification_kind": "page",
+      "urgency": "immediate",
+      "owner": "spectator-ui-oncall",
+      "description": "Immediate page path for configuration or auth regressions such as auth_rejected handshakes."
+    },
+    {
+      "id": "relay-sustained-pager",
+      "notification_kind": "page",
+      "urgency": "sustained",
+      "owner": "spectator-ui-oncall",
+      "description": "Paging path for freshness, publish, retention silence, or network incidents that remain broken long enough to be customer-visible."
+    },
+    {
+      "id": "relay-ops-ticket",
+      "notification_kind": "ticket",
+      "urgency": "business-hours",
+      "owner": "spectator-ui-ops",
+      "description": "Non-paging route for data integrity gaps, schema drift, and follow-up investigation."
+    }
+  ],
+  "alerts": [
+    {
+      "id": "relay-ws-auth-rejected-page",
+      "summary": "Page immediately when websocket handshakes are rejected as auth_rejected.",
+      "route": "relay-config-pager",
+      "severity": "critical",
+      "page_policy": "immediate",
+      "clear_condition": "No auth_rejected disconnects for 15 minutes.",
+      "condition": {
+        "type": "counter",
+        "metric": "relay.ws.disconnect_total",
+        "match_tags": {
+          "handshake_status": "auth_rejected"
+        },
+        "min_occurrences": 1,
+        "within_minutes": 5
+      }
+    },
+    {
+      "id": "relay-ws-network-sustained-page",
+      "summary": "Page only after network or timeout disconnects stay broken long enough to threaten freshness.",
+      "route": "relay-sustained-pager",
+      "severity": "critical",
+      "page_policy": "sustained_15m",
+      "clear_condition": "Network disconnects stop and heartbeat/freshness signals recover for 15 minutes.",
+      "condition": {
+        "type": "all_of",
+        "conditions": [
+          {
+            "type": "counter",
+            "metric": "relay.ws.disconnect_total",
+            "match_tags": {
+              "handshake_status": ["network", "timeout"]
+            },
+            "min_occurrences": 1,
+            "within_minutes": 15
+          },
+          {
+            "type": "any_of",
+            "conditions": [
+              {
+                "type": "counter",
+                "metric": "relay.snapshot.refresh_failure_total",
+                "match_tags": {
+                  "reason": "heartbeat"
+                },
+                "min_occurrences": 3,
+                "within_minutes": 15
+              },
+              {
+                "type": "gauge",
+                "metric": "relay.heartbeat.failure_streak",
+                "min_value": 2,
+                "sustained_minutes": 10
+              },
+              {
+                "type": "gauge",
+                "metric": "relay.snapshot.generated_age_ms",
+                "min_value": 60000,
+                "sustained_minutes": 15
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "relay-history-gap-review-ticket",
+      "summary": "Create an investigation ticket when reconnect duration implies a likely history gap.",
+      "route": "relay-ops-ticket",
+      "severity": "high",
+      "page_policy": "ticket",
+      "clear_condition": "Reconnect and event gap gauges fall below 30 seconds on subsequent recoveries.",
+      "condition": {
+        "type": "any_of",
+        "conditions": [
+          {
+            "type": "gauge",
+            "metric": "relay.ws.connect_duration_ms",
+            "min_value": 30000,
+            "within_minutes": 10
+          },
+          {
+            "type": "gauge",
+            "metric": "relay.ws.event_gap_ms",
+            "min_value": 30000,
+            "within_minutes": 10
+          }
+        ]
+      }
+    },
+    {
+      "id": "relay-snapshot-freshness-page",
+      "summary": "Page when generated or published freshness crosses stale-risk thresholds.",
+      "route": "relay-sustained-pager",
+      "severity": "critical",
+      "page_policy": "sustained_10m",
+      "clear_condition": "generated_age_ms, published_age_ms, and heartbeat failure streak return below thresholds for 10 minutes.",
+      "condition": {
+        "type": "any_of",
+        "conditions": [
+          {
+            "type": "gauge",
+            "metric": "relay.snapshot.generated_age_ms",
+            "min_value": 60000,
+            "sustained_minutes": 15
+          },
+          {
+            "type": "gauge",
+            "metric": "relay.snapshot.published_age_ms",
+            "min_value": 30000,
+            "sustained_minutes": 10
+          },
+          {
+            "type": "gauge",
+            "metric": "relay.heartbeat.failure_streak",
+            "min_value": 2,
+            "sustained_minutes": 10
+          }
+        ]
+      }
+    },
+    {
+      "id": "relay-r2-publish-failure-page",
+      "summary": "Page when repeated R2 publish failures or publish age show snapshot distribution is broken.",
+      "route": "relay-sustained-pager",
+      "severity": "critical",
+      "page_policy": "sustained_10m",
+      "clear_condition": "No publish failures for 15 minutes and published_age_ms returns below 30 seconds.",
+      "condition": {
+        "type": "any_of",
+        "conditions": [
+          {
+            "type": "counter",
+            "metric": "relay.r2.publish_failure_total",
+            "min_occurrences": 3,
+            "within_minutes": 10
+          },
+          {
+            "type": "gauge",
+            "metric": "relay.snapshot.published_age_ms",
+            "min_value": 30000,
+            "sustained_minutes": 10
+          }
+        ]
+      }
+    },
+    {
+      "id": "relay-r2-backoff-saturation-page",
+      "summary": "Page when the publish retry brake reaches the 60-second ceiling and stays saturated.",
+      "route": "relay-sustained-pager",
+      "severity": "critical",
+      "page_policy": "sustained_10m",
+      "clear_condition": "publish_failure_streak drops below the 60-second-cap threshold and stays recovered for 15 minutes.",
+      "condition": {
+        "type": "gauge",
+        "metric": "relay.r2.publish_failure_streak",
+        "min_value": 5,
+        "sustained_minutes": 10
+      }
+    },
+    {
+      "id": "relay-d1-ingest-failure-ticket",
+      "summary": "Open a ticket when D1 event ingest failures repeat and history may be incomplete.",
+      "route": "relay-ops-ticket",
+      "severity": "high",
+      "page_policy": "ticket",
+      "clear_condition": "No ingest failures for 30 minutes.",
+      "condition": {
+        "type": "counter",
+        "metric": "relay.d1.ingest_failure_total",
+        "min_occurrences": 3,
+        "within_minutes": 10
+      }
+    },
+    {
+      "id": "relay-retention-failure-ticket",
+      "summary": "Open a ticket when the retention cron runs but reports failure.",
+      "route": "relay-ops-ticket",
+      "severity": "high",
+      "page_policy": "ticket",
+      "clear_condition": "A subsequent retention success is observed.",
+      "condition": {
+        "type": "counter",
+        "metric": "relay.d1.retention_run_total",
+        "match_tags": {
+          "result": "failure"
+        },
+        "min_occurrences": 1,
+        "within_minutes": 2880
+      }
+    },
+    {
+      "id": "relay-retention-backlog-ticket",
+      "summary": "Open a ticket when a recovered retention run deletes an unusually large backlog of expired rows.",
+      "route": "relay-ops-ticket",
+      "severity": "high",
+      "page_policy": "ticket",
+      "clear_condition": "The next successful retention run deletes below the backlog threshold.",
+      "condition": {
+        "type": "gauge",
+        "metric": "relay.d1.retention_deleted_rows",
+        "min_value": 10000,
+        "within_minutes": 1440
+      }
+    },
+    {
+      "id": "relay-retention-silence-page",
+      "summary": "Page when the daily retention cron stops emitting success samples for two days.",
+      "route": "relay-sustained-pager",
+      "severity": "critical",
+      "page_policy": "sustained_2d",
+      "clear_condition": "A retention success sample appears again.",
+      "condition": {
+        "type": "absent_counter",
+        "metric": "relay.d1.retention_run_total",
+        "match_tags": {
+          "result": "success"
+        },
+        "missing_for_days": 2
+      }
+    },
+    {
+      "id": "relay-unknown-event-ticket",
+      "summary": "Open a ticket when unknown relay events appear and the schema may have drifted.",
+      "route": "relay-ops-ticket",
+      "severity": "high",
+      "page_policy": "ticket",
+      "clear_condition": "No unknown events for 24 hours after the rollout fix.",
+      "condition": {
+        "type": "counter",
+        "metric": "relay.event.unknown_total",
+        "min_occurrences": 1,
+        "within_minutes": 60
+      }
+    }
+  ],
+  "readiness_checklist": [
+    "auth_rejected_route_verified_at",
+    "network_disconnect_route_verified_at",
+    "retention_silence_verified_at",
+    "r2_retry_brake_verified_at",
+    "notification_receipts_verified_at",
+    "synthetic_drill_receipts_verified_at",
+    "wrangler_cron_verified_at",
+    "preproduction_signoff_by",
+    "preproduction_signoff_at"
+  ]
+}

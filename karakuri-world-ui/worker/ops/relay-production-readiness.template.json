@@ -1,0 +1,34 @@
+{
+  "spec_version": "unit-28-v1",
+  "environment": "production",
+  "route_bindings": {
+    "relay-config-pager": {
+      "destination_ref": "REPLACE_ME",
+      "owner": "REPLACE_ME",
+      "validated_at": null
+    },
+    "relay-sustained-pager": {
+      "destination_ref": "REPLACE_ME",
+      "owner": "REPLACE_ME",
+      "validated_at": null
+    },
+    "relay-ops-ticket": {
+      "destination_ref": "REPLACE_ME",
+      "owner": "REPLACE_ME",
+      "validated_at": null
+    }
+  },
+  "alert_rule_receipts": {},
+  "staging_drill_receipts": {},
+  "deployment_checklist": {
+    "auth_rejected_route_verified_at": null,
+    "network_disconnect_route_verified_at": null,
+    "retention_silence_verified_at": null,
+    "r2_retry_brake_verified_at": null,
+    "notification_receipts_verified_at": null,
+    "synthetic_drill_receipts_verified_at": null,
+    "wrangler_cron_verified_at": null,
+    "preproduction_signoff_by": "REPLACE_ME",
+    "preproduction_signoff_at": null
+  }
+}
