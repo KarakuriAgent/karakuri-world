@@ -70,6 +70,16 @@ export interface BridgeDependencies {
   random: () => number;
   observability: RelayObservability;
   publishSnapshot?: (input: SnapshotPublishInput) => Promise<void>;
+  /**
+   * Optional history ingest boundary. When provided, persists world events to D1 to
+   * support `/api/history`. This is the abstraction entry point for alternative ingest
+   * sources such as relay `/ws` events, backfill pipelines, or import scripts — callers
+   * supply a different implementation without changing the publish path.
+   *
+   * Absence of this dependency means no history is written but snapshot publishing is
+   * entirely unaffected. Ingest failures (relay.d1.ingest_failure_total) are supplementary
+   * signals only and are NOT a launch gate (see §9.1 of 13-ui-relay-backend.md).
+   */
   persistWorldEvent?: (
     worldEvent: WorldEvent,
     stagedConversationUpdate?: StagedConversationMirrorUpdate,

@@ -975,4 +975,54 @@ describe('relay bootstrap', () => {
       });
     });
   });
+
+  it('continues snapshot publish when D1 history ingest fails (relay history gap is tolerated)', async () => {
+    // Relay history gap scenario: D1 batch throws on every ingest attempt,
+    // but snapshot publishing must continue uninterrupted. Ingest failure is a
+    // supplementary signal only and must not be a launch blocker (§9.1).
+    const now = 1_750_000_050_000;
+    const socket = new FakeWebSocket();
+    const state = new FakeDurableObjectState();
+    const publishSnapshot = vi.fn<(input: SnapshotPublishCall) => Promise<void>>(async () => undefined);
+    const fetchImpl = createRelayFetchMock({
+      websocketResponses: [createWebSocketUpgradeResponse(socket)],
+    });
+    const persistWorldEvent = vi.fn<() => Promise<void>>(async () => {
+      throw new Error('D1 batch failure (simulated relay history gap)');
+    });
+    const bridge = new UIBridgeDurableObject(
+      state,
+      { KW_BASE_URL: 'http://127.0.0.1:3000', KW_ADMIN_KEY: 'test-admin-key' },
+      { fetchImpl, now: () => now, publishSnapshot, persistWorldEvent },
+    );
+
+    await bridge.whenBooted();
+    expect(publishSnapshot).toHaveBeenCalledTimes(1);
+
+    // Fire a relay event — persistWorldEvent throws, but the world-event refresh
+    // path still runs and calls publishSnapshot, proving the publish path is unaffected.
+    socket.emitMessage({
+      type: 'event',
+      data: {
+        event_id: 'evt-gap',
+        type: 'action_completed',
+        occurred_at: 1_750_000_051_000,
+        agent_id: 'alice',
+        agent_name: 'Alice',
+        action_id: 'cook',
+        action_name: 'Cook',
+        node_id: '1-1',
+        duration_ms: 60_000,
+      },
+    });
+
+    // Regardless of ingest failure, the world-event refresh path publishes successfully
+    await vi.waitFor(() => {
+      expect(publishSnapshot).toHaveBeenCalledTimes(2);
+    });
+
+    expect(bridge.getDebugState()).toMatchObject({
+      publish_failure_streak: 0,
+    });
+  });
 });
