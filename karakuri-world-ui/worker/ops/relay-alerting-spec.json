@@ -1,5 +1,5 @@
 {
-  "version": "unit-31-v1",
+  "version": "unit-32-v1",
   "required_signals": [
     "ui.snapshot.refresh_failure_total",
     "ui.r2.publish_failure_total",
@@ -9,22 +9,7 @@
     "ui.d1.retention_run_total",
     "ui.d1.retention_deleted_rows"
   ],
-  "supplementary_relay_signals": [
-    "relay.ws.disconnect_total",
-    "relay.ws.connect_duration_ms",
-    "relay.ws.event_gap_ms",
-    "relay.d1.ingest_failure_total",
-    "relay.event.unknown_total"
-  ],
   "routes": [
-    {
-      "id": "relay-config-pager",
-      "tier": "relay_optional",
-      "notification_kind": "page",
-      "urgency": "immediate",
-      "owner": "spectator-ui-oncall",
-      "description": "Immediate page path for configuration or auth regressions such as auth_rejected handshakes. Only required for relay-enabled deployments."
-    },
     {
       "id": "relay-sustained-pager",
       "notification_kind": "page",
@@ -159,126 +144,6 @@
           "result": "success"
         },
         "missing_for_days": 2
-      }
-    },
-    {
-      "id": "relay-ws-auth-rejected-page",
-      "tier": "relay_optional",
-      "summary": "Page immediately when websocket handshakes are rejected as auth_rejected.",
-      "route": "relay-config-pager",
-      "severity": "critical",
-      "page_policy": "immediate",
-      "clear_condition": "No auth_rejected disconnects for 15 minutes.",
-      "condition": {
-        "type": "counter",
-        "metric": "relay.ws.disconnect_total",
-        "match_tags": {
-          "handshake_status": "auth_rejected"
-        },
-        "min_occurrences": 1,
-        "within_minutes": 5
-      }
-    },
-    {
-      "id": "relay-ws-network-sustained-page",
-      "tier": "relay_optional",
-      "summary": "Page only after network or timeout disconnects stay broken long enough to threaten freshness.",
-      "route": "relay-sustained-pager",
-      "severity": "critical",
-      "page_policy": "sustained_15m",
-      "clear_condition": "Network disconnects stop and primary polling/R2 freshness signals recover for 15 minutes.",
-      "condition": {
-        "type": "all_of",
-        "conditions": [
-          {
-            "type": "counter",
-            "metric": "relay.ws.disconnect_total",
-            "match_tags": {
-              "handshake_status": [
-                "network",
-                "timeout"
-              ]
-            },
-            "min_occurrences": 1,
-            "within_minutes": 15
-          },
-          {
-            "type": "any_of",
-            "conditions": [
-              {
-                "type": "counter",
-                "metric": "ui.snapshot.refresh_failure_total",
-                "match_tags": {
-                  "reason": "fixed-cadence"
-                },
-                "min_occurrences": 3,
-                "within_minutes": 15
-              },
-              {
-                "type": "gauge",
-                "metric": "ui.snapshot.generated_age_ms",
-                "min_value": 60000,
-                "sustained_minutes": 15
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": "relay-history-gap-review-ticket",
-      "tier": "relay_optional",
-      "summary": "Create an investigation ticket when reconnect duration implies a likely history gap.",
-      "route": "relay-ops-ticket",
-      "severity": "high",
-      "page_policy": "ticket",
-      "clear_condition": "Reconnect and event gap gauges fall below 30 seconds on subsequent recoveries.",
-      "condition": {
-        "type": "any_of",
-        "conditions": [
-          {
-            "type": "gauge",
-            "metric": "relay.ws.connect_duration_ms",
-            "min_value": 30000,
-            "within_minutes": 10
-          },
-          {
-            "type": "gauge",
-            "metric": "relay.ws.event_gap_ms",
-            "min_value": 30000,
-            "within_minutes": 10
-          }
-        ]
-      }
-    },
-    {
-      "id": "relay-d1-ingest-failure-ticket",
-      "tier": "relay_optional",
-      "summary": "Open a ticket when D1 event ingest failures repeat and history may be incomplete.",
-      "route": "relay-ops-ticket",
-      "severity": "high",
-      "page_policy": "ticket",
-      "clear_condition": "No ingest failures for 30 minutes.",
-      "condition": {
-        "type": "counter",
-        "metric": "relay.d1.ingest_failure_total",
-        "min_occurrences": 3,
-        "within_minutes": 10
-      }
-    },
-    {
-      "id": "relay-unknown-event-ticket",
-      "tier": "relay_optional",
-      "summary": "Open a ticket when unknown relay events appear and the schema may have drifted.",
-      "route": "relay-ops-ticket",
-      "severity": "high",
-      "page_policy": "ticket",
-      "clear_condition": "No unknown events for 24 hours after the rollout fix.",
-      "condition": {
-        "type": "counter",
-        "metric": "relay.event.unknown_total",
-        "min_occurrences": 1,
-        "within_minutes": 60
       }
     }
   ],

@@ -37,19 +37,6 @@ describe('relay alerting readiness', () => {
     const { spec, drills } = loadCatalog();
 
     expect(validateAlertCatalog(spec, drills)).toEqual([]);
-
-    const authRejectedAlert = spec.alerts.find((alert: { id: string }) => alert.id === 'relay-ws-auth-rejected-page');
-    expect(authRejectedAlert).toMatchObject({
-      route: 'relay-config-pager',
-      page_policy: 'immediate',
-    });
-
-    const networkAlert = spec.alerts.find((alert: { id: string }) => alert.id === 'relay-ws-network-sustained-page');
-    expect(networkAlert).toMatchObject({
-      route: 'relay-sustained-pager',
-      page_policy: 'sustained_15m',
-    });
-
     const retentionSilenceAlert = spec.alerts.find((alert: { id: string }) => alert.id === 'relay-retention-silence-page');
     expect(retentionSilenceAlert.condition).toMatchObject({
       type: 'absent_counter',

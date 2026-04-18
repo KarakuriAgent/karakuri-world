@@ -21,7 +21,6 @@ export interface BridgeConversationState {
 }
 
 export interface BridgeState {
-  websocket?: RelayWebSocket;
   latest_snapshot?: SpectatorSnapshot;
   conversations: Record<string, BridgeConversationState>;
   recent_server_events: SpectatorRecentServerEvent[];
@@ -29,36 +28,19 @@ export interface BridgeState {
   last_event_at?: number;
   last_publish_at?: number;
   last_refresh_at?: number;
-  reconnect_attempt: number;
   refresh_in_flight: boolean;
   refresh_queued: boolean;
   refresh_queued_reason?: SnapshotRefreshReason;
   refresh_alarm_at?: number;
   publish_alarm_at?: number;
-  heartbeat_alarm_at?: number;
-  websocket_reconnect_alarm_at?: number;
   publish_in_flight: boolean;
   publish_queued: boolean;
   publish_failure_streak: number;
-  heartbeat_failure_streak: number;
-  disconnect_started_at?: number;
 }
 
-export interface RelayWebSocket {
-  addEventListener(type: 'message', listener: (event: { data: unknown }) => void): void;
-  addEventListener(type: 'close', listener: (event: RelayWebSocketCloseEvent) => void): void;
-  addEventListener(type: 'error', listener: (event: unknown) => void): void;
-  accept?(): void;
-}
-
-export interface RelayWebSocketCloseEvent {
-  code?: number;
-  reason?: string;
-}
 
 export interface RelayFetchResponse {
   status: number;
-  webSocket?: RelayWebSocket | null;
   json?(): Promise<unknown>;
 }
 
@@ -70,26 +52,10 @@ export interface BridgeDependencies {
   random: () => number;
   observability: RelayObservability;
   publishSnapshot?: (input: SnapshotPublishInput) => Promise<void>;
-  /**
-   * Optional history ingest boundary. When provided, persists world events to D1 to
-   * support `/api/history`. This is the abstraction entry point for alternative ingest
-   * sources such as relay `/ws` events, backfill pipelines, or import scripts — callers
-   * supply a different implementation without changing the publish path.
-   *
-   * Absence of this dependency means no history is written but snapshot publishing is
-   * entirely unaffected. Ingest failures (relay.d1.ingest_failure_total) are supplementary
-   * signals only and are NOT a launch gate (see §9.1 of 13-ui-relay-backend.md).
-   */
-  persistWorldEvent?: (
-    worldEvent: WorldEvent,
-    stagedConversationUpdate?: StagedConversationMirrorUpdate,
-  ) => Promise<void>;
 }
 
 type SnapshotRefreshReason = 'boot' | 'fixed-cadence' | 'world-event' | 'manual';
 type ConversationWorldEvent = Extract<WorldEvent, { conversation_id: string }>;
-type DisconnectReason = 'close' | 'error' | 'idle';
-type HandshakeStatus = 'auth_rejected' | 'not_found' | 'server_error' | 'network' | 'timeout' | 'server_close';
 
 export interface StagedConversationMirrorUpdate {
   conversation_id: string;
@@ -177,70 +143,11 @@ export interface RelayBindings extends Record<string, unknown> {
   UI_BRIDGE?: DurableObjectNamespaceLike;
   HISTORY_DB?: D1DatabaseLike;
 }
-
-class WebSocketUpgradeError extends Error {
-  constructor(
-    message: string,
-    readonly handshakeStatus: HandshakeStatus,
-  ) {
-    super(message);
-    this.name = 'WebSocketUpgradeError';
-  }
-}
-
-function classifyHandshakeStatus(status?: number): HandshakeStatus {
-  if (status === 401 || status === 403) {
-    return 'auth_rejected';
-  }
-
-  if (status === 404) {
-    return 'not_found';
-  }
-
-  if (status === 408 || status === 504) {
-    return 'timeout';
-  }
-
-  if (typeof status === 'number' && status >= 500) {
-    return 'server_error';
-  }
-
-  return 'network';
-}
-
-function classifyTransportError(error: unknown): HandshakeStatus {
-  const message = error instanceof Error ? error.message : String(error);
-  return /timeout|timed out|abort/i.test(message) ? 'timeout' : 'network';
-}
-
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function readCloseReason(event: RelayWebSocketCloseEvent | unknown): string | undefined {
-  if (typeof event !== 'object' || event === null || !('reason' in event)) {
-    return undefined;
-  }
 
-  return typeof event.reason === 'string' ? event.reason : undefined;
-}
-
-function classifySocketCloseReason(event: RelayWebSocketCloseEvent | unknown): DisconnectReason {
-  const closeReason = readCloseReason(event);
-  return closeReason && /idle|keepalive|ping timeout|heartbeat timeout/i.test(closeReason) ? 'idle' : 'close';
-}
-
-interface SocketSnapshotPayload {
-  type: 'snapshot';
-  data: WorldSnapshot;
-}
-
-interface SocketEventPayload {
-  type: 'event';
-  data: WorldEvent;
-}
-
-type SocketPayload = SocketSnapshotPayload | SocketEventPayload;
 interface SnapshotPublishInput {
   key: string;
   body: string;
@@ -248,16 +155,9 @@ interface SnapshotPublishInput {
 }
 
 const PUBLISH_BACKOFF_MAX_MS = 60_000;
-const WEBSOCKET_RECONNECT_BACKOFF_MAX_MS = 30_000;
-const WEBSOCKET_RECONNECT_JITTER_RATIO = 0.2;
 const SNAPSHOT_CONTENT_TYPE = 'application/json; charset=utf-8';
-const PERSISTED_RECONNECT_STATE_KEY = 'relay:websocket-reconnect-state';
-const PERSISTED_OUTAGE_RUNTIME_STATE_KEY = 'relay:outage-runtime-state';
+const PERSISTED_RUNTIME_STATE_KEY = 'relay:runtime-state';
 
-const socketPayloadSchema = z.object({
-  type: z.enum(['snapshot', 'event']),
-  data: z.unknown(),
-});
 
 const worldCalendarSnapshotSchema = z.object({
   timezone: z.string(),
@@ -1122,7 +1022,7 @@ export function createRuntimePersistWorldEvent(
   db?: D1DatabaseLike,
   getActionEmoji?: (actionId: string) => string | undefined,
   observability?: RelayObservability,
-): BridgeDependencies['persistWorldEvent'] | undefined {
+): ((worldEvent: WorldEvent, stagedConversationUpdate?: StagedConversationMirrorUpdate) => Promise<void>) | undefined {
   const batch = db?.batch;
 
   if (!db || typeof batch !== 'function') {
@@ -1133,8 +1033,7 @@ export function createRuntimePersistWorldEvent(
     const sanitizedWorldEvent = sanitize(worldEvent);
 
     if (!sanitizedWorldEvent) {
-      observability?.counter('relay.event.unknown_total', { event_type: String(worldEvent.type) });
-      observability?.log('warn', 'relay dropped unknown world event before ingest', {
+        observability?.log('warn', 'relay dropped unknown world event before ingest', {
         event_type: String(worldEvent.type),
       });
       return;
@@ -1236,78 +1135,6 @@ function readOptionalConversationClosureReason(
   return undefined;
 }
 
-function decodeMessageData(data: unknown): string | null {
-  if (typeof data === 'string') {
-    return data;
-  }
-
-  if (data instanceof ArrayBuffer) {
-    return textDecoder.decode(new Uint8Array(data));
-  }
-
-  if (ArrayBuffer.isView(data)) {
-    return textDecoder.decode(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
-  }
-
-  return null;
-}
-
-interface SocketPayloadHooks {
-  onUnknownEventType?: (eventType: string) => void;
-}
-
-export function parseSocketPayload(data: unknown, hooks?: SocketPayloadHooks): SocketPayload | null {
-  const decoded = decodeMessageData(data);
-
-  if (decoded === null) {
-    return null;
-  }
-
-  let parsed: unknown;
-
-  try {
-    parsed = JSON.parse(decoded) as unknown;
-  } catch {
-    return null;
-  }
-
-  const result = socketPayloadSchema.safeParse(parsed);
-
-  if (!result.success) {
-    return null;
-  }
-
-  if (result.data.type === 'snapshot') {
-    const snapshotResult = worldSnapshotSchema.safeParse(result.data.data);
-
-    if (!snapshotResult.success) {
-      return null;
-    }
-
-    return {
-      type: 'snapshot',
-      data: snapshotResult.data as WorldSnapshot,
-    };
-  }
-
-  const eventCandidate = result.data.data as Record<string, unknown>;
-
-  if (typeof eventCandidate?.type === 'string' && !KNOWN_WORLD_EVENT_TYPES.has(eventCandidate.type)) {
-    hooks?.onUnknownEventType?.(eventCandidate.type);
-    return null;
-  }
-
-  const eventResult = worldEventSchema.safeParse(result.data.data);
-
-  if (!eventResult.success) {
-    return null;
-  }
-
-  return {
-    type: 'event',
-    data: eventResult.data as WorldEvent,
-  };
-}
 
 async function fetchWorldSnapshot(config: RelayConfig, fetchImpl: RelayFetch): Promise<WorldSnapshot> {
   const response = await fetchImpl(config.snapshotUrl.toString(), {
@@ -1334,25 +1161,15 @@ function calculateBackoff(baseIntervalMs: number, streak: number, maxIntervalMs:
   return Math.min(baseIntervalMs * 2 ** Math.max(streak - 1, 0), maxIntervalMs);
 }
 
-function calculateJitteredBackoff(backoffMs: number, random: () => number): number {
-  const jitterOffset = (random() * 2 - 1) * WEBSOCKET_RECONNECT_JITTER_RATIO;
-  return Math.max(0, Math.round(backoffMs * (1 + jitterOffset)));
-}
 
-interface PersistedReconnectState {
-  reconnect_attempt: number;
-  disconnect_started_at?: number;
-  websocket_reconnect_alarm_at?: number;
-}
 
-interface PersistedOutageRuntimeState {
+interface PersistedRuntimeState {
   latest_snapshot: SpectatorSnapshot;
   last_publish_at?: number;
   last_refresh_at?: number;
   refresh_alarm_at?: number;
   publish_alarm_at?: number;
   publish_failure_streak: number;
-  heartbeat_failure_streak: number;
 }
 
 function createRuntimeSnapshotPublisher(snapshotBucket?: R2BucketLike): (input: SnapshotPublishInput) => Promise<void> {
@@ -1370,13 +1187,11 @@ export function createBridgeState(): BridgeState {
     conversations: {},
     recent_server_events: [],
     active_server_event_ids: [],
-    reconnect_attempt: 0,
     refresh_in_flight: false,
     refresh_queued: false,
     publish_in_flight: false,
     publish_queued: false,
     publish_failure_streak: 0,
-    heartbeat_failure_streak: 0,
   };
 }
 
@@ -1729,31 +1544,6 @@ export async function restoreRecentServerEvents(db?: D1DatabaseLike): Promise<Sp
   }));
 }
 
-export async function openBridgeWebSocket(config: RelayConfig, fetchImpl: RelayFetch): Promise<RelayWebSocket> {
-  let response: RelayFetchResponse;
-
-  try {
-    response = await fetchImpl(config.wsUrl.toString(), {
-      headers: {
-        Upgrade: 'websocket',
-        'X-Admin-Key': config.kwAdminKey,
-      },
-    });
-  } catch (error) {
-    throw new WebSocketUpgradeError(describeError(error), classifyTransportError(error));
-  }
-
-  if (response.status !== 101 || !response.webSocket) {
-    throw new WebSocketUpgradeError(
-      `WebSocket upgrade failed with status ${response.status}`,
-      classifyHandshakeStatus(response.status),
-    );
-  }
-
-  response.webSocket.accept?.();
-  return response.webSocket;
-}
-
 export class UIBridgeDurableObject {
   private readonly config: RelayConfig;
   private readonly bridgeState = createBridgeState();
@@ -1772,16 +1562,12 @@ export class UIBridgeDurableObject {
     const now = dependencies.now ?? (() => Date.now());
     const random = dependencies.random ?? (() => Math.random());
     const observability = dependencies.observability ?? createConsoleRelayObservability(now);
-    const runtimePersistWorldEvent =
-      dependencies.persistWorldEvent ??
-      createRuntimePersistWorldEvent(this.env.HISTORY_DB, (actionId) => this.actionEmojiIndex.get(actionId), observability);
     this.dependencies = {
       fetchImpl: dependencies.fetchImpl ?? defaultFetchImpl,
       now,
       random,
       observability,
       publishSnapshot: dependencies.publishSnapshot ?? createRuntimeSnapshotPublisher(this.env.SNAPSHOT_BUCKET),
-      ...(runtimePersistWorldEvent ? { persistWorldEvent: runtimePersistWorldEvent } : {}),
     };
     this.bootPromise = this.createBootPromise();
   }
@@ -1794,18 +1580,6 @@ export class UIBridgeDurableObject {
   async alarm(): Promise<void> {
     await this.ensureBooted();
     const now = this.dependencies.now();
-
-    if (
-      this.bridgeState.websocket === undefined &&
-      this.bridgeState.websocket_reconnect_alarm_at !== undefined &&
-      this.bridgeState.websocket_reconnect_alarm_at <= now
-    ) {
-      this.bridgeState.websocket_reconnect_alarm_at = undefined;
-
-      try {
-        await this.connectWebSocket(true);
-      } catch {}
-    }
 
     if (this.bridgeState.refresh_alarm_at !== undefined && this.bridgeState.refresh_alarm_at <= now) {
       this.bridgeState.refresh_alarm_at = undefined;
@@ -1848,20 +1622,8 @@ export class UIBridgeDurableObject {
     };
   }
 
-  private async restorePersistedReconnectState(): Promise<void> {
-    const persistedState = await this.state.storage.get?.<PersistedReconnectState>(PERSISTED_RECONNECT_STATE_KEY);
-
-    if (!persistedState) {
-      return;
-    }
-
-    this.bridgeState.reconnect_attempt = persistedState.reconnect_attempt;
-    this.bridgeState.disconnect_started_at = persistedState.disconnect_started_at;
-    this.bridgeState.websocket_reconnect_alarm_at = persistedState.websocket_reconnect_alarm_at;
-  }
-
-  private async restorePersistedOutageRuntimeState(): Promise<void> {
-    const persistedState = await this.state.storage.get?.<PersistedOutageRuntimeState>(PERSISTED_OUTAGE_RUNTIME_STATE_KEY);
+  private async restorePersistedRuntimeState(): Promise<void> {
+    const persistedState = await this.state.storage.get?.<PersistedRuntimeState>(PERSISTED_RUNTIME_STATE_KEY);
 
     if (!persistedState) {
       return;
@@ -1880,76 +1642,35 @@ export class UIBridgeDurableObject {
     this.bridgeState.refresh_alarm_at = persistedState.refresh_alarm_at;
     this.bridgeState.publish_alarm_at = persistedState.publish_alarm_at;
     this.bridgeState.publish_failure_streak = persistedState.publish_failure_streak;
-    this.bridgeState.heartbeat_failure_streak = persistedState.heartbeat_failure_streak;
   }
 
-  private async persistReconnectState(): Promise<void> {
-    await this.state.storage.put?.(PERSISTED_RECONNECT_STATE_KEY, {
-      reconnect_attempt: this.bridgeState.reconnect_attempt,
-      ...(this.bridgeState.disconnect_started_at !== undefined
-        ? { disconnect_started_at: this.bridgeState.disconnect_started_at }
-        : {}),
-      ...(this.bridgeState.websocket_reconnect_alarm_at !== undefined
-        ? { websocket_reconnect_alarm_at: this.bridgeState.websocket_reconnect_alarm_at }
-        : {}),
-    } satisfies PersistedReconnectState);
-  }
-
-  private async clearPersistedReconnectState(): Promise<void> {
-    await this.state.storage.delete?.(PERSISTED_RECONNECT_STATE_KEY);
-  }
-
-  private async persistOutageRuntimeState(): Promise<void> {
-    if (this.bridgeState.disconnect_started_at === undefined || !this.bridgeState.latest_snapshot) {
+  private async persistRuntimeState(): Promise<void> {
+    if (!this.bridgeState.latest_snapshot) {
       return;
     }
 
-    await this.state.storage.put?.(PERSISTED_OUTAGE_RUNTIME_STATE_KEY, {
+    await this.state.storage.put?.(PERSISTED_RUNTIME_STATE_KEY, {
       latest_snapshot: {
         ...this.bridgeState.latest_snapshot,
         recent_server_events: this.bridgeState.latest_snapshot.recent_server_events.map((event) => ({ ...event })),
       },
       publish_failure_streak: this.bridgeState.publish_failure_streak,
-      heartbeat_failure_streak: this.bridgeState.heartbeat_failure_streak,
       ...(this.bridgeState.last_publish_at !== undefined ? { last_publish_at: this.bridgeState.last_publish_at } : {}),
       ...(this.bridgeState.last_refresh_at !== undefined ? { last_refresh_at: this.bridgeState.last_refresh_at } : {}),
       ...(this.bridgeState.refresh_alarm_at !== undefined ? { refresh_alarm_at: this.bridgeState.refresh_alarm_at } : {}),
       ...(this.bridgeState.publish_alarm_at !== undefined ? { publish_alarm_at: this.bridgeState.publish_alarm_at } : {}),
-    } satisfies PersistedOutageRuntimeState);
-  }
-
-  private async clearPersistedOutageRuntimeState(): Promise<void> {
-    await this.state.storage.delete?.(PERSISTED_OUTAGE_RUNTIME_STATE_KEY);
+    } satisfies PersistedRuntimeState);
   }
 
   private async boot(): Promise<void> {
-    await this.restorePersistedReconnectState();
-    await this.restorePersistedOutageRuntimeState();
+    await this.restorePersistedRuntimeState();
 
     if (!this.bridgeState.latest_snapshot) {
       this.bridgeState.recent_server_events = await restoreRecentServerEvents(this.env.HISTORY_DB);
       await this.refreshSnapshot('boot');
     }
 
-    if (this.bridgeState.websocket_reconnect_alarm_at === undefined) {
-      try {
-        await this.connectWebSocket();
-      } catch (error) {
-        await this.transitionToReconnectState();
-      }
-    } else if (this.bridgeState.websocket_reconnect_alarm_at <= this.dependencies.now()) {
-      try {
-        await this.connectWebSocket(true);
-      } catch {}
-    }
-
     await this.rescheduleAlarm();
-  }
-
-  private async transitionToReconnectState(): Promise<void> {
-    this.bridgeState.reconnect_attempt = 0;
-    this.bridgeState.disconnect_started_at ??= this.dependencies.now();
-    await this.scheduleReconnectAttempt();
   }
 
   private createBootPromise(): Promise<void> {
@@ -2007,127 +1728,6 @@ export class UIBridgeDurableObject {
     }
   }
 
-  private async connectWebSocket(retryOnFailure = false): Promise<void> {
-    try {
-      const websocket = await openBridgeWebSocket(this.config, this.dependencies.fetchImpl);
-      this.bridgeState.websocket = websocket;
-      this.bridgeState.reconnect_attempt = 0;
-      this.bridgeState.websocket_reconnect_alarm_at = undefined;
-
-      if (this.bridgeState.disconnect_started_at !== undefined) {
-        const reconnectDuration = Math.max(0, this.dependencies.now() - this.bridgeState.disconnect_started_at);
-        this.dependencies.observability.gauge('relay.ws.connect_duration_ms', reconnectDuration);
-        this.dependencies.observability.gauge('relay.ws.event_gap_ms', reconnectDuration);
-        this.dependencies.observability.log('warn', 'relay websocket reconnected after downtime', {
-          reconnect_attempt: this.bridgeState.reconnect_attempt,
-          connect_duration_ms: reconnectDuration,
-          event_gap_ms: reconnectDuration,
-        });
-        this.bridgeState.disconnect_started_at = undefined;
-      }
-
-      await this.clearPersistedReconnectState();
-      await this.clearPersistedOutageRuntimeState();
-
-      websocket.addEventListener('message', (event) => {
-        this.handleSocketMessage(event.data);
-      });
-      websocket.addEventListener('close', (event) => {
-        this.handleSocketDisconnect(classifySocketCloseReason(event), 'server_close', websocket);
-      });
-      websocket.addEventListener('error', () => {
-        this.handleSocketDisconnect('error', 'network', websocket);
-      });
-      await this.rescheduleAlarm();
-    } catch (error) {
-      const handshakeStatus = error instanceof WebSocketUpgradeError ? error.handshakeStatus : classifyTransportError(error);
-      this.bridgeState.reconnect_attempt += 1;
-      this.bridgeState.disconnect_started_at ??= this.dependencies.now();
-      if (retryOnFailure) {
-        await this.scheduleReconnectAttempt();
-      }
-      const disconnectDurationMs = Math.max(0, this.dependencies.now() - this.bridgeState.disconnect_started_at);
-      this.dependencies.observability.counter('relay.ws.disconnect_total', {
-        reason: 'error',
-        handshake_status: handshakeStatus,
-      });
-      this.dependencies.observability.log(handshakeStatus === 'auth_rejected' ? 'error' : 'warn', 'relay websocket connect failed', {
-        handshake_status: handshakeStatus,
-        reconnect_attempt: this.bridgeState.reconnect_attempt,
-        disconnect_duration_ms: disconnectDurationMs,
-        error: describeError(error),
-      });
-      throw error;
-    }
-  }
-
-  private async scheduleReconnectAttempt(): Promise<void> {
-    const reconnectBackoffMs = Math.min(
-      calculateJitteredBackoff(
-        calculateBackoff(1_000, Math.max(this.bridgeState.reconnect_attempt + 1, 1), WEBSOCKET_RECONNECT_BACKOFF_MAX_MS),
-        this.dependencies.random,
-      ),
-      WEBSOCKET_RECONNECT_BACKOFF_MAX_MS,
-    );
-    this.bridgeState.websocket_reconnect_alarm_at = this.dependencies.now() + reconnectBackoffMs;
-    await this.persistReconnectState();
-    await this.persistOutageRuntimeState();
-    await this.rescheduleAlarm();
-  }
-
-  private handleSocketMessage(data: unknown): void {
-    const payload = parseSocketPayload(data, {
-      onUnknownEventType: (eventType) => {
-        this.dependencies.observability.counter('relay.event.unknown_total', { event_type: eventType });
-        this.dependencies.observability.log('warn', 'relay dropped unknown websocket event type', {
-          event_type: eventType,
-        });
-      },
-    });
-
-    if (!payload) {
-      return;
-    }
-
-    void this.enqueueSerializedOperation(async () => {
-      if (payload.type === 'snapshot') {
-        await this.applySnapshot(payload.data);
-        return;
-      }
-
-      await this.handleWorldEvent(payload.data);
-    }).catch(() => {});
-  }
-
-  private async handleWorldEvent(worldEvent: WorldEvent): Promise<void> {
-    const stagedConversationUpdate = isConversationWorldEvent(worldEvent)
-      ? stageConversationMirrorUpdate(this.bridgeState.conversations, worldEvent)
-      : undefined;
-    let shouldApplyEventMutation = true;
-
-    if (this.dependencies.persistWorldEvent) {
-      try {
-        await this.dependencies.persistWorldEvent(worldEvent, stagedConversationUpdate);
-      } catch {
-        shouldApplyEventMutation = false;
-      }
-    }
-
-    if (shouldApplyEventMutation && stagedConversationUpdate) {
-      this.bridgeState.conversations = stagedConversationUpdate.next_conversations;
-    }
-
-    if (shouldApplyEventMutation) {
-      this.bridgeState.last_event_at = worldEvent.occurred_at;
-    }
-
-    if (shouldApplyEventMutation && worldEvent.type === 'server_event_fired') {
-      this.bridgeState.recent_server_events = mergeRecentServerEvent(this.bridgeState.recent_server_events, worldEvent);
-    }
-
-    void this.refreshSnapshot('world-event');
-  }
-
   private async applySnapshot(worldSnapshot: WorldSnapshot): Promise<boolean> {
     const latestGeneratedAt = this.bridgeState.latest_snapshot?.generated_at;
 
@@ -2157,8 +1757,7 @@ export class UIBridgeDurableObject {
       published_at: this.bridgeState.last_publish_at ?? 0,
     });
     this.bridgeState.last_refresh_at = now;
-    this.bridgeState.heartbeat_failure_streak = 0;
-    await this.persistOutageRuntimeState();
+    await this.persistRuntimeState();
     return true;
   }
 
@@ -2246,7 +1845,7 @@ export class UIBridgeDurableObject {
     }
 
     if (this.isPublishBackoffActive()) {
-      await this.persistOutageRuntimeState();
+      await this.persistRuntimeState();
       await this.rescheduleAlarm();
       return;
     }
@@ -2316,7 +1915,7 @@ export class UIBridgeDurableObject {
         return;
       }
 
-      await this.persistOutageRuntimeState();
+      await this.persistRuntimeState();
       await this.rescheduleAlarm();
     }
   }
@@ -2334,36 +1933,11 @@ export class UIBridgeDurableObject {
     );
   }
 
-  private handleSocketDisconnect(reason: DisconnectReason, handshakeStatus: HandshakeStatus, websocket: RelayWebSocket): void {
-    if (this.bridgeState.websocket !== websocket) {
-      return;
-    }
-
-    this.bridgeState.websocket = undefined;
-    this.bridgeState.disconnect_started_at ??= this.dependencies.now();
-    const disconnectDurationMs = Math.max(0, this.dependencies.now() - this.bridgeState.disconnect_started_at);
-    this.dependencies.observability.counter('relay.ws.disconnect_total', {
-      reason,
-      handshake_status: handshakeStatus,
-    });
-    this.dependencies.observability.log('warn', 'relay websocket disconnected', {
-      reason,
-      handshake_status: handshakeStatus,
-      reconnect_attempt: this.bridgeState.reconnect_attempt,
-      disconnect_duration_ms: disconnectDurationMs,
-      disconnect_started_at: this.bridgeState.disconnect_started_at,
-      last_event_at: this.bridgeState.last_event_at,
-    });
-    void this.enqueueSerializedOperation(async () => {
-      await this.transitionToReconnectState();
-    }).catch(() => {});
-  }
 
   private async rescheduleAlarm(): Promise<void> {
     const nextAlarmAt = [
       this.bridgeState.refresh_alarm_at,
       this.bridgeState.publish_alarm_at,
-      this.bridgeState.websocket_reconnect_alarm_at,
     ].reduce<number | undefined>((earliest, candidate) => {
       if (candidate === undefined) {
         return earliest;

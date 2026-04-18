@@ -48,7 +48,7 @@ The automated gate covers:
 - selected agent detail remains coherent even when `/api/history` is empty or degraded
 - populated `/api/history?agent_id=...&limit=20` checks and conversation log expansion are additive comparisons when ingest/backfill is available
 - quiet-period freshness (`generated_at` refresh prevents stale before the 60-second threshold)
-- **Units 29/31 alignment**: fixed-cadence snapshot publishing, driven by a **sub-minute-capable publisher trigger**, plus direct R2 polling keep freshness inside the 15-second budget without requiring relay `/ws` uptime
+- **Units 29/32 alignment**: fixed-cadence snapshot publishing, driven by a **sub-minute-capable publisher trigger**, plus direct R2 polling keep freshness inside the 15-second budget
 
 Run the full suite with `npm test`; use `npm run test:phase1-acceptance` when you want the Phase 1 go/no-go gate only.
 
@@ -117,7 +117,6 @@ The following checks still need staging/preview infrastructure and cannot be ful
     - With the deployed worker and UI open, observe at least three consecutive publish intervals during a quiet period and confirm `generated_at` continues to advance from fixed-cadence `/api/snapshot` polling driven by a **sub-minute-capable trigger** (for example a Durable Object alarm, external cron, or always-on scheduler).
     - Confirm the UI keeps the previous render and does not enter stale before the 60-second threshold while the R2 object keeps refreshing on the 5-second cadence.
     - The daily Worker `scheduled()` cron that exists for retention is **not** this publisher trigger and does not satisfy the 5-second freshness requirement by itself.
-    - If relay `/ws` is also enabled in that deployment, temporarily interrupt it and confirm the primary R2 polling path still serves fresh snapshots; relay reconnect metrics remain additive rather than launch-blocking.
 
 ## Cloudflare Worker deployment
 
@@ -160,7 +159,7 @@ The checked-in D1 schema lives at `schema/history.sql`, and the deployable Wrang
 
 ## Relay alert wiring and readiness gate
 
-Units 29+ shift the **primary** readiness story to scheduled snapshot publishing, R2/CDN freshness, and auth-mode correctness. Unit 28's relay alert artifacts remain useful only for deployments that intentionally keep the optional `/ws` relay path enabled.
+Unit 32 removed the relay `/ws` path entirely. The readiness story is now exclusively polling + R2/CDN freshness, scheduled snapshot publishing, and auth-mode correctness. The relay alert artifacts (`relay-alerting-spec.json` etc.) cover `ui.*` and `relay.r2.*` signals only — no relay WebSocket signals remain.
 
 Authoritative repo-owned artifacts:
 
@@ -177,14 +176,13 @@ npm run relay:readiness
 npm run relay:readiness -- --target=production --manifest worker/ops/relay-production-readiness.example.json --wrangler worker/test/fixtures/wrangler.production.example.toml
 ```
 
-`npm run relay:readiness` by itself validates only the checked-in catalog/drill artifacts for the optional relay path. Primary polling/R2 readiness still requires the separate operator checks documented above and in Units 29+; production relay validation remains fail-closed when that path is enabled.
+`npm run relay:readiness` by itself validates the checked-in catalog/drill artifacts. Primary polling/R2 readiness still requires the separate operator checks documented above and in Units 29+; production relay validation remains fail-closed until the production manifest is filled in.
 
-Optional relay gate expectations:
+Relay gate expectations:
 
-- primary readiness alerts use the full primary `ui.*` metric set from Units 10/29+: `ui.snapshot.refresh_failure_total{reason}`, `ui.snapshot.generated_age_ms`, `ui.snapshot.published_age_ms`, `ui.r2.publish_failure_total`, `ui.r2.publish_failure_streak`, `ui.d1.retention_run_total{result=success}`, and `ui.d1.retention_deleted_rows`.
-- `relay.ws.disconnect_total{handshake_status=auth_rejected}` stays on the immediate pager route when the optional `/ws` relay path is enabled.
-- `network` / `timeout` websocket failures only escalate on the sustained paging route once the primary `ui.*` freshness signals show the outage persisted.
-- the immediate auth/config pager route and the sustained outage pager route must resolve to different production destinations.
+- readiness alerts use the full primary `ui.*` metric set from Units 10/29+: `ui.snapshot.refresh_failure_total{reason}`, `ui.snapshot.generated_age_ms`, `ui.snapshot.published_age_ms`, `ui.r2.publish_failure_total`, `ui.r2.publish_failure_streak`, `ui.d1.retention_run_total{result=success}`, and `ui.d1.retention_deleted_rows`.
+- the sustained outage pager route must resolve to a real production destination.
 - retention cron silence (`ui.d1.retention_run_total{result=success}` absent for 2 days), large retention backlog cleanup (`ui.d1.retention_deleted_rows` crossing the review threshold), and R2 retry-brake saturation (`ui.r2.publish_failure_streak >= 5`, matching the 60-second cap) are explicit gate items.
+- the immediate auth/config pager route and the sustained outage pager route must resolve to different production destinations.
 - the production manifest must include real notification destinations, provider rule references, staging drill receipts with both observed alert IDs and observed route IDs for every required alert path, and pre-production sign-off.
 - production validation also fails if `wrangler.toml` omits the required `HISTORY_DB` / `SNAPSHOT_BUCKET` bindings, still has placeholder D1/R2 bindings, or if the daily `03:00 UTC` retention cron is missing.

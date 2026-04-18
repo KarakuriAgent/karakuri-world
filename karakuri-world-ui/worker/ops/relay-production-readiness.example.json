@@ -1,5 +1,5 @@
 {
-  "spec_version": "unit-31-v1",
+  "spec_version": "unit-32-v1",
   "environment": "production",
   "route_bindings": {
     "relay-sustained-pager": {
@@ -48,7 +48,9 @@
         "relay-r2-publish-failure-page",
         "relay-snapshot-freshness-page"
       ],
-      "observed_route_ids": ["relay-sustained-pager"],
+      "observed_route_ids": [
+        "relay-sustained-pager"
+      ],
       "validated_by": "spectator-ui-oncall"
     },
     "r2-publish-retry-brake": {
@@ -59,7 +61,9 @@
         "relay-r2-publish-failure-page",
         "relay-r2-backoff-saturation-page"
       ],
-      "observed_route_ids": ["relay-sustained-pager"],
+      "observed_route_ids": [
+        "relay-sustained-pager"
+      ],
       "validated_by": "spectator-ui-oncall"
     },
     "retention-cron-silence": {
@@ -83,7 +87,9 @@
       "observed_alert_ids": [
         "relay-retention-backlog-ticket"
       ],
-      "observed_route_ids": ["relay-ops-ticket"],
+      "observed_route_ids": [
+        "relay-ops-ticket"
+      ],
       "validated_by": "spectator-ui-ops"
     }
   },

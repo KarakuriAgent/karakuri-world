@@ -162,9 +162,7 @@ export function validateAlertCatalog(spec, drills) {
       issues.push(`alert ${alert.id} references missing route ${alert.route}`);
     }
 
-    if (alert.tier !== 'relay_optional') {
-      collectConditionMetrics(alert.condition, alertSignals);
-    }
+    collectConditionMetrics(alert.condition, alertSignals);
   }
 
   for (const drill of drills) {
@@ -217,22 +215,9 @@ export function validateAlertCatalog(spec, drills) {
 
   for (const alertId of alertIds) {
     const alertSpec = (spec.alerts ?? []).find((a) => a.id === alertId);
-    if (alertSpec?.tier === 'relay_optional') {
-      continue;
-    }
     if (!drillCoveredAlerts.has(alertId)) {
       issues.push(`alert ${alertId} must be covered by at least one synthetic drill`);
     }
-  }
-
-  const authRejectedAlert = findAlert(spec, 'relay-ws-auth-rejected-page');
-  if (!authRejectedAlert || authRejectedAlert.route !== 'relay-config-pager' || authRejectedAlert.page_policy !== 'immediate') {
-    issues.push('relay-ws-auth-rejected-page must stay on the immediate configuration pager route');
-  }
-
-  const networkAlert = findAlert(spec, 'relay-ws-network-sustained-page');
-  if (!networkAlert || networkAlert.route !== 'relay-sustained-pager' || !String(networkAlert.page_policy).startsWith('sustained')) {
-    issues.push('relay-ws-network-sustained-page must stay on a sustained paging route');
   }
 
   const retentionSilenceAlert = findAlert(spec, 'relay-retention-silence-page');
@@ -252,10 +237,6 @@ function validateRouteBindings(spec, manifest, issues) {
   const bindings = manifest.route_bindings ?? {};
 
   for (const route of spec.routes) {
-    if (route.tier === 'relay_optional') {
-      continue;
-    }
-
     const binding = bindings[route.id];
 
     if (!binding) {
@@ -276,28 +257,12 @@ function validateRouteBindings(spec, manifest, issues) {
     }
   }
 
-  const configPager = bindings['relay-config-pager'];
-  const sustainedPager = bindings['relay-sustained-pager'];
-
-  if (
-    configPager &&
-    sustainedPager &&
-    isFilledString(configPager.destination_ref) &&
-    isFilledString(sustainedPager.destination_ref) &&
-    configPager.destination_ref === sustainedPager.destination_ref
-  ) {
-    issues.push('relay-config-pager and relay-sustained-pager must resolve to different destinations');
-  }
 }
 
 function validateAlertReceipts(spec, manifest, issues) {
   const receipts = manifest.alert_rule_receipts ?? {};
 
   for (const alert of spec.alerts) {
-    if (alert.tier === 'relay_optional') {
-      continue;
-    }
-
     const receipt = receipts[alert.id];
 
     if (!receipt) {
@@ -320,10 +285,6 @@ function validateDrillReceipts(spec, drills, manifest, issues) {
   const coveredAlerts = new Set();
 
   for (const drill of drills) {
-    if (drill.tier === 'relay_optional') {
-      continue;
-    }
-
     const receipt = receipts[drill.id];
 
     if (!receipt) {
@@ -373,9 +334,6 @@ function validateDrillReceipts(spec, drills, manifest, issues) {
   }
 
   for (const alert of spec.alerts) {
-    if (alert.tier === 'relay_optional') {
-      continue;
-    }
     if (!coveredAlerts.has(alert.id)) {
       issues.push(`staging_drill_receipts must cover alert ${alert.id}`);
     }
