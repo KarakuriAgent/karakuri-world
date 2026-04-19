@@ -2,204 +2,161 @@
 
 > 日本語版は [README.ja.md](./README.ja.md) を参照。
 
-## Spectator UI dev/build environment
+Spectator UI. Two-layer architecture: Vite/React SPA (Cloudflare Pages) + Cloudflare Worker (history API + snapshot publishing).
 
-The Vite app is fail-fast by design: both `npm run dev` and `npm run build` stop immediately unless all required browser-side variables are present.
+## Local development
 
-Create `karakuri-world-ui/.env.local` (or another Vite env file) with:
+Create `.env.local`, then start the dev server:
 
 ```bash
-VITE_SNAPSHOT_URL=https://snapshots.example.com/snapshot/latest.json
+VITE_SNAPSHOT_URL=https://snapshot.example.com/snapshot/latest.json
 VITE_AUTH_MODE=public
-VITE_API_BASE_URL=https://history.example.com/api/history
-VITE_PHASE3_EFFECTS_ENABLED=false
-VITE_PHASE3_EFFECT_RAIN_ENABLED=false
-VITE_PHASE3_EFFECT_SNOW_ENABLED=false
-VITE_PHASE3_EFFECT_FOG_ENABLED=false
-VITE_PHASE3_EFFECT_DAY_NIGHT_ENABLED=false
-VITE_PHASE3_EFFECT_MOTION_ENABLED=false
-VITE_PHASE3_EFFECT_ACTION_PARTICLES_ENABLED=false
+VITE_API_BASE_URL=https://your-worker.workers.dev/api/history
 ```
-
-Required values:
-
-- `VITE_SNAPSHOT_URL`: absolute browser-fetchable snapshot object URL. In plan12 this is the direct snapshot URL, typically the R2 custom domain plus the published object key. Because this value ships in the browser bundle, it must stay public-facing: use only `http` / `https`, and do not embed credentials, query params, or fragments. Do not point this at `/api/snapshot`; the browser always polls the R2 custom-domain object URL directly.
-- `VITE_AUTH_MODE`: `public` or `access`.
-- `VITE_API_BASE_URL`: absolute Worker history API endpoint. This must be the full `/api/history` URL, not just the Worker origin and not a parent path such as `/api`. Because this value is also browser-exposed, do not embed credentials, query params, or fragments.
-- `VITE_PHASE3_EFFECTS_ENABLED` (optional): `true` or `false`. Defaults to `false`; keep it off until Phase 3 effects are intentionally being exercised.
-- `VITE_PHASE3_EFFECT_RAIN_ENABLED`, `VITE_PHASE3_EFFECT_SNOW_ENABLED`, `VITE_PHASE3_EFFECT_FOG_ENABLED`, `VITE_PHASE3_EFFECT_DAY_NIGHT_ENABLED` (optional): per-effect rollout flags. Each defaults to `false`, and each only takes effect when `VITE_PHASE3_EFFECTS_ENABLED=true`, so rain / snow / fog / day-night can be rolled back independently without removing the Phase 3 foundation.
-- `VITE_PHASE3_EFFECT_MOTION_ENABLED`, `VITE_PHASE3_EFFECT_ACTION_PARTICLES_ENABLED` (optional): rollout flags for movement interpolation and lightweight `current_activity.emoji` particles. Both default to `false`, and both only take effect when `VITE_PHASE3_EFFECTS_ENABLED=true`, so Phase 1 static node rendering remains the fallback during staged rollout or rollback.
-
-For local verification:
 
 ```bash
 cd karakuri-world-ui
+npm install
 npm run dev
-npm run build
-npm run test:phase1-acceptance
 ```
 
-## Phase 1 acceptance gate
+`npm run dev` / `npm run build` stop immediately if any required variable is missing (fail-fast).
 
-`npm run test:phase1-acceptance` is the focused acceptance gate for the spectator UI Phase 1 behavior. The updated delivery-track pivot after Unit 28 is documented in Units 29+; this command remains the practical UI go/no-go check.
+### Environment variables
 
-The automated gate covers:
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `VITE_SNAPSHOT_URL` | ✓ | Snapshot URL on the R2 custom domain (do not point at `/api/snapshot`) |
+| `VITE_AUTH_MODE` | ✓ | `public` or `access` |
+| `VITE_API_BASE_URL` | ✓ | Full URL to the Worker's `/api/history` endpoint |
+| `VITE_PHASE3_EFFECTS_ENABLED` | - | Master switch for visual effects (default `false`) |
+| `VITE_PHASE3_EFFECT_RAIN_ENABLED` etc. | - | Per-effect rollout flags (default `false`) |
 
-- desktop + mobile initial shell layout on one shared map host
-- 100-agent snapshot reflection within the Phase 1 15-second budget
-- selected agent detail remains coherent even when `/api/history` is empty or degraded
-- populated `/api/history?agent_id=...&limit=20` checks and conversation log expansion are additive comparisons when ingest/backfill is available
-- quiet-period freshness (`generated_at` refresh prevents stale before the 60-second threshold)
-- **Units 29/32 alignment**: fixed-cadence snapshot publishing, driven by a **sub-minute-capable publisher trigger**, plus direct R2 polling keep freshness inside the 15-second budget
+## Deployment
 
-Run the full suite with `npm test`; use `npm run test:phase1-acceptance` when you want the Phase 1 go/no-go gate only.
-
-## Phase 2 auth-mode deployment guide
-
-Choose exactly one auth mode per deployment: `AUTH_MODE=public` or `AUTH_MODE=access`. A deployment is valid only when Pages, Worker `/api/history`, and the R2 `snapshot_url` are all configured for that same mode.
-
-- `AUTH_MODE=public`: Pages, Worker `/api/history`, and the R2 custom domain are all publicly reachable.
-- `AUTH_MODE=access`: Pages, Worker `/api/history`, and the R2 custom domain are all protected by Cloudflare Access, and the browser fetches both `snapshot_url` and `/api/history` with `credentials: 'include'`.
-- If Pages and Worker `/api/history` are cross-origin, set Worker `HISTORY_CORS_ALLOWED_ORIGINS` to a comma-separated list of exact Pages origins (for example `https://ui.example.com,https://preview-ui.example.com`). The Worker echoes only configured origins; in `AUTH_MODE=access` it also returns `Access-Control-Allow-Credentials: true`, so `*` is not a valid substitute.
-
-Do not mix modes within one deployment, and do not add a Worker/Pages snapshot proxy fallback when `AUTH_MODE=access` preconditions are not met. If Access cookie sharing or pre-seeding cannot be guaranteed, switch the deployment to `AUTH_MODE=public` instead of proxying snapshot traffic through `/api`.
-
-### Required R2 custom-domain setup
-
-`snapshot_url` is always the R2 custom-domain URL plus `SNAPSHOT_OBJECT_KEY` (for the default key: `https://snapshot.example.com/snapshot/latest.json`). The browser fetches that URL directly in both auth modes.
-
-Required operator setup on the R2 custom domain:
-
-1. Publish the bucket through a Cloudflare custom domain.
-2. Add Cache Rules for the snapshot object path with `Cache Everything`.
-3. Fix the Edge TTL to `5 seconds`.
-4. Keep that rule aligned with the origin `Cache-Control: public, max-age=5`.
-5. If Pages and the R2 custom domain are cross-origin, configure R2 CORS so the Pages origin is allowed in both auth modes. For `AUTH_MODE=access`, also allow credentialed fetches (`Access-Control-Allow-Credentials: true`).
-
-### `AUTH_MODE=access` hard preconditions
-
-`AUTH_MODE=access` is valid only when the browser already has a usable Access session for both the Pages origin and the R2 custom domain before the SPA starts polling `snapshot_url`.
-
-- Preferred: place Pages, Worker `/api/history`, and the R2 custom domain behind one Access app or an equivalent multi-domain policy so one login pre-seeds both cookies.
-- Acceptable alternative: explicitly pre-seed the R2 custom-domain cookie before the SPA starts (for example via a dedicated R2 visit / silent pre-seeding flow).
-- Not acceptable: relying on CORS alone, or falling back to a same-origin Worker/Pages snapshot proxy when R2 Access cookies are missing.
-
-### Public/access smoke-test checklist
-
-Run the following after each deployment or auth-mode change:
-
-1. Open the deployed UI and confirm the chosen mode is the only mode in use for that deployment.
-2. Request `VITE_SNAPSHOT_URL` directly in the browser:
-   - `AUTH_MODE=public`: expect HTTP 200 without Access login.
-   - `AUTH_MODE=access`: expect HTTP 200 only after Pages and R2 Access sessions are both established; if R2 still challenges while Pages is already logged in, the deployment is not ready.
-3. Verify the snapshot response comes from the R2 custom domain object path, not `/api/snapshot`.
-4. Repeat the snapshot request and confirm edge caching (`CF-Cache-Status: HIT` or equivalent) with the `Cache Everything` + `Edge TTL = 5 seconds` rule in effect.
-5. Request `/api/history?agent_id=<known-agent>&limit=1` from the deployed Worker:
-   - `AUTH_MODE=public`: expect success without Access login.
-   - `AUTH_MODE=access`: expect an Access auth challenge/failure before login, then success after the Access session is established.
-6. If Pages and Worker `/api/history` are cross-origin, confirm the Worker preflight/GET responses include `Access-Control-Allow-Origin: <Pages origin>`, and for `AUTH_MODE=access` also confirm `Access-Control-Allow-Credentials: true` and a successful credentialed browser fetch.
-7. If Pages and R2 are cross-origin, confirm the R2 response includes the expected CORS behavior for the Pages origin in both auth modes, and for `AUTH_MODE=access` also confirm `Access-Control-Allow-Credentials: true` and a successful credentialed fetch.
-8. If any of the above fails in `AUTH_MODE=access`, fix Access cookie sharing / pre-seeding or choose `AUTH_MODE=public`; do not ship a proxy fallback.
-
-### Manual acceptance items that still require an operator
-
-The following checks still need staging/preview infrastructure and cannot be fully proven in local Vitest alone:
-
-1. **R2 custom-domain edge cache (`AUTH_MODE=public` or `AUTH_MODE=access`)**
-    - Apply `Cache Everything` + `Edge TTL = 5 seconds` on the snapshot object path served from the R2 custom domain.
-    - Request the same snapshot object twice and confirm the second response becomes an edge cache hit (`CF-Cache-Status: HIT` or equivalent) while the cached age stays within the 5-second TTL window.
-    - After the TTL rolls over, confirm the object serves a newer body with updated `generated_at` / `published_at` without breaking the freshness budget.
-
-2. **`AUTH_MODE=access` cookie sharing / pre-seeding**
-   - Confirm Pages login also establishes an R2 custom-domain Access session, or run the documented pre-seeding flow before the SPA begins polling.
-   - Verify the first direct browser fetch to `snapshot_url` succeeds with `credentials: 'include'`.
-   - If the first fetch still redirects/challenges on the R2 domain, treat the deployment as invalid rather than adding a snapshot proxy.
-
-3. **Fixed-cadence publish continuity scenario**
-    - With the deployed worker and UI open, observe at least three consecutive publish intervals during a quiet period and confirm `generated_at` continues to advance from fixed-cadence `/api/snapshot` polling driven by a **sub-minute-capable trigger** (for example a Durable Object alarm, external cron, or always-on scheduler).
-    - Confirm the UI keeps the previous render and does not enter stale before the 60-second threshold while the R2 object keeps refreshing on the 5-second cadence.
-    - The daily Worker `scheduled()` cron that exists for retention is **not** this publisher trigger and does not satisfy the 5-second freshness requirement by itself.
-
-## Cloudflare Worker deployment
-
-`wrangler.toml` is git-ignored and must be generated locally from the tracked template `wrangler.toml.example`:
+### 1. Create Cloudflare resources
 
 ```bash
-cd karakuri-world-ui
+# D1 database (history storage)
+npx wrangler d1 create karakuri-world-ui-history
+
+# R2 buckets (snapshot storage)
+npx wrangler r2 bucket create karakuri-world-ui-snapshot
+npx wrangler r2 bucket create karakuri-world-ui-snapshot-preview
+```
+
+### 2. Prepare wrangler.toml
+
+```bash
 cp wrangler.toml.example wrangler.toml
 ```
 
-`wrangler.toml.example` carries non-deployable placeholder D1 IDs:
+Replace the placeholders in `wrangler.toml` with real values:
 
-- `database_id = "00000000-0000-0000-0000-000000000000"`
-- `preview_database_id = "00000000-0000-0000-0000-000000000000"`
+- `database_id` / `preview_database_id` → IDs returned when the D1 database was created
+- `bucket_name` / `preview_bucket_name` → names of the R2 buckets you created
 
-and placeholder R2 bucket names for snapshot publishing:
-
-- `bucket_name = "replace-with-real-snapshot-bucket"`
-- `preview_bucket_name = "replace-with-real-snapshot-bucket-preview"`
-
-Before any real deploy, create or identify the UI history D1 database and replace both values in your local `wrangler.toml` with the IDs Wrangler returns.
-
-The template also schedules the worker `scheduled()` handler once per day at `03:00 UTC` so D1 history retention keeps running. Keep that cron (or an equivalent daily schedule) enabled in production.
-
-That daily `scheduled()` cron is **retention-only**. It is not the snapshot publisher. Production readiness additionally requires a separate **sub-minute-capable 5-second trigger** (for example a Durable Object alarm, external cron, or always-on scheduler) that keeps snapshot publishing running even during quiet periods.
-
-Example:
+### 3. Set secrets (first time only)
 
 ```bash
-cd karakuri-world-ui
-npx wrangler d1 create karakuri-world-ui-history
-npx wrangler r2 bucket create <real-snapshot-bucket>
-npx wrangler r2 bucket create <real-snapshot-bucket-preview>
+npx wrangler secret put KW_ADMIN_KEY         # Karakuri World admin key
+npx wrangler secret put KW_BASE_URL          # Karakuri World server URL
 ```
 
-Then update `wrangler.toml` with the emitted `database_id` / `preview_database_id` and the real R2 bucket names, set required secrets (once), and deploy:
+If Pages and Worker are cross-origin, also configure CORS:
 
 ```bash
-npx wrangler secret put KW_ADMIN_KEY
+npx wrangler secret put HISTORY_CORS_ALLOWED_ORIGINS
+# e.g. https://your-pages.pages.dev,https://ui.example.com
+```
+
+### 4. Configure R2 bucket CORS
+
+When the Pages domain and the R2 custom domain are cross-origin (which is normally the case), add a CORS rule to the R2 bucket:
+
+```bash
+cat > /tmp/cors.json << 'EOF'
+{
+  "rules": [
+    {
+      "allowed": {
+        "origins": ["https://your-pages-domain.example.com"],
+        "methods": ["GET", "HEAD"],
+        "headers": ["*"]
+      },
+      "maxAgeSeconds": 86400
+    }
+  ]
+}
+EOF
+npx wrangler r2 bucket cors set karakuri-world-ui-snapshot --file /tmp/cors.json
+```
+
+Replace `origins` with your actual Pages domain (e.g. `https://karakuri-world.0235.app`). Verify with `npx wrangler r2 bucket cors list karakuri-world-ui-snapshot`.
+
+### 5. Deploy the Worker
+
+```bash
 npm run deploy:prod
 ```
 
-`deploy:prod` は以下を順に実行するラッパ：
+This command runs in order:
 
-1. `wrangler.toml` にプレースホルダ値（`00000000-...` / `replace-with-real-...`）が残っていたら fail-closed で停止
-2. `npx wrangler d1 migrations apply HISTORY_DB --remote` で D1 マイグレーションを適用
-3. `npx wrangler deploy` でデプロイ
-4. Worker URL に対して 1 回 `curl` を打ち、DO の `boot()` → `refreshSnapshot('boot')` → `rescheduleAlarm()` をトリガ
+1. Checks `wrangler.toml` for remaining placeholders (stops if found)
+2. Applies D1 migrations
+3. Runs `wrangler deploy`
+4. Sends a warm-up request to the Worker (starts snapshot publishing)
 
-この 4 つ目のウォームアップを踏まないと、次に誰かが Worker を叩くまで R2 への publish が始まらない。ウォームアップ後は DO alarm 自身が 5 秒間隔の publisher trigger として自走するため、外部 cron を追加で配線する必要はない。
+> **Note**: Snapshot publishing to R2 will not begin unless the warm-up request succeeds.
 
-At minimum, deployment also requires `KW_BASE_URL` and any non-default snapshot-publisher settings used by the worker. When Pages and Worker `/api/history` are cross-origin, also set `HISTORY_CORS_ALLOWED_ORIGINS` to the exact Pages origin list. `HISTORY_RETENTION_DAYS` remains optional and defaults to `180`, but if you override it the deployed worker and cron schedule should use the same retention policy.
+### 6. Deploy the frontend (Cloudflare Pages)
 
-The checked-in D1 schema lives at `schema/history.sql`, and the deployable Wrangler migration lives at `migrations/0001_plan05_history_schema.sql`.
-
-## Relay alert wiring and readiness gate
-
-Unit 32 removed the relay `/ws` path entirely. The readiness story is now exclusively polling + R2/CDN freshness, scheduled snapshot publishing, and auth-mode correctness. The relay alert artifacts (`relay-alerting-spec.json` etc.) cover `ui.*` and `relay.r2.*` signals only — no relay WebSocket signals remain.
-
-Authoritative repo-owned artifacts:
-
-- `worker/ops/relay-alerting-spec.json`: alert rules, routes, clear conditions, and the required auth-vs-network routing split.
-- `worker/ops/relay-synthetic-drills.json`: staging drill catalog plus synthetic metric timelines that must evaluate into the expected alert paths.
-- `worker/ops/relay-production-readiness.template.json`: production sign-off template that intentionally fails the gate until real routes, receipts, drill evidence, and sign-off timestamps are filled in.
-- `worker/ops/relay-production-readiness.example.json`: passing example manifest shape for review/tests.
-
-Validation commands:
+Set the `VITE_*` variables in `.env.local`, then build and deploy:
 
 ```bash
-cd karakuri-world-ui
-npm run relay:readiness
-npm run relay:readiness -- --target=production --manifest worker/ops/relay-production-readiness.example.json --wrangler worker/test/fixtures/wrangler.production.example.toml
+npm run build
+npx wrangler pages deploy dist --project-name karakuri-world-ui-frontend \
+  --commit-dirty=true --commit-message="deploy"
 ```
 
-`npm run relay:readiness` by itself validates the checked-in catalog/drill artifacts. Primary polling/R2 readiness still requires the separate operator checks documented above and in Units 29+; production relay validation remains fail-closed until the production manifest is filled in.
+## Auth modes
 
-Relay gate expectations:
+### `AUTH_MODE=public` (recommended — simple)
 
-- readiness alerts use the full primary `ui.*` metric set from Units 10/29+: `ui.snapshot.refresh_failure_total{reason}`, `ui.snapshot.generated_age_ms`, `ui.snapshot.published_age_ms`, `ui.r2.publish_failure_total`, `ui.r2.publish_failure_streak`, `ui.d1.retention_run_total{result=success}`, and `ui.d1.retention_deleted_rows`.
-- the sustained outage pager route must resolve to a real production destination.
-- retention cron silence (`ui.d1.retention_run_total{result=success}` absent for 2 days), large retention backlog cleanup (`ui.d1.retention_deleted_rows` crossing the review threshold), and R2 retry-brake saturation (`ui.r2.publish_failure_streak >= 5`, matching the 60-second cap) are explicit gate items.
-- the immediate auth/config pager route and the sustained outage pager route must resolve to different production destinations.
-- the production manifest must include real notification destinations, provider rule references, staging drill receipts with both observed alert IDs and observed route IDs for every required alert path, and pre-production sign-off.
-- production validation also fails if `wrangler.toml` omits the required `HISTORY_DB` / `SNAPSHOT_BUCKET` bindings, still has placeholder D1/R2 bindings, or if the daily `03:00 UTC` retention cron is missing.
+Pages, Worker `/api/history`, and the R2 custom domain are all publicly accessible.
+
+### `AUTH_MODE=access`
+
+Protects browser sessions with Cloudflare Access. Pages, Worker, and R2 must all sit behind the same Access policy so a single login establishes cookies for all three.
+
+## Post-deploy verification
+
+1. Open `VITE_SNAPSHOT_URL` directly in a browser and confirm JSON is returned.
+2. Call `/api/history?agent_id=<id>&limit=1` on the Worker and confirm a response.
+3. Open the UI and confirm the snapshot refreshes periodically (within 60 seconds).
+
+## R2 cache configuration
+
+Add a Cache Rule for the snapshot object path in the Cloudflare dashboard:
+
+- **Rule**: `Cache Everything`
+- **Edge TTL**: `5 seconds`
+
+Set `Cache-Control: public, max-age=5` on the R2 object.
+
+## Testing
+
+```bash
+npm test                       # full suite
+npm run test:phase1-acceptance # Phase 1 acceptance gate only
+npm run relay:readiness        # alert configuration validation
+```
+
+## Operations files
+
+| File | Purpose |
+|------|---------|
+| `worker/ops/relay-alerting-spec.json` | Alert rule definitions |
+| `worker/ops/relay-production-readiness.template.json` | Production sign-off template |
+| `schema/history.sql` | D1 schema |
+| `migrations/0001_plan05_history_schema.sql` | Wrangler migration |
