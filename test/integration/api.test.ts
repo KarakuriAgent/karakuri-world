@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../src/api/app.js';
+import { SnapshotPublisher } from '../../src/engine/snapshot-publisher.js';
 import { WorldEngine } from '../../src/engine/world-engine.js';
 import { WorldError } from '../../src/types/api.js';
 import { createTestWorld } from '../helpers/test-world.js';
@@ -151,6 +152,9 @@ describe('REST API', () => {
     });
     expect(snapshot.data.agents).toHaveLength(1);
 
+    const removedWs = await requestJson(app, '/ws');
+    expect(removedWs.response.status).toBe(404);
+
     const left = await requestJson(app, '/api/agents/logout', {
       method: 'POST',
       headers: { Authorization: `Bearer ${registered.data.api_key}` },
@@ -162,6 +166,91 @@ describe('REST API', () => {
       headers: { 'X-Admin-Key': ADMIN_KEY },
     });
     expect(deleted.data).toEqual({ status: 'ok' });
+  });
+
+  it('surfaces failed snapshot publisher health in /health and /api/snapshot', async () => {
+    const snapshotPublisher = new SnapshotPublisher({
+      workerBaseUrl: new URL('https://relay.example.com'),
+      authKey: 'publish-key',
+      fetchImpl: vi.fn<typeof fetch>().mockRejectedValue(new Error('relay offline')),
+      debounceMs: 10,
+      retryBaseIntervalMs: 10,
+      retryMaxIntervalMs: 10,
+      retryMaxAttempts: 2,
+      now: () => 456,
+    });
+    const { engine } = createTestWorld({
+      engineOptions: {
+        snapshotPublisher,
+      },
+    });
+    const { app } = createApp(engine, { adminKey: ADMIN_KEY, publicBaseUrl: PUBLIC_BASE_URL });
+
+    snapshotPublisher.requestPublish();
+    await vi.runAllTimersAsync();
+
+    const health = await requestJson(app, '/health');
+    expect(health.response.status).toBe(200);
+    expect(health.data).toEqual({
+      status: 'degraded',
+      snapshot_publisher: {
+        pending: false,
+        consecutiveFailures: 2,
+        gaveUp: true,
+        state: 'failed',
+      },
+    });
+
+    const snapshot = await requestJson(app, '/api/snapshot', {
+      headers: { 'X-Admin-Key': ADMIN_KEY },
+    });
+    expect(snapshot.response.status).toBe(200);
+    expect(snapshot.data.runtime).toEqual({
+      snapshot_publisher: {
+        pending: false,
+        consecutiveFailures: 2,
+        gaveUp: true,
+        state: 'failed',
+      },
+    });
+  });
+
+  it('rejects mutating requests during shutdown while still serving health and snapshot reads', async () => {
+    const { engine } = createTestWorld();
+    const { app } = createApp(engine, {
+      adminKey: ADMIN_KEY,
+      publicBaseUrl: PUBLIC_BASE_URL,
+      isShuttingDown: () => true,
+    });
+
+    const registered = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(registered.agent_id);
+
+    const blockedRegistration = await requestJson(app, '/api/admin/agents', {
+      method: 'POST',
+      headers: { 'X-Admin-Key': ADMIN_KEY },
+      body: JSON.stringify({ discord_bot_id: 'bot-bob' }),
+    });
+    expect(blockedRegistration.response.status).toBe(503);
+    expect(blockedRegistration.data).toEqual({
+      error: 'service_unavailable',
+      message: 'Server is shutting down.',
+    });
+
+    const health = await requestJson(app, '/health');
+    expect(health.response.status).toBe(200);
+    expect(health.data.status).toBe('ok');
+
+    const snapshot = await requestJson(app, '/api/snapshot', {
+      headers: { 'X-Admin-Key': ADMIN_KEY },
+    });
+    expect(snapshot.response.status).toBe(200);
+    expect(snapshot.data.agents).toEqual([
+      expect.objectContaining({
+        agent_id: registered.agent_id,
+        state: 'idle',
+      }),
+    ]);
   });
 
   it('returns 401, 403, 400, and 409 errors in representative cases', async () => {
@@ -188,6 +277,9 @@ describe('REST API', () => {
     const snapshotUnauthorized = await requestJson(app, '/api/snapshot');
     expect(snapshotUnauthorized.response.status).toBe(401);
     expect(snapshotUnauthorized.data.error).toBe('unauthorized');
+
+    const removedWs = await requestJson(app, '/ws');
+    expect(removedWs.response.status).toBe(404);
 
     const notJoined = await requestJson(app, '/api/agents/perception', {
       headers: { Authorization: `Bearer ${registered.data.api_key}` },

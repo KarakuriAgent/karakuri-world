@@ -70,6 +70,7 @@ describe('spectator snapshot serializer', () => {
       world_snapshot: worldSnapshot,
       recent_server_events: [],
       published_at: 1_750_000_005_000,
+      last_publish_error_at: 1_750_000_004_000,
     });
 
     expect(snapshot.map.nodes).toEqual({
@@ -84,6 +85,7 @@ describe('spectator snapshot serializer', () => {
       emoji: '🧰',
       completes_at: 1_750_000_010_000,
     });
+    expect(snapshot.last_publish_error_at).toBe(1_750_000_004_000);
     expect(decodeSpectatorSnapshot(encodeSpectatorSnapshot(snapshot))).toEqual(snapshot);
   });
 

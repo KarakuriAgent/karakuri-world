@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
 import type { HistoryResponse } from '../../worker/src/history/api.js';
+import { snapshotManifestSchema } from '../../worker/src/contracts/snapshot-manifest.js';
 import { spectatorSnapshotSchema } from '../../worker/src/contracts/snapshot-serializer.js';
 import type {
   SpectatorBuildingConfig,
@@ -84,6 +85,11 @@ export type SnapshotStoreApi = StoreApi<SnapshotStoreState>;
 interface SnapshotVersion {
   generated_at: number;
   published_at: number;
+  last_publish_error_at?: number;
+}
+
+interface SnapshotManifestMetadata extends SnapshotVersion {
+  latest_snapshot_key: string;
 }
 
 const historyResponseSchema = z.object({
@@ -106,7 +112,6 @@ const historyResponseSchema = z.object({
 });
 
 class SnapshotIncompatibleError extends Error {}
-const MAX_TIMER_DELAY_MS = 2_147_483_647;
 const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
 const POLL_STOP_ABORT_REASON = 'snapshot-poll-stopped';
 const POLL_TIMEOUT_ABORT_REASON = 'snapshot-poll-timeout';
@@ -251,11 +256,7 @@ export function compareSnapshotVersion(left: SnapshotVersion, right: SnapshotVer
     return left.published_at - right.published_at;
   }
 
-  return 0;
-}
-
-function getSnapshotVersion(snapshot: SnapshotVersion): string {
-  return `${snapshot.generated_at}:${snapshot.published_at}`;
+  return (left.last_publish_error_at ?? 0) - (right.last_publish_error_at ?? 0);
 }
 
 function areStringArraysEqual(left: string[], right: string[]): boolean {
@@ -396,14 +397,12 @@ export function createSnapshotStore({
   fetchImpl = ((...args) => fetch(...args)) as typeof fetch,
   pollIntervalMs = 5_000,
   fetchTimeoutMs = DEFAULT_FETCH_TIMEOUT_MS,
-  staleAfterMs = 60_000,
   initialSnapshot,
   initialStatus = initialSnapshot ? 'ready' : 'idle',
   initialSelectedAgentId,
 }: CreateSnapshotStoreOptions): SnapshotStoreApi {
   const hasInitialSelectedAgent = initialSnapshot ? snapshotHasAgent(initialSnapshot, initialSelectedAgentId) : false;
   let pollingInterval: ReturnType<typeof setInterval> | undefined;
-  let staleTimeout: ReturnType<typeof setTimeout> | undefined;
   let pollingStarted = false;
   let pollInFlight = false;
   let pollQueued = false;
@@ -498,10 +497,6 @@ export function createSnapshotStore({
         pollingInterval = undefined;
       }
 
-      if (staleTimeout !== undefined) {
-        clearTimeout(staleTimeout);
-        staleTimeout = undefined;
-      }
     },
   }));
 
@@ -538,44 +533,28 @@ export function createSnapshotStore({
       return;
     }
 
-    const versionToken = getSnapshotVersion(snapshot);
-    const staleDeadline = snapshot.generated_at + staleAfterMs;
-    const remainingMs = staleDeadline - Date.now();
-
-    if (staleTimeout !== undefined) {
-      clearTimeout(staleTimeout);
-      staleTimeout = undefined;
-    }
-
-    if (remainingMs <= 0) {
-      setIfActive(() => ({ is_stale: true }), lifecycleId);
-      return;
-    }
-
-    setIfActive(() => ({ is_stale: false }), lifecycleId);
-    const nextDelayMs = Math.min(remainingMs, MAX_TIMER_DELAY_MS);
-    staleTimeout = setTimeout(() => {
-      if (lifecycleId !== undefined && !isPollingLifecycleActive(lifecycleId)) {
-        return;
-      }
-
-      const currentSnapshot = store.getState().snapshot;
-
-      if (!currentSnapshot || getSnapshotVersion(currentSnapshot) !== versionToken) {
-        return;
-      }
-
-      if (Date.now() >= staleDeadline) {
-        setIfActive(() => ({ is_stale: true }), lifecycleId);
-        return;
-      }
-
-      applyStaleState(currentSnapshot, lifecycleId);
-    }, nextDelayMs);
+    setIfActive(
+      () => ({
+        is_stale:
+          snapshot.last_publish_error_at !== undefined && snapshot.last_publish_error_at > snapshot.published_at,
+      }),
+      lifecycleId,
+    );
   }
 
-  async function fetchSnapshot(signal: AbortSignal): Promise<SpectatorSnapshot> {
-    const response = await fetchImpl(snapshotUrl, {
+  function mergeSnapshotVersion(
+    snapshot: SpectatorSnapshot,
+    version: Pick<SnapshotVersion, 'published_at' | 'last_publish_error_at'>,
+  ): SpectatorSnapshot {
+    return {
+      ...snapshot,
+      published_at: version.published_at,
+      ...(version.last_publish_error_at !== undefined ? { last_publish_error_at: version.last_publish_error_at } : {}),
+    };
+  }
+
+  async function fetchJsonOrThrow(url: string, signal: AbortSignal): Promise<unknown> {
+    const response = await fetchImpl(url, {
       ...buildSnapshotRequestInit(authMode),
       signal,
     });
@@ -594,6 +573,53 @@ export function createSnapshotStore({
       parsed = await response.json();
     } catch (error) {
       throw new Error(`Snapshot JSON parse failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    return parsed;
+  }
+
+  function parseDirectSnapshot(parsed: unknown): SpectatorSnapshot | null {
+    const result = spectatorSnapshotSchema.safeParse(parsed);
+    return result.success ? (result.data as SpectatorSnapshot) : null;
+  }
+
+  function parseSnapshotManifest(parsed: unknown): SnapshotManifestMetadata | null {
+    const result = snapshotManifestSchema.safeParse(parsed);
+    return result.success ? (result.data as SnapshotManifestMetadata) : null;
+  }
+
+  async function fetchSnapshot(signal: AbortSignal, currentSnapshot?: SpectatorSnapshot): Promise<SpectatorSnapshot> {
+    const parsed = await fetchJsonOrThrow(snapshotUrl, signal);
+    const directSnapshot = parseDirectSnapshot(parsed);
+
+    if (directSnapshot) {
+      return directSnapshot;
+    }
+
+    const manifest = parseSnapshotManifest(parsed);
+    if (manifest) {
+      if (currentSnapshot && currentSnapshot.generated_at === manifest.generated_at) {
+        return mergeSnapshotVersion(currentSnapshot, manifest);
+      }
+
+      const versionedSnapshotUrl = new URL(`/${manifest.latest_snapshot_key.replace(/^\/+/, '')}`, new URL(snapshotUrl).origin)
+        .toString();
+      const versionedParsed = await fetchJsonOrThrow(versionedSnapshotUrl, signal);
+      const versionedSnapshot = parseDirectSnapshot(versionedParsed);
+
+      if (!versionedSnapshot) {
+        if (isSchemaIncompatible(versionedParsed)) {
+          const issue =
+            typeof versionedParsed === 'object' && versionedParsed !== null && 'schema_version' in versionedParsed
+              ? String(versionedParsed.schema_version)
+              : 'unknown';
+          throw new SnapshotIncompatibleError(`Unsupported snapshot schema_version: ${issue}`);
+        }
+
+        throw new Error('Snapshot manifest pointed to an invalid spectator snapshot payload');
+      }
+
+      return mergeSnapshotVersion(versionedSnapshot, manifest);
     }
 
     if (isSchemaIncompatible(parsed)) {
@@ -756,7 +782,7 @@ export function createSnapshotStore({
     }
 
     try {
-      const nextSnapshot = await fetchSnapshot(requestController.signal);
+      const nextSnapshot = await fetchSnapshot(requestController.signal, currentSnapshot);
       if (lifecycleId !== undefined && !isPollingLifecycleActive(lifecycleId)) {
         return;
       }

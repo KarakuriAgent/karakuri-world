@@ -5,49 +5,86 @@ import {
   type RelayBindings,
 } from './relay/bridge.js';
 import { handleHistoryRequest } from './history/api.js';
-import { parseHistoryCorsConfig, parseHistoryCorsConfigFallback, parseHistoryRetentionDays } from './relay/env.js';
-import { createConsoleRelayObservability } from './relay/observability.js';
-import { runHistoryRetention } from './relay/retention.js';
+import { parseHistoryCorsConfig, parseHistoryCorsConfigFallback } from './relay/env.js';
 
 export { PRIMARY_BRIDGE_NAME, UIBridgeDurableObject };
 export type RelayWorkerEnv = RelayBindings & {
   UI_BRIDGE: DurableObjectNamespaceLike;
 };
 
+function jsonResponse(payload: unknown, status: number): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+    },
+  });
+}
+
+function authorizePublishRequest(request: Request, env: RelayWorkerEnv): Response | null {
+  const expectedAuth = typeof env.SNAPSHOT_PUBLISH_AUTH_KEY === 'string' ? env.SNAPSHOT_PUBLISH_AUTH_KEY.trim() : '';
+
+  if (!expectedAuth) {
+    return jsonResponse(
+      {
+        error: {
+          code: 'service_unavailable',
+          message: 'Snapshot publish endpoints are disabled.',
+        },
+      },
+      503,
+    );
+  }
+
+  const authHeader = request.headers.get('authorization');
+  if (authHeader !== `Bearer ${expectedAuth}`) {
+    return jsonResponse(
+      {
+        error: {
+          code: 'unauthorized',
+          message: 'Invalid publish authorization.',
+        },
+      },
+      401,
+    );
+  }
+
+  return null;
+}
+
 export default {
   async fetch(request: Request, env: RelayWorkerEnv): Promise<Response> {
     const url = new URL(request.url);
 
+    if (url.pathname === '/ws') {
+      return new Response(null, { status: 404 });
+    }
+
     if (url.pathname === '/api/history') {
       try {
-        return handleHistoryRequest(request, env.HISTORY_DB, parseHistoryCorsConfig(env));
+        return handleHistoryRequest(request, env.SNAPSHOT_BUCKET, parseHistoryCorsConfig(env));
       } catch (error) {
-        return handleHistoryRequest(request, env.HISTORY_DB, parseHistoryCorsConfigFallback(env), error);
+        return handleHistoryRequest(request, env.SNAPSHOT_BUCKET, parseHistoryCorsConfigFallback(env), error);
+      }
+    }
+
+    if (url.pathname === '/api/publish-snapshot' || url.pathname === '/api/publish-agent-history') {
+      if (request.method !== 'POST') {
+        return new Response(null, {
+          status: 405,
+          headers: {
+            allow: 'POST',
+          },
+        });
+      }
+
+      const authFailure = authorizePublishRequest(request, env);
+      if (authFailure) {
+        return authFailure;
       }
     }
 
     const id = env.UI_BRIDGE.idFromName(PRIMARY_BRIDGE_NAME);
     return env.UI_BRIDGE.get(id).fetch(request);
-  },
-  async scheduled(_event: unknown, env: RelayWorkerEnv): Promise<void> {
-    const now = () => Date.now();
-    const observability = createConsoleRelayObservability(now);
-
-    try {
-      await runHistoryRetention(env.HISTORY_DB, parseHistoryRetentionDays(env), now, observability);
-    } catch (error) {
-      if (error instanceof Error && error.message === 'HISTORY_DB is required for relay history retention') {
-        throw error;
-      }
-
-      if (error instanceof Error && /HISTORY_RETENTION_DAYS/.test(error.message)) {
-        observability.counter('ui.d1.retention_run_total', { result: 'failure' });
-        observability.log('error', 'relay history retention failed', {
-          error: error.message,
-        });
-      }
-
-      throw error;
-    }
   },
 };

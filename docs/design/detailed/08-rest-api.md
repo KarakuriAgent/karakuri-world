@@ -533,7 +533,7 @@ interface FireServerEventResponse {
 
 ## 7. 公開スナップショット配信のバックエンドソース
 
-ブラウザ / UI の current-state 配信の primary path は、snapshot publisher が `GET /api/snapshot` を fixed cadence で取得して `SpectatorSnapshot` へ変換し、R2/CDN へ公開した JSON をクライアントが polling する方式とする。`GET /api/snapshot` と `GET /ws` はその publisher・任意の relay・管理者デバッグ用に残すバックエンド側ソースであり、ブラウザの直接 bootstrap / 汎用同期エンドポイントとしては扱わない。詳細は 12-spectator-snapshot.md と 17-ui-rollout.md を参照。
+ブラウザ / UI の current-state 配信の primary path は、issue #60 に従って event-driven publisher が `GET /api/snapshot` を再取得して `SpectatorSnapshot` へ変換し、R2/CDN へ公開した JSON をクライアントが polling する方式とする。`GET /api/snapshot` はその publisher や管理者デバッグ用に残すバックエンド側ソースであり、ブラウザの直接 bootstrap / 汎用同期エンドポイントとしては扱わない。固定間隔 refresh を残す場合も fallback/readiness 用であり、詳細は 12-spectator-snapshot.md と 17-ui-rollout.md を参照。
 
 ### 7.1 スナップショット取得
 
@@ -543,33 +543,15 @@ GET /api/snapshot
 
 認証: Admin（1.2）。
 
-世界の現在状態を内部 / 管理向け `WorldSnapshot` として返す。primary path では snapshot publisher がこれを fixed cadence で再取得し、公開用 `SpectatorSnapshot` を生成して R2/CDN へ反映する。管理者による調査や relay の初期 state 取得にも利用できるが、ブラウザが直接 current-state bootstrap に使う前提ではない。
+世界の現在状態を内部 / 管理向け `WorldSnapshot` として返す。primary path では event-driven publisher がこれを再取得し、公開用 `SpectatorSnapshot` を生成して R2/CDN へ反映する。管理者による調査にも利用できるが、ブラウザが直接 current-state bootstrap に使う前提ではない。
 
 レスポンス (200 OK): `WorldSnapshot` 型（03-world-engine.md セクション 7.1、12-spectator-snapshot.md セクション 2.1/2.2 参照）。
 
 - `weather`, `calendar`, `map_render_theme` を含む
 - `agents` は `discord_bot_avatar_url?`, `status_emoji`, `current_conversation_id?` を含む
 - `GET /api/snapshot` は内部 / 管理向け `WorldSnapshot` 契約であり、`discord_channel_id`, `money`, `items` のような内部管理項目を含みうる
-- ブラウザ公開用の除外・整形は `12-spectator-snapshot.md` で定義する公開変換境界（fixed-cadence snapshot publisher、必要なら relay/history ingest mirror を含む）で行う
+- ブラウザ公開用の除外・整形は `12-spectator-snapshot.md` で定義する公開変換境界（event-driven snapshot / history publisher。必要なら fallback refresh を含む）で行う
 - ブラウザ / UI は本エンドポイントを直接 polling せず、publisher が公開した R2/CDN 上の `SpectatorSnapshot` を取得する
-
-### 7.2 WebSocket接続
-
-```
-GET /ws
-```
-
-認証: Admin（1.2）。WebSocket 接続確立前の HTTP ハンドシェイク時に `X-Admin-Key` ヘッダーで認証する。
-
-バックエンド向け WebSocket 接続を確立する。接続確立直後に `type: 'snapshot'` を 1 回送信し、以降は `type: 'event'` をリアルタイムで配信する。想定利用者は admin-authenticated な relay / publisher 補助経路 / デバッグクライアントであり、ブラウザ UI の汎用 current-state sync エンドポイントとしては位置付けない。
-
-```typescript
-type WebSocketPayload =
-  | { type: 'snapshot'; data: WorldSnapshot }
-  | { type: 'event'; data: WorldEvent };
-```
-
-`type: 'snapshot'` の `data` には `GET /api/snapshot` と同じ内部 / 管理向け `WorldSnapshot` を入れる。`type: 'event'` も backend relay / ingest / debugging 用の内部イベントストリームとして扱い、ブラウザ公開 payload へはそのまま流さない。ブラウザ公開時のサニタイズは `12-spectator-snapshot.md` に従う公開変換レイヤー（fixed-cadence snapshot publisher、必要なら relay/history ingest mirror を含む）で行う。同期モデルの詳細は 03-world-engine.md セクション 7 と 17-ui-rollout.md を参照。
 
 ## 8. バリデーション
 
@@ -627,5 +609,4 @@ type WebSocketPayload =
 | GET | /api/agents/perception | Agent | ✅ | 知覚情報取得 |
 | GET | /api/agents/map | Agent | ✅ | マップ全体取得 |
 | GET | /api/agents/world-agents | Agent | ✅ | ログイン中エージェント一覧 |
-| GET | /api/snapshot | Admin | - | publisher / relay / デバッグ向け内部 `WorldSnapshot` 取得 |
-| GET | /ws | Admin | - | relay / デバッグ向けバックエンド WebSocket |
+| GET | /api/snapshot | Admin | - | publisher / デバッグ向け内部 `WorldSnapshot` 取得 |

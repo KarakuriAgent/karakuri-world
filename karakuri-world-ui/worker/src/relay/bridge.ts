@@ -1,9 +1,11 @@
 import { z } from 'zod';
 
-import { sanitize } from '../contracts/persisted-spectator-event.js';
+import type { EventType as BackendEventType } from '../../../../src/types/event.js';
+import type { PersistedSpectatorEventType } from '../contracts/persisted-spectator-event.js';
+import { encodeSnapshotManifest, type SnapshotManifest } from '../contracts/snapshot-manifest.js';
 import { encodeSpectatorSnapshot } from '../contracts/snapshot-serializer.js';
 import { buildSpectatorSnapshot, type SpectatorRecentServerEvent, type SpectatorSnapshot } from '../contracts/spectator-snapshot.js';
-import type { ConversationClosureReason, WorldEvent } from '../contracts/world-event.js';
+import type { ConversationClosureReason, EventType, WorldEvent } from '../contracts/world-event.js';
 import type { WorldSnapshot } from '../contracts/world-snapshot.js';
 import { parseRelayEnv, type RelayConfig } from './env.js';
 import { createConsoleRelayObservability, type RelayObservability } from './observability.js';
@@ -27,12 +29,16 @@ export interface BridgeState {
   active_server_event_ids: string[];
   last_event_at?: number;
   last_publish_at?: number;
+  last_published_generated_at?: number;
   last_refresh_at?: number;
   refresh_in_flight: boolean;
   refresh_queued: boolean;
   refresh_queued_reason?: SnapshotRefreshReason;
-  refresh_alarm_at?: number;
+  fallback_refresh_alarm_at?: number;
   publish_alarm_at?: number;
+  publish_attempt?: number;
+  last_publish_error_at?: number;
+  last_publish_error_code?: string;
   publish_in_flight: boolean;
   publish_queued: boolean;
   publish_failure_streak: number;
@@ -51,10 +57,18 @@ export interface BridgeDependencies {
   now: () => number;
   random: () => number;
   observability: RelayObservability;
-  publishSnapshot?: (input: SnapshotPublishInput) => Promise<void>;
+  publishSnapshot: (input: SnapshotPublishInput) => Promise<void>;
 }
 
-type SnapshotRefreshReason = 'boot' | 'fixed-cadence' | 'world-event' | 'manual';
+export const SNAPSHOT_REFRESH_REASONS = [
+  'boot',
+  'fallback-refresh',
+  'world-event',
+  'manual',
+  'external-request',
+] as const;
+
+type SnapshotRefreshReason = (typeof SNAPSHOT_REFRESH_REASONS)[number];
 type ConversationWorldEvent = Extract<WorldEvent, { conversation_id: string }>;
 
 export interface StagedConversationMirrorUpdate {
@@ -76,8 +90,12 @@ function mergeQueuedRefreshReason(
     return 'manual';
   }
 
-  if (currentReason === 'fixed-cadence' || nextReason === 'fixed-cadence') {
-    return 'fixed-cadence';
+  if (currentReason === 'external-request' || nextReason === 'external-request') {
+    return 'external-request';
+  }
+
+  if (currentReason === 'fallback-refresh' || nextReason === 'fallback-refresh') {
+    return 'fallback-refresh';
   }
 
   return 'boot';
@@ -107,19 +125,8 @@ export interface DurableObjectNamespaceLike {
   get(id: DurableObjectIdLike): DurableObjectStubLike;
 }
 
-export interface D1QueryResult<TRow> {
-  results?: TRow[];
-}
-
-export interface D1PreparedStatementLike {
-  bind?(...values: unknown[]): D1PreparedStatementLike;
-  run?(): Promise<unknown>;
-  all(): Promise<D1QueryResult<unknown>>;
-}
-
-export interface D1DatabaseLike {
-  prepare(query: string): D1PreparedStatementLike;
-  batch?(statements: D1PreparedStatementLike[]): Promise<unknown>;
+export interface R2ObjectBodyLike {
+  text(): Promise<string>;
 }
 
 export interface R2PutOptions {
@@ -131,17 +138,18 @@ export interface R2PutOptions {
 }
 
 export interface R2BucketLike {
+  get(key: string): Promise<R2ObjectBodyLike | null>;
   put(key: string, value: string, options?: R2PutOptions): Promise<unknown>;
 }
 
 export interface RelayBindings extends Record<string, unknown> {
   KW_BASE_URL: string;
   KW_ADMIN_KEY: string;
+  SNAPSHOT_PUBLISH_AUTH_KEY?: string;
   AUTH_MODE?: 'public' | 'access';
   HISTORY_CORS_ALLOWED_ORIGINS?: string;
   SNAPSHOT_BUCKET?: R2BucketLike;
   UI_BRIDGE?: DurableObjectNamespaceLike;
-  HISTORY_DB?: D1DatabaseLike;
 }
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -154,7 +162,70 @@ interface SnapshotPublishInput {
   options: R2PutOptions;
 }
 
+interface PublishedHistoryEntry {
+  event_id: string;
+  type: string;
+  occurred_at: number;
+  agent_ids: string[];
+  conversation_id?: string;
+  summary: {
+    emoji: string;
+    title: string;
+    text: string;
+  };
+  detail: Record<string, unknown>;
+}
+
+interface AgentHistoryDocument {
+  agent_id: string;
+  updated_at: number;
+  items: PublishedHistoryEntry[];
+  recent_actions: PublishedHistoryEntry[];
+  recent_conversations: PublishedHistoryEntry[];
+}
+
+interface ConversationHistoryDocument {
+  conversation_id: string;
+  updated_at: number;
+  items: PublishedHistoryEntry[];
+}
+
+const publishedHistoryEntrySchema = z.object({
+  event_id: z.string().min(1),
+  type: z.string().min(1),
+  occurred_at: z.number().int().nonnegative(),
+  agent_ids: z.array(z.string().min(1)),
+  conversation_id: z.string().min(1).optional(),
+  summary: z.object({
+    emoji: z.string(),
+    title: z.string(),
+    text: z.string(),
+  }),
+  detail: z.record(z.string(), z.unknown()),
+});
+
+const publishAgentHistoryRequestSchema = z.object({
+  agent_id: z.string().min(1),
+  events: z.array(publishedHistoryEntrySchema),
+});
+
+const agentHistoryDocumentSchema = z.object({
+  agent_id: z.string().min(1).optional(),
+  updated_at: z.number().int().nonnegative().optional(),
+  items: z.array(publishedHistoryEntrySchema).optional(),
+  recent_actions: z.array(publishedHistoryEntrySchema).optional(),
+  recent_conversations: z.array(publishedHistoryEntrySchema).optional(),
+});
+
+const conversationHistoryDocumentSchema = z.object({
+  conversation_id: z.string().min(1).optional(),
+  updated_at: z.number().int().nonnegative().optional(),
+  items: z.array(publishedHistoryEntrySchema).optional(),
+});
+
 const PUBLISH_BACKOFF_MAX_MS = 60_000;
+const PUBLISH_RETRY_BASE_MS = 5_000;
+const FALLBACK_REFRESH_INTERVAL_MS = 180_000;
 const SNAPSHOT_CONTENT_TYPE = 'application/json; charset=utf-8';
 const PERSISTED_RUNTIME_STATE_KEY = 'relay:runtime-state';
 
@@ -526,7 +597,7 @@ const worldEventSchema = z.discriminatedUnion('type', [
   }),
 ]);
 
-const KNOWN_WORLD_EVENT_TYPES = new Set<string>([
+export const KNOWN_WORLD_EVENT_TYPES = [
   'agent_logged_in',
   'agent_logged_out',
   'movement_started',
@@ -552,103 +623,47 @@ const KNOWN_WORLD_EVENT_TYPES = new Set<string>([
   'conversation_ended',
   'conversation_pending_join_cancelled',
   'server_event_fired',
-]);
+] as const satisfies readonly PersistedSpectatorEventType[];
 
-const recentServerEventRowSchema = z.object({
-  server_event_id: z.string().min(1),
-  description: z.string(),
-  occurred_at: z.coerce.number().int().nonnegative(),
-});
+export const NON_PERSISTED_WORLD_EVENT_TYPES = [
+  'idle_reminder_fired',
+  'map_info_requested',
+  'world_agents_info_requested',
+  'perception_requested',
+  'available_actions_requested',
+] as const satisfies readonly Exclude<EventType, PersistedSpectatorEventType>[];
 
-const RECENT_SERVER_EVENTS_QUERY = `
-SELECT
-  server_event_id,
-  description,
-  first_occurred_at AS occurred_at
-FROM server_event_instances
-ORDER BY first_occurred_at DESC, server_event_id DESC
-LIMIT 3
-`;
+type KnownWorldEventType = (typeof KNOWN_WORLD_EVENT_TYPES)[number];
+type NonPersistedWorldEventType = (typeof NON_PERSISTED_WORLD_EVENT_TYPES)[number];
 
-const INSERT_WORLD_EVENT_QUERY = `
-INSERT INTO world_events (
-  event_id,
-  event_type,
-  occurred_at,
-  conversation_id,
-  server_event_id,
-  summary_emoji,
-  summary_title,
-  summary_text,
-  payload_json
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-`;
+type _KnownWorldEventTypeParity = [
+  Exclude<KnownWorldEventType, PersistedSpectatorEventType>,
+  Exclude<PersistedSpectatorEventType, KnownWorldEventType>,
+] extends [never, never]
+  ? true
+  : never;
+type _WorkerBackendEventTypeParity = [Exclude<EventType, BackendEventType>, Exclude<BackendEventType, EventType>] extends [
+  never,
+  never,
+]
+  ? true
+  : never;
+type _WorldEventCoverage = Exclude<BackendEventType, KnownWorldEventType | NonPersistedWorldEventType> extends never
+  ? true
+  : never;
+type _WorldEventNoUnexpectedKnown = Exclude<KnownWorldEventType, BackendEventType> extends never ? true : never;
+type _WorldEventNoUnexpectedNonPersisted = Exclude<NonPersistedWorldEventType, BackendEventType> extends never
+  ? true
+  : never;
 
-const INSERT_WORLD_EVENT_AGENT_QUERY = `
-INSERT INTO world_event_agents (
-  event_id,
-  agent_id,
-  occurred_at,
-  event_type,
-  role
-) VALUES (?, ?, ?, ?, ?)
-`;
-
-const INSERT_WORLD_EVENT_CONVERSATION_QUERY = `
-INSERT INTO world_event_conversations (
-  event_id,
-  conversation_id,
-  occurred_at,
-  event_type
-) VALUES (?, ?, ?, ?)
-`;
-
-const UPSERT_SERVER_EVENT_INSTANCE_QUERY = `
-INSERT INTO server_event_instances (
-  server_event_id,
-  description,
-  first_occurred_at,
-  last_occurred_at
-) VALUES (?, ?, ?, ?)
-ON CONFLICT(server_event_id) DO UPDATE SET
-  first_occurred_at = MIN(server_event_instances.first_occurred_at, excluded.first_occurred_at),
-  last_occurred_at = MAX(server_event_instances.last_occurred_at, excluded.last_occurred_at)
-`;
-
-type WorldEventAgentRole = 'subject' | 'target' | 'participant' | 'delivered' | 'pending';
-
-interface PersistedEventSummary {
-  emoji: string;
-  title: string;
-  text: string;
-}
-
-const textDecoder = new TextDecoder();
-
-function isMissingServerEventInstancesTableError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  return /no such table:\s*(?:main\.)?server_event_instances/i.test(error.message);
-}
+const _knownWorldEventTypeParity: _KnownWorldEventTypeParity = true;
+const _workerBackendEventTypeParity: _WorkerBackendEventTypeParity = true;
+const _worldEventCoverage: _WorldEventCoverage = true;
+const _worldEventNoUnexpectedKnown: _WorldEventNoUnexpectedKnown = true;
+const _worldEventNoUnexpectedNonPersisted: _WorldEventNoUnexpectedNonPersisted = true;
 
 function defaultFetchImpl(input: string | URL | Request, init?: RequestInit): Promise<RelayFetchResponse> {
   return fetch(input, init) as Promise<RelayFetchResponse>;
-}
-
-function bindD1Statement(
-  db: D1DatabaseLike,
-  query: string,
-  ...values: unknown[]
-): D1PreparedStatementLike {
-  const statement = db.prepare(query.trim());
-
-  if (typeof statement.bind !== 'function') {
-    throw new Error('D1 prepared statement does not support bind()');
-  }
-
-  return statement.bind(...values);
 }
 
 function buildActionEmojiIndex(worldSnapshot: WorldSnapshot): Map<string, string> {
@@ -671,441 +686,6 @@ function buildActionEmojiIndex(worldSnapshot: WorldSnapshot): Map<string, string
   }
 
   return actionEmojiIndex;
-}
-
-function resolvePersistedActionEmoji(
-  worldEvent: Extract<WorldEvent, { type: 'action_started' | 'action_completed' | 'action_rejected' }>,
-  getActionEmoji?: (actionId: string) => string | undefined,
-): string {
-  return (
-    getActionEmoji?.(worldEvent.action_id) ??
-    (worldEvent.type === 'action_started' ? '✨' : worldEvent.type === 'action_completed' ? '✅' : '⚠️')
-  );
-}
-
-function buildPersistedEventSummary(
-  worldEvent: WorldEvent,
-  getActionEmoji?: (actionId: string) => string | undefined,
-): PersistedEventSummary {
-  switch (worldEvent.type) {
-    case 'agent_logged_in':
-      return {
-        emoji: '👋',
-        title: 'ログイン',
-        text: `${worldEvent.agent_name} が ${worldEvent.node_id} にログイン`,
-      };
-    case 'agent_logged_out':
-      return {
-        emoji: '🚪',
-        title: 'ログアウト',
-        text: `${worldEvent.agent_name} がログアウト`,
-      };
-    case 'movement_started':
-      return {
-        emoji: '🚶',
-        title: '移動開始',
-        text: `${worldEvent.from_node_id} → ${worldEvent.to_node_id}`,
-      };
-    case 'movement_completed':
-      return {
-        emoji: '📍',
-        title: '移動完了',
-        text: `${worldEvent.node_id} に到着`,
-      };
-    case 'action_started':
-      return {
-        emoji: resolvePersistedActionEmoji(worldEvent, getActionEmoji),
-        title: 'アクション開始',
-        text: `${worldEvent.action_name} を開始`,
-      };
-    case 'action_completed':
-      return {
-        emoji: resolvePersistedActionEmoji(worldEvent, getActionEmoji),
-        title: 'アクション完了',
-        text: `${worldEvent.action_name} を完了`,
-      };
-    case 'action_rejected':
-      return {
-        emoji: '⚠️',
-        title: 'アクション失敗',
-        text: `${worldEvent.action_name}: ${worldEvent.rejection_reason}`,
-      };
-    case 'wait_started':
-      return {
-        emoji: '💤',
-        title: '待機開始',
-        text: `${worldEvent.duration_ms}ms の待機`,
-      };
-    case 'wait_completed':
-      return {
-        emoji: '⏰',
-        title: '待機完了',
-        text: '待機を終了',
-      };
-    case 'item_use_started':
-      return {
-        emoji: '🧰',
-        title: 'アイテム使用開始',
-        text: `${worldEvent.item_name} を使用開始`,
-      };
-    case 'item_use_completed':
-      return {
-        emoji: '🎒',
-        title: 'アイテム使用完了',
-        text: `${worldEvent.item_name} を使用`,
-      };
-    case 'item_use_venue_rejected':
-      return {
-        emoji: '📍',
-        title: '場所が必要',
-        text: `${worldEvent.item_name} は専用アクションで使用`,
-      };
-    case 'conversation_requested':
-      return {
-        emoji: '💬',
-        title: '会話申請',
-        text: '会話を開始',
-      };
-    case 'conversation_accepted':
-      return {
-        emoji: '🤝',
-        title: '会話開始',
-        text: '会話が成立',
-      };
-    case 'conversation_rejected':
-      return {
-        emoji: '🙅',
-        title: '会話拒否',
-        text: `理由: ${worldEvent.reason}`,
-      };
-    case 'conversation_message':
-      return {
-        emoji: '💬',
-        title: '発言',
-        text: worldEvent.message,
-      };
-    case 'conversation_join':
-      return {
-        emoji: '👥',
-        title: '会話参加',
-        text: `${worldEvent.agent_name} が参加`,
-      };
-    case 'conversation_leave':
-      return {
-        emoji: '↩️',
-        title: '会話離脱',
-        text: `${worldEvent.agent_name} が離脱`,
-      };
-    case 'conversation_inactive_check':
-      return {
-        emoji: '❓',
-        title: '応答確認',
-        text: 'inactive check を送信',
-      };
-    case 'conversation_interval_interrupted':
-      return {
-        emoji: '⏸️',
-        title: '会話中断',
-        text: '理由に応じて会話間隔が打ち切られた',
-      };
-    case 'conversation_turn_started':
-      return {
-        emoji: '🎙️',
-        title: '発言ターン',
-        text: `次の話者: ${worldEvent.current_speaker_agent_id}`,
-      };
-    case 'conversation_closing':
-      return {
-        emoji: '🔚',
-        title: '会話終了処理',
-        text: `理由: ${worldEvent.reason}`,
-      };
-    case 'conversation_ended':
-      return {
-        emoji: '🛑',
-        title: '会話終了',
-        text: `理由: ${worldEvent.reason}`,
-      };
-    case 'conversation_pending_join_cancelled':
-      return {
-        emoji: '🚫',
-        title: '参加取消',
-        text: `理由: ${worldEvent.reason}`,
-      };
-    case 'server_event_fired':
-      return {
-        emoji: '📢',
-        title: 'サーバーイベント',
-        text: worldEvent.description,
-      };
-    case 'idle_reminder_fired':
-      return {
-        emoji: '🔔',
-        title: 'アイドル通知',
-        text: `${worldEvent.agent_name} に idle reminder を送信`,
-      };
-    case 'map_info_requested':
-      return {
-        emoji: '🗺️',
-        title: 'マップ通知要求',
-        text: `${worldEvent.agent_id} がマップ通知を要求`,
-      };
-    case 'world_agents_info_requested':
-      return {
-        emoji: '👀',
-        title: 'エージェント通知要求',
-        text: `${worldEvent.agent_id} が world agents 通知を要求`,
-      };
-    case 'perception_requested':
-      return {
-        emoji: '👁️',
-        title: '知覚通知要求',
-        text: `${worldEvent.agent_id} が知覚通知を要求`,
-      };
-    case 'available_actions_requested':
-      return {
-        emoji: '📋',
-        title: '行動通知要求',
-        text: `${worldEvent.agent_id} が actions 通知を要求`,
-      };
-  }
-}
-
-function assignAgentRole(
-  roles: Map<string, WorldEventAgentRole>,
-  agentId: string,
-  role: WorldEventAgentRole,
-): void {
-  const current = roles.get(agentId);
-
-  if (
-    current === undefined ||
-    (current === 'pending' && role !== 'pending') ||
-    (current === 'delivered' && (role === 'subject' || role === 'target' || role === 'participant')) ||
-    (current === 'participant' && (role === 'subject' || role === 'target')) ||
-    (current === 'target' && role === 'subject')
-  ) {
-    roles.set(agentId, role);
-  }
-}
-
-function buildWorldEventAgentRoles(
-  worldEvent: WorldEvent,
-  stagedConversationUpdate?: StagedConversationMirrorUpdate,
-): Map<string, WorldEventAgentRole> {
-  const roles = new Map<string, WorldEventAgentRole>();
-
-  switch (worldEvent.type) {
-    case 'agent_logged_in':
-    case 'agent_logged_out':
-    case 'movement_started':
-    case 'movement_completed':
-    case 'action_started':
-    case 'action_completed':
-    case 'action_rejected':
-    case 'wait_started':
-    case 'wait_completed':
-    case 'item_use_started':
-    case 'item_use_completed':
-    case 'item_use_venue_rejected':
-    case 'idle_reminder_fired':
-    case 'map_info_requested':
-    case 'world_agents_info_requested':
-    case 'perception_requested':
-    case 'available_actions_requested':
-      assignAgentRole(roles, worldEvent.agent_id, 'subject');
-      break;
-    case 'conversation_requested':
-      assignAgentRole(roles, worldEvent.initiator_agent_id, 'subject');
-      assignAgentRole(roles, worldEvent.target_agent_id, 'target');
-      break;
-    case 'conversation_accepted':
-      assignAgentRole(roles, worldEvent.initiator_agent_id, 'subject');
-      for (const agentId of worldEvent.participant_agent_ids) {
-        if (agentId !== worldEvent.initiator_agent_id) {
-          assignAgentRole(roles, agentId, 'participant');
-        }
-      }
-      break;
-    case 'conversation_rejected':
-      assignAgentRole(roles, worldEvent.initiator_agent_id, 'subject');
-      assignAgentRole(roles, worldEvent.target_agent_id, 'target');
-      break;
-    case 'conversation_message':
-      assignAgentRole(roles, worldEvent.speaker_agent_id, 'subject');
-      for (const agentId of worldEvent.listener_agent_ids) {
-        assignAgentRole(roles, agentId, 'participant');
-      }
-      break;
-    case 'conversation_join':
-      assignAgentRole(roles, worldEvent.agent_id, 'subject');
-      for (const agentId of worldEvent.participant_agent_ids) {
-        if (agentId !== worldEvent.agent_id) {
-          assignAgentRole(roles, agentId, 'participant');
-        }
-      }
-      break;
-    case 'conversation_leave':
-      assignAgentRole(roles, worldEvent.agent_id, 'subject');
-      for (const agentId of worldEvent.participant_agent_ids) {
-        assignAgentRole(roles, agentId, 'participant');
-      }
-      break;
-    case 'conversation_inactive_check': {
-      const participantAgentIds = stagedConversationUpdate?.resolved_conversation?.participant_agent_ids ?? [];
-      for (const agentId of worldEvent.target_agent_ids) {
-        assignAgentRole(roles, agentId, 'target');
-      }
-      for (const agentId of participantAgentIds) {
-        if (!worldEvent.target_agent_ids.includes(agentId)) {
-          assignAgentRole(roles, agentId, 'participant');
-        }
-      }
-      break;
-    }
-    case 'conversation_interval_interrupted':
-      assignAgentRole(roles, worldEvent.speaker_agent_id, 'subject');
-      for (const agentId of worldEvent.participant_agent_ids) {
-        if (agentId !== worldEvent.speaker_agent_id) {
-          assignAgentRole(roles, agentId, 'participant');
-        }
-      }
-      break;
-    case 'conversation_turn_started': {
-      assignAgentRole(roles, worldEvent.current_speaker_agent_id, 'subject');
-      const participantAgentIds = stagedConversationUpdate?.resolved_conversation?.participant_agent_ids ?? [];
-      for (const agentId of participantAgentIds) {
-        if (agentId !== worldEvent.current_speaker_agent_id) {
-          assignAgentRole(roles, agentId, 'participant');
-        }
-      }
-      break;
-    }
-    case 'conversation_closing':
-      assignAgentRole(roles, worldEvent.current_speaker_agent_id, 'subject');
-      for (const agentId of worldEvent.participant_agent_ids) {
-        if (agentId !== worldEvent.current_speaker_agent_id) {
-          assignAgentRole(roles, agentId, 'participant');
-        }
-      }
-      break;
-    case 'conversation_ended':
-      if (worldEvent.final_speaker_agent_id) {
-        assignAgentRole(roles, worldEvent.final_speaker_agent_id, 'subject');
-      }
-      for (const agentId of worldEvent.participant_agent_ids) {
-        if (agentId !== worldEvent.final_speaker_agent_id) {
-          assignAgentRole(roles, agentId, 'participant');
-        }
-      }
-      break;
-    case 'conversation_pending_join_cancelled':
-      assignAgentRole(roles, worldEvent.agent_id, 'target');
-      break;
-    case 'server_event_fired':
-      for (const agentId of worldEvent.delivered_agent_ids) {
-        assignAgentRole(roles, agentId, 'delivered');
-      }
-      for (const agentId of worldEvent.pending_agent_ids) {
-        assignAgentRole(roles, agentId, 'pending');
-      }
-      break;
-  }
-
-  return roles;
-}
-
-export function createRuntimePersistWorldEvent(
-  db?: D1DatabaseLike,
-  getActionEmoji?: (actionId: string) => string | undefined,
-  observability?: RelayObservability,
-): ((worldEvent: WorldEvent, stagedConversationUpdate?: StagedConversationMirrorUpdate) => Promise<void>) | undefined {
-  const batch = db?.batch;
-
-  if (!db || typeof batch !== 'function') {
-    return undefined;
-  }
-
-  return async (worldEvent, stagedConversationUpdate) => {
-    const sanitizedWorldEvent = sanitize(worldEvent);
-
-    if (!sanitizedWorldEvent) {
-        observability?.log('warn', 'relay dropped unknown world event before ingest', {
-        event_type: String(worldEvent.type),
-      });
-      return;
-    }
-
-    const summary = buildPersistedEventSummary(worldEvent, getActionEmoji);
-    const agentRoles = buildWorldEventAgentRoles(worldEvent, stagedConversationUpdate);
-    const statements: D1PreparedStatementLike[] = [
-      bindD1Statement(
-        db,
-        INSERT_WORLD_EVENT_QUERY,
-        worldEvent.event_id,
-        worldEvent.type,
-        worldEvent.occurred_at,
-        'conversation_id' in worldEvent ? worldEvent.conversation_id : null,
-        worldEvent.type === 'server_event_fired' ? worldEvent.server_event_id : null,
-        summary.emoji,
-        summary.title,
-        summary.text,
-        JSON.stringify(sanitizedWorldEvent),
-      ),
-    ];
-
-    for (const [agentId, role] of agentRoles) {
-      statements.push(
-        bindD1Statement(
-          db,
-          INSERT_WORLD_EVENT_AGENT_QUERY,
-          worldEvent.event_id,
-          agentId,
-          worldEvent.occurred_at,
-          worldEvent.type,
-          role,
-        ),
-      );
-    }
-
-    if ('conversation_id' in worldEvent) {
-      statements.push(
-        bindD1Statement(
-          db,
-          INSERT_WORLD_EVENT_CONVERSATION_QUERY,
-          worldEvent.event_id,
-          worldEvent.conversation_id,
-          worldEvent.occurred_at,
-          worldEvent.type,
-        ),
-      );
-    }
-
-    if (worldEvent.type === 'server_event_fired') {
-      statements.push(
-        bindD1Statement(
-          db,
-          UPSERT_SERVER_EVENT_INSTANCE_QUERY,
-          worldEvent.server_event_id,
-          worldEvent.description,
-          worldEvent.occurred_at,
-          worldEvent.occurred_at,
-        ),
-      );
-    }
-
-    try {
-      await batch.call(db, statements);
-    } catch (error) {
-      observability?.counter('relay.d1.ingest_failure_total', { event_type: worldEvent.type });
-      observability?.log('error', 'relay failed to persist world event batch', {
-        event_type: worldEvent.type,
-        event_id: worldEvent.event_id,
-        error: describeError(error),
-      });
-      throw error;
-    }
-  };
 }
 
 function readOptionalString(record: Record<string, unknown>, key: string): string | undefined {
@@ -1163,18 +743,22 @@ function calculateBackoff(baseIntervalMs: number, streak: number, maxIntervalMs:
 interface PersistedRuntimeState {
   latest_snapshot: SpectatorSnapshot;
   last_publish_at?: number;
+  last_published_generated_at?: number;
   last_refresh_at?: number;
-  refresh_alarm_at?: number;
+  fallback_refresh_alarm_at?: number;
   publish_alarm_at?: number;
+  publish_attempt?: number;
+  last_publish_error_at?: number;
+  last_publish_error_code?: string;
   publish_failure_streak: number;
 }
 
 function createRuntimeSnapshotPublisher(snapshotBucket?: R2BucketLike): (input: SnapshotPublishInput) => Promise<void> {
-  if (!snapshotBucket) {
-    return async () => {};
-  }
-
   return async ({ key, body, options }) => {
+    if (!snapshotBucket) {
+      throw new Error('SNAPSHOT_BUCKET is required for snapshot publishing');
+    }
+
     await snapshotBucket.put(key, body, options);
   };
 }
@@ -1190,6 +774,58 @@ export function createBridgeState(): BridgeState {
     publish_queued: false,
     publish_failure_streak: 0,
   };
+}
+
+function sortHistoryEntries(entries: PublishedHistoryEntry[]): PublishedHistoryEntry[] {
+  return [...entries].sort((left, right) => right.occurred_at - left.occurred_at || right.event_id.localeCompare(left.event_id));
+}
+
+function mergeHistoryEntryList(
+  existingEntries: PublishedHistoryEntry[],
+  nextEntries: PublishedHistoryEntry[],
+  limit: number,
+): PublishedHistoryEntry[] {
+  const byId = new Map(existingEntries.map((entry) => [entry.event_id, entry]));
+
+  for (const entry of nextEntries) {
+    byId.set(entry.event_id, entry);
+  }
+
+  return sortHistoryEntries([...byId.values()]).slice(0, limit);
+}
+
+function historyAgentObjectKey(agentId: string): string {
+  return `history/agents/${encodeURIComponent(agentId)}.json`;
+}
+
+function historyConversationObjectKey(conversationId: string): string {
+  return `history/conversations/${encodeURIComponent(conversationId)}.json`;
+}
+
+function deriveSnapshotManifestObjectKey(snapshotObjectKey: string): string {
+  const slashIndex = snapshotObjectKey.lastIndexOf('/');
+  if (slashIndex < 0) {
+    return 'manifest.json';
+  }
+
+  return `${snapshotObjectKey.slice(0, slashIndex)}/manifest.json`;
+}
+
+function deriveVersionedSnapshotObjectKey(snapshotObjectKey: string, generatedAt: number): string {
+  const slashIndex = snapshotObjectKey.lastIndexOf('/');
+  if (slashIndex < 0) {
+    return `v/${generatedAt}.json`;
+  }
+
+  return `${snapshotObjectKey.slice(0, slashIndex)}/v/${generatedAt}.json`;
+}
+
+function isActionEventType(type: string): boolean {
+  return type === 'action_started' || type === 'action_completed' || type === 'action_rejected';
+}
+
+function isConversationEventType(type: string): boolean {
+  return type.startsWith('conversation_');
 }
 
 export function rebuildConversationMirror(
@@ -1518,29 +1154,6 @@ function mergeRecentServerEventsFromSnapshot(
     .slice(0, 3);
 }
 
-export async function restoreRecentServerEvents(db?: D1DatabaseLike): Promise<SpectatorRecentServerEvent[]> {
-  if (!db) {
-    return [];
-  }
-
-  let result: D1QueryResult<unknown>;
-
-  try {
-    result = await db.prepare(RECENT_SERVER_EVENTS_QUERY.trim()).all();
-  } catch (error) {
-    if (isMissingServerEventInstancesTableError(error)) {
-      return [];
-    }
-
-    throw error;
-  }
-
-  return (result.results ?? []).map((row) => ({
-    ...recentServerEventRowSchema.parse(row),
-    is_active: false,
-  }));
-}
-
 export class UIBridgeDurableObject {
   private readonly config: RelayConfig;
   private readonly bridgeState = createBridgeState();
@@ -1569,18 +1182,50 @@ export class UIBridgeDurableObject {
     this.bootPromise = this.createBootPromise();
   }
 
-  async fetch(_request: Request): Promise<Response> {
+  async fetch(request: Request): Promise<Response> {
     await this.ensureBooted();
-    return new Response(null, { status: 204 });
+    const url = new URL(request.url);
+
+    if (url.pathname === '/api/publish-snapshot' && request.method === 'POST') {
+      try {
+        await this.refreshSnapshot('external-request');
+        return new Response(null, { status: 204 });
+      } catch (error) {
+        this.runObservabilitySafely(() => {
+          this.dependencies.observability.log('error', 'relay external snapshot refresh failed', {
+            error: describeError(error),
+          });
+        });
+        return new Response(JSON.stringify({ error: 'snapshot_refresh_failed' }), {
+          status: 502,
+          headers: {
+            'content-type': SNAPSHOT_CONTENT_TYPE,
+          },
+        });
+      }
+    }
+
+    if (url.pathname === '/api/publish-agent-history' && request.method === 'POST') {
+      const body = publishAgentHistoryRequestSchema.parse(await request.json());
+      await this.appendAgentHistory(body.agent_id, body.events);
+      return new Response(null, { status: 204 });
+    }
+
+    return new Response(null, { status: 404 });
   }
 
   async alarm(): Promise<void> {
     await this.ensureBooted();
     const now = this.dependencies.now();
 
-    if (this.bridgeState.refresh_alarm_at !== undefined && this.bridgeState.refresh_alarm_at <= now) {
-      this.bridgeState.refresh_alarm_at = undefined;
-      await this.refreshSnapshot('fixed-cadence');
+    if (
+      this.bridgeState.fallback_refresh_alarm_at !== undefined &&
+      this.bridgeState.fallback_refresh_alarm_at <= now
+    ) {
+      this.bridgeState.fallback_refresh_alarm_at = now + FALLBACK_REFRESH_INTERVAL_MS;
+      try {
+        await this.refreshSnapshot('fallback-refresh');
+      } catch {}
     }
 
     if (this.bridgeState.publish_alarm_at !== undefined && this.bridgeState.publish_alarm_at <= this.dependencies.now()) {
@@ -1635,9 +1280,15 @@ export class UIBridgeDurableObject {
       (event) => event.server_event_id,
     );
     this.bridgeState.last_publish_at = persistedState.last_publish_at;
+    this.bridgeState.last_published_generated_at =
+      persistedState.last_published_generated_at ??
+      (persistedState.last_publish_at !== undefined ? persistedState.latest_snapshot.generated_at : undefined);
     this.bridgeState.last_refresh_at = persistedState.last_refresh_at;
-    this.bridgeState.refresh_alarm_at = persistedState.refresh_alarm_at;
+    this.bridgeState.fallback_refresh_alarm_at = persistedState.fallback_refresh_alarm_at;
     this.bridgeState.publish_alarm_at = persistedState.publish_alarm_at;
+    this.bridgeState.publish_attempt = persistedState.publish_attempt;
+    this.bridgeState.last_publish_error_at = persistedState.last_publish_error_at;
+    this.bridgeState.last_publish_error_code = persistedState.last_publish_error_code;
     this.bridgeState.publish_failure_streak = persistedState.publish_failure_streak;
   }
 
@@ -1653,9 +1304,21 @@ export class UIBridgeDurableObject {
       },
       publish_failure_streak: this.bridgeState.publish_failure_streak,
       ...(this.bridgeState.last_publish_at !== undefined ? { last_publish_at: this.bridgeState.last_publish_at } : {}),
+      ...(this.bridgeState.last_published_generated_at !== undefined
+        ? { last_published_generated_at: this.bridgeState.last_published_generated_at }
+        : {}),
       ...(this.bridgeState.last_refresh_at !== undefined ? { last_refresh_at: this.bridgeState.last_refresh_at } : {}),
-      ...(this.bridgeState.refresh_alarm_at !== undefined ? { refresh_alarm_at: this.bridgeState.refresh_alarm_at } : {}),
+      ...(this.bridgeState.fallback_refresh_alarm_at !== undefined
+        ? { fallback_refresh_alarm_at: this.bridgeState.fallback_refresh_alarm_at }
+        : {}),
       ...(this.bridgeState.publish_alarm_at !== undefined ? { publish_alarm_at: this.bridgeState.publish_alarm_at } : {}),
+      ...(this.bridgeState.publish_attempt !== undefined ? { publish_attempt: this.bridgeState.publish_attempt } : {}),
+      ...(this.bridgeState.last_publish_error_at !== undefined
+        ? { last_publish_error_at: this.bridgeState.last_publish_error_at }
+        : {}),
+      ...(this.bridgeState.last_publish_error_code !== undefined
+        ? { last_publish_error_code: this.bridgeState.last_publish_error_code }
+        : {}),
     } satisfies PersistedRuntimeState);
   }
 
@@ -1663,9 +1326,10 @@ export class UIBridgeDurableObject {
     await this.restorePersistedRuntimeState();
 
     if (!this.bridgeState.latest_snapshot) {
-      this.bridgeState.recent_server_events = await restoreRecentServerEvents(this.env.HISTORY_DB);
       await this.refreshSnapshot('boot');
     }
+
+    this.bridgeState.fallback_refresh_alarm_at ??= this.dependencies.now() + FALLBACK_REFRESH_INTERVAL_MS;
 
     await this.rescheduleAlarm();
   }
@@ -1752,6 +1416,7 @@ export class UIBridgeDurableObject {
       world_snapshot: worldSnapshot,
       recent_server_events: this.bridgeState.recent_server_events,
       published_at: this.bridgeState.last_publish_at ?? 0,
+      last_publish_error_at: this.bridgeState.last_publish_error_at,
     });
     this.bridgeState.last_refresh_at = now;
     await this.persistRuntimeState();
@@ -1770,18 +1435,21 @@ export class UIBridgeDurableObject {
 
     this.bridgeState.refresh_in_flight = true;
     let refreshSucceeded = false;
+    let refreshError: unknown;
 
     try {
       const worldSnapshot = await fetchWorldSnapshot(this.config, this.dependencies.fetchImpl);
       await this.enqueueSerializedOperation(async () => {
         await this.applySnapshot(worldSnapshot);
       });
-      await this.scheduleFixedCadence();
       this.emitSnapshotFreshnessMetricsSafely();
-      await this.publishLatestSnapshot();
+      await this.publishLatestSnapshot({ failClosed: reason === 'external-request' });
       refreshSucceeded = true;
     } catch (error) {
-      await this.scheduleFixedCadence();
+      refreshError = error;
+      this.bridgeState.last_publish_error_at = this.dependencies.now();
+      this.bridgeState.last_publish_error_code = 'SNAPSHOT_REFRESH_FAILED';
+      await this.publishStaleSnapshotManifest('relay snapshot manifest refresh failed', { reason });
       this.runObservabilitySafely(() => {
         this.dependencies.observability.counter('ui.snapshot.refresh_failure_total', { reason });
       });
@@ -1800,16 +1468,15 @@ export class UIBridgeDurableObject {
         this.bridgeState.refresh_queued = false;
         this.bridgeState.refresh_queued_reason = undefined;
 
-        if (!(refreshSucceeded && queuedReason === 'fixed-cadence')) {
+        if (!(refreshSucceeded && queuedReason === 'fallback-refresh')) {
           await this.refreshSnapshot(queuedReason);
         }
       }
     }
-  }
 
-  private async scheduleFixedCadence(): Promise<void> {
-    this.bridgeState.refresh_alarm_at = this.dependencies.now() + this.config.snapshotPublishIntervalMs;
-    await this.rescheduleAlarm();
+    if (!refreshSucceeded) {
+      throw refreshError instanceof Error ? refreshError : new Error(describeError(refreshError));
+    }
   }
 
   private isPublishBackoffActive(now = this.dependencies.now()): boolean {
@@ -1828,7 +1495,7 @@ export class UIBridgeDurableObject {
     });
   }
 
-  private async publishLatestSnapshot(): Promise<void> {
+  private async publishLatestSnapshot({ failClosed = false }: { failClosed?: boolean } = {}): Promise<void> {
     if (this.bridgeState.publish_in_flight) {
       this.bridgeState.publish_queued = true;
       return;
@@ -1844,6 +1511,9 @@ export class UIBridgeDurableObject {
     if (this.isPublishBackoffActive()) {
       await this.persistRuntimeState();
       await this.rescheduleAlarm();
+      if (failClosed) {
+        throw new Error('snapshot publish backoff is active');
+      }
       return;
     }
 
@@ -1856,9 +1526,12 @@ export class UIBridgeDurableObject {
       published_at: publishedAt,
     } satisfies SpectatorSnapshot;
 
+    let publishError: unknown;
+
     try {
-      await this.dependencies.publishSnapshot?.({
-        key: this.config.snapshotObjectKey,
+      const versionedKey = deriveVersionedSnapshotObjectKey(this.config.snapshotObjectKey, snapshotToPublish.generated_at);
+      await this.dependencies.publishSnapshot({
+        key: versionedKey,
         body: encodeSpectatorSnapshot(snapshotToPublish),
         options: {
           httpMetadata: {
@@ -1870,20 +1543,64 @@ export class UIBridgeDurableObject {
           },
         },
       });
+      const manifest = this.createSnapshotManifest(snapshotToPublish, versionedKey);
+      await this.dependencies.publishSnapshot({
+        key: deriveSnapshotManifestObjectKey(this.config.snapshotObjectKey),
+        body: encodeSnapshotManifest(manifest),
+        options: {
+          httpMetadata: {
+            contentType: SNAPSHOT_CONTENT_TYPE,
+            cacheControl: 'no-store',
+          },
+          customMetadata: {
+            'schema-version': '1',
+          },
+        },
+      });
+      try {
+        await this.dependencies.publishSnapshot({
+          key: this.config.snapshotObjectKey,
+          body: encodeSpectatorSnapshot(snapshotToPublish),
+          options: {
+            httpMetadata: {
+              contentType: SNAPSHOT_CONTENT_TYPE,
+              cacheControl: `public, max-age=${this.config.snapshotCacheMaxAgeSec}`,
+            },
+            customMetadata: {
+              'schema-version': '1',
+            },
+          },
+        });
+      } catch (aliasError) {
+        this.runObservabilitySafely(() => {
+          this.dependencies.observability.log('warn', 'relay snapshot alias publish failed', {
+            error: describeError(aliasError),
+            key: this.config.snapshotObjectKey,
+          });
+        });
+      }
       this.bridgeState.latest_snapshot = snapshotToPublish;
       this.bridgeState.last_publish_at = publishedAt;
+      this.bridgeState.last_published_generated_at = snapshotToPublish.generated_at;
+      this.bridgeState.last_publish_error_at = undefined;
+      this.bridgeState.last_publish_error_code = undefined;
       this.bridgeState.publish_alarm_at = undefined;
+      this.bridgeState.publish_attempt = undefined;
       this.bridgeState.publish_failure_streak = 0;
       this.runObservabilitySafely(() => {
         this.dependencies.observability.gauge('ui.r2.publish_failure_streak', 0);
       });
       this.emitSnapshotFreshnessMetricsSafely(snapshotToPublish);
     } catch (error) {
+      publishError = error;
       this.bridgeState.publish_failure_streak += 1;
+      this.bridgeState.publish_attempt = this.bridgeState.publish_failure_streak;
+      this.bridgeState.last_publish_error_at = publishedAt;
+      this.bridgeState.last_publish_error_code = 'R2_PUBLISH_FAILED';
       this.bridgeState.publish_alarm_at =
         publishedAt +
         calculateBackoff(
-          this.config.snapshotPublishIntervalMs,
+          PUBLISH_RETRY_BASE_MS,
           this.bridgeState.publish_failure_streak,
           PUBLISH_BACKOFF_MAX_MS,
         );
@@ -1892,6 +1609,9 @@ export class UIBridgeDurableObject {
       });
       this.runObservabilitySafely(() => {
         this.dependencies.observability.gauge('ui.r2.publish_failure_streak', this.bridgeState.publish_failure_streak);
+      });
+      await this.publishStaleSnapshotManifest('relay stale snapshot manifest publish failed', {
+        publish_failure_streak: this.bridgeState.publish_failure_streak,
       });
       this.emitSnapshotFreshnessMetricsSafely();
       this.runObservabilitySafely(() => {
@@ -1908,13 +1628,204 @@ export class UIBridgeDurableObject {
       this.bridgeState.publish_queued = false;
 
       if (shouldDrainQueuedPublish) {
-        await this.publishLatestSnapshot();
+        await this.publishLatestSnapshot({ failClosed });
         return;
       }
 
       await this.persistRuntimeState();
       await this.rescheduleAlarm();
     }
+
+    if (publishError !== undefined && failClosed) {
+      throw publishError instanceof Error ? publishError : new Error(describeError(publishError));
+    }
+  }
+
+  private createSnapshotManifest(snapshot: SpectatorSnapshot, latestSnapshotKey: string): SnapshotManifest {
+    return {
+      schema_version: 1,
+      latest_snapshot_key: latestSnapshotKey,
+      generated_at: snapshot.generated_at,
+      published_at: snapshot.published_at,
+      ...(this.bridgeState.last_publish_error_at !== undefined
+        ? { last_publish_error_at: this.bridgeState.last_publish_error_at }
+        : {}),
+    };
+  }
+
+  private async publishStaleSnapshotManifest(
+    message: string,
+    context: Record<string, unknown> = {},
+  ): Promise<void> {
+    if (this.bridgeState.latest_snapshot && this.bridgeState.last_publish_error_at !== undefined) {
+      this.bridgeState.latest_snapshot = {
+        ...this.bridgeState.latest_snapshot,
+        last_publish_error_at: this.bridgeState.last_publish_error_at,
+      };
+    }
+
+    if (this.bridgeState.last_publish_at === undefined) {
+      return;
+    }
+
+    try {
+      await this.publishSnapshotManifest();
+    } catch (manifestError) {
+      this.runObservabilitySafely(() => {
+        this.dependencies.observability.log('error', message, {
+          ...context,
+          error: describeError(manifestError),
+        });
+      });
+    }
+  }
+
+  private async publishSnapshotManifest(): Promise<void> {
+    const latestSnapshot = this.bridgeState.latest_snapshot;
+    const lastPublishAt = this.bridgeState.last_publish_at;
+    const lastPublishedGeneratedAt = this.bridgeState.last_published_generated_at ?? latestSnapshot?.generated_at;
+
+    if (!latestSnapshot || lastPublishAt === undefined || lastPublishedGeneratedAt === undefined) {
+      return;
+    }
+
+    await this.dependencies.publishSnapshot({
+      key: deriveSnapshotManifestObjectKey(this.config.snapshotObjectKey),
+      body: encodeSnapshotManifest(
+        this.createSnapshotManifest(
+          {
+            ...latestSnapshot,
+            generated_at: lastPublishedGeneratedAt,
+            published_at: lastPublishAt,
+          },
+          deriveVersionedSnapshotObjectKey(this.config.snapshotObjectKey, lastPublishedGeneratedAt),
+        ),
+      ),
+      options: {
+        httpMetadata: {
+          contentType: SNAPSHOT_CONTENT_TYPE,
+          cacheControl: 'no-store',
+        },
+        customMetadata: {
+          'schema-version': '1',
+        },
+      },
+    });
+    await this.persistRuntimeState();
+  }
+
+  private async readAgentHistoryDocument(agentId: string): Promise<AgentHistoryDocument> {
+    const object = await this.env.SNAPSHOT_BUCKET?.get(historyAgentObjectKey(agentId));
+    if (!object) {
+      return {
+        agent_id: agentId,
+        updated_at: 0,
+        items: [],
+        recent_actions: [],
+        recent_conversations: [],
+      };
+    }
+
+    const parsed = agentHistoryDocumentSchema.parse(JSON.parse(await object.text()));
+    return {
+      agent_id: parsed.agent_id ?? agentId,
+      updated_at: parsed.updated_at ?? 0,
+      items: parsed.items ?? [],
+      recent_actions: parsed.recent_actions ?? [],
+      recent_conversations: parsed.recent_conversations ?? [],
+    };
+  }
+
+  private async writeAgentHistoryDocument(document: AgentHistoryDocument): Promise<void> {
+    if (!this.env.SNAPSHOT_BUCKET) {
+      throw new Error('SNAPSHOT_BUCKET is required for agent history publishing');
+    }
+
+    await this.env.SNAPSHOT_BUCKET.put(
+      historyAgentObjectKey(document.agent_id),
+      JSON.stringify(document),
+      {
+        httpMetadata: {
+          contentType: SNAPSHOT_CONTENT_TYPE,
+          cacheControl: `public, max-age=${this.config.snapshotCacheMaxAgeSec}`,
+        },
+      },
+    );
+  }
+
+  private async readConversationHistoryDocument(conversationId: string): Promise<ConversationHistoryDocument> {
+    const object = await this.env.SNAPSHOT_BUCKET?.get(historyConversationObjectKey(conversationId));
+    if (!object) {
+      return {
+        conversation_id: conversationId,
+        updated_at: 0,
+        items: [],
+      };
+    }
+
+    const parsed = conversationHistoryDocumentSchema.parse(JSON.parse(await object.text()));
+    return {
+      conversation_id: parsed.conversation_id ?? conversationId,
+      updated_at: parsed.updated_at ?? 0,
+      items: parsed.items ?? [],
+    };
+  }
+
+  private async writeConversationHistoryDocument(document: ConversationHistoryDocument): Promise<void> {
+    if (!this.env.SNAPSHOT_BUCKET) {
+      throw new Error('SNAPSHOT_BUCKET is required for conversation history publishing');
+    }
+
+    await this.env.SNAPSHOT_BUCKET.put(
+      historyConversationObjectKey(document.conversation_id),
+      JSON.stringify(document),
+      {
+        httpMetadata: {
+          contentType: SNAPSHOT_CONTENT_TYPE,
+          cacheControl: `public, max-age=${this.config.snapshotCacheMaxAgeSec}`,
+        },
+      },
+    );
+  }
+
+  private async appendAgentHistory(agentId: string, events: PublishedHistoryEntry[]): Promise<void> {
+    await this.enqueueSerializedOperation(async () => {
+      const current = await this.readAgentHistoryDocument(agentId);
+      const generalEntries = events.filter((event) => !isActionEventType(event.type) && !isConversationEventType(event.type));
+      const actionEntries = events.filter((event) => isActionEventType(event.type));
+      const conversationEntries = events.filter((event) => isConversationEventType(event.type));
+      const maxOccurredAt = events.length > 0 ? Math.max(...events.map((event) => event.occurred_at)) : current.updated_at;
+
+      const updatedDocument: AgentHistoryDocument = {
+        agent_id: agentId,
+        updated_at: Math.max(current.updated_at, maxOccurredAt),
+        items: mergeHistoryEntryList(current.items, generalEntries, 100),
+        recent_actions: mergeHistoryEntryList(current.recent_actions, actionEntries, 100),
+        recent_conversations: mergeHistoryEntryList(current.recent_conversations, conversationEntries, 100),
+      };
+
+      await this.writeAgentHistoryDocument(updatedDocument);
+
+      const byConversationId = new Map<string, PublishedHistoryEntry[]>();
+      for (const event of conversationEntries) {
+        if (!event.conversation_id) {
+          continue;
+        }
+        const entries = byConversationId.get(event.conversation_id) ?? [];
+        entries.push(event);
+        byConversationId.set(event.conversation_id, entries);
+      }
+
+      for (const [conversationId, conversationEvents] of byConversationId) {
+        const conversationDocument = await this.readConversationHistoryDocument(conversationId);
+        const maxConversationOccurredAt = Math.max(...conversationEvents.map((event) => event.occurred_at));
+        await this.writeConversationHistoryDocument({
+          conversation_id: conversationId,
+          updated_at: Math.max(conversationDocument.updated_at, maxConversationOccurredAt),
+          items: mergeHistoryEntryList(conversationDocument.items, conversationEvents, 100),
+        });
+      }
+    });
   }
 
   private emitSnapshotFreshnessMetrics(snapshot = this.bridgeState.latest_snapshot): void {
@@ -1933,7 +1844,7 @@ export class UIBridgeDurableObject {
 
   private async rescheduleAlarm(): Promise<void> {
     const nextAlarmAt = [
-      this.bridgeState.refresh_alarm_at,
+      this.bridgeState.fallback_refresh_alarm_at,
       this.bridgeState.publish_alarm_at,
     ].reduce<number | undefined>((earliest, candidate) => {
       if (candidate === undefined) {

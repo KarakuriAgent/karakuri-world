@@ -100,7 +100,7 @@ interface NotificationAcceptedResponse {
 2. `required_items` があれば開始時に消費する
 3. エージェント状態を `in_action` に遷移
 4. `ActionTimer` を生成（03-world-engine.md セクション1.2参照。`fires_at = 現在時刻 + duration_ms`）
-5. `ActionStartedEvent` を発行（03-world-engine.md セクション2.2参照）。`cost_money` / `items_consumed` があれば同イベントに含める。配信先は WebSocket・ログ・Discord #world-log（03-world-engine.md セクション4.2参照）
+5. `ActionStartedEvent` を発行（03-world-engine.md セクション2.2参照）。`cost_money` / `items_consumed` があれば同イベントに含める。配信先は snapshot publisher 補助・ログ・Discord #world-log（03-world-engine.md セクション4.2参照）
 6. レスポンスを返却
 
 ```typescript
@@ -179,10 +179,6 @@ Timer 発火:
 #### ワールドログ（#world-log）
 
 アクション完了ログとしてエージェント名とアクション名を投稿する。
-
-#### WebSocket
-
-`action_completed` イベントをブロードキャストする。
 
 ## 5. アクション中の割り込み処理
 

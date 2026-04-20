@@ -169,6 +169,69 @@ describe('world snapshot helpers', () => {
     });
   });
 
+  it('preserves in-flight movement and activity payloads in shutdown snapshots after timers are cleared', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-15T03:04:05Z'));
+
+    const { engine } = createTestWorld();
+    const movingAgent = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const actingAgent = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+
+    await engine.loginAgent(movingAgent.agent_id);
+    await engine.loginAgent(actingAgent.agent_id);
+
+    engine.state.setState(movingAgent.agent_id, 'moving');
+    engine.timerManager.create({
+      type: 'movement',
+      agent_ids: [movingAgent.agent_id],
+      agent_id: movingAgent.agent_id,
+      from_node_id: '3-1',
+      to_node_id: '3-2',
+      path: ['3-2'],
+      fires_at: Date.now() + 60_000,
+    });
+
+    engine.state.setState(actingAgent.agent_id, 'in_action');
+    engine.timerManager.create({
+      type: 'action',
+      agent_ids: [actingAgent.agent_id],
+      agent_id: actingAgent.agent_id,
+      action_id: 'polish-gears',
+      action_name: 'Gears polishing',
+      duration_ms: 1_500,
+      fires_at: Date.now() + 60_000,
+    });
+
+    await engine.dispose();
+
+    expect(engine.timerManager.list()).toEqual([]);
+    expect(engine.getSnapshot().agents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          agent_id: movingAgent.agent_id,
+          state: 'moving',
+          movement: {
+            from_node_id: '3-1',
+            to_node_id: '3-2',
+            path: ['3-2'],
+            arrives_at: Date.now() + 60_000,
+          },
+        }),
+        expect.objectContaining({
+          agent_id: actingAgent.agent_id,
+          state: 'in_action',
+          current_activity: {
+            type: 'action',
+            action_id: 'polish-gears',
+            action_name: 'Gears polishing',
+            duration_ms: 1_500,
+            completes_at: Date.now() + 60_000,
+          },
+        }),
+      ]),
+    );
+  });
+
   it('suppresses current_conversation_id for deferred joiners until participation is applied', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-15T03:04:05Z'));

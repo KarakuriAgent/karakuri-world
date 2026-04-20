@@ -10,6 +10,7 @@ import {
   validateAlertCatalog,
   validateReadinessManifest,
 } from '../ops/relay-readiness.js';
+import { SNAPSHOT_REFRESH_REASONS } from '../src/relay/bridge.js';
 
 const specPath = fileURLToPath(new URL('../ops/relay-alerting-spec.json', import.meta.url));
 const drillsPath = fileURLToPath(new URL('../ops/relay-synthetic-drills.json', import.meta.url));
@@ -19,8 +20,6 @@ const realWranglerPath = fileURLToPath(new URL('../../wrangler.toml.example', im
 const productionWranglerFixturePath = fileURLToPath(new URL('./fixtures/wrangler.production.example.toml', import.meta.url));
 const readinessScriptPath = fileURLToPath(new URL('../scripts/relay-readiness.mjs', import.meta.url));
 const repoRootPath = fileURLToPath(new URL('../..', import.meta.url));
-const readmePath = fileURLToPath(new URL('../../README.md', import.meta.url));
-const packageJsonPath = fileURLToPath(new URL('../../package.json', import.meta.url));
 
 function loadCatalog() {
   const spec = loadJson(specPath);
@@ -33,26 +32,31 @@ function loadCatalog() {
 }
 
 describe('relay alerting readiness', () => {
+  it('keeps readiness artifacts aligned with the Phase 8 refresh failure reasons emitted by the worker', () => {
+    const { spec, drills } = loadCatalog();
+    const allowedReasons = new Set(SNAPSHOT_REFRESH_REASONS);
+    const freshnessCounter = spec.alerts
+      .find((alert: { id: string }) => alert.id === 'relay-snapshot-freshness-page')
+      ?.condition?.conditions?.find((condition: { metric?: string }) => condition.metric === 'ui.snapshot.refresh_failure_total');
+    const counterReasons = freshnessCounter?.match_tags?.reason;
+    const drillReasons = drills
+      .flatMap((drill: { verification?: { samples?: Array<{ metric?: string; tags?: { reason?: string } }> } }) =>
+        (drill.verification?.samples ?? [])
+          .filter((sample) => sample.metric === 'ui.snapshot.refresh_failure_total')
+          .map((sample) => sample.tags?.reason),
+      )
+      .filter((reason: unknown): reason is string => typeof reason === 'string');
+
+    expect(counterReasons).toEqual(SNAPSHOT_REFRESH_REASONS);
+    expect(drillReasons).toContain('fallback-refresh');
+    expect(drillReasons).not.toContain('fixed-cadence');
+    expect([...counterReasons, ...drillReasons].every((reason) => allowedReasons.has(reason))).toBe(true);
+  });
+
   it('keeps the checked-in alert catalog and synthetic drills internally consistent', () => {
     const { spec, drills } = loadCatalog();
 
     expect(validateAlertCatalog(spec, drills)).toEqual([]);
-    const retentionSilenceAlert = spec.alerts.find((alert: { id: string }) => alert.id === 'relay-retention-silence-page');
-    expect(retentionSilenceAlert.condition).toMatchObject({
-      type: 'absent_counter',
-      metric: 'ui.d1.retention_run_total',
-      missing_for_days: 2,
-    });
-
-    const retentionBacklogAlert = spec.alerts.find((alert: { id: string }) => alert.id === 'relay-retention-backlog-ticket');
-    expect(retentionBacklogAlert).toMatchObject({
-      route: 'relay-ops-ticket',
-    });
-    expect(retentionBacklogAlert.condition).toMatchObject({
-      type: 'gauge',
-      metric: 'ui.d1.retention_deleted_rows',
-      min_value: 10000,
-    });
 
     const retryBrakeAlert = spec.alerts.find((alert: { id: string }) => alert.id === 'relay-r2-backoff-saturation-page');
     expect(retryBrakeAlert.condition).toMatchObject({
@@ -102,7 +106,6 @@ describe('relay alerting readiness', () => {
         'deployment_checklist.r2_custom_domain_verified_at must be an ISO timestamp',
         'deployment_checklist.cache_rules_edge_ttl_verified_at must be an ISO timestamp',
         'deployment_checklist.auth_mode_smoke_verified_at must be an ISO timestamp',
-        'wrangler.toml still contains placeholder D1 database IDs',
         'wrangler.toml still contains placeholder R2 bucket names',
       ]),
     );
@@ -121,16 +124,13 @@ describe('relay alerting readiness', () => {
     ).toEqual([]);
   });
 
-  it('requires deployable HISTORY_DB and SNAPSHOT_BUCKET bindings in production wrangler configs', () => {
+  it('requires a deployable SNAPSHOT_BUCKET binding in production wrangler configs', () => {
     const { spec, drills } = loadCatalog();
     const exampleManifest = loadJson(exampleManifestPath);
     const incompleteWrangler = `
 name = "karakuri-world-ui"
 main = "worker/src/index.ts"
 compatibility_date = "2025-04-14"
-
-[triggers]
-crons = ["0 3 * * *"]
 `;
 
     expect(
@@ -140,23 +140,16 @@ crons = ["0 3 * * *"]
       }),
     ).toEqual(
       expect.arrayContaining([
-        'wrangler.toml must define [[d1_databases]] binding = "HISTORY_DB"',
         'wrangler.toml must define [[r2_buckets]] binding = "SNAPSHOT_BUCKET"',
       ]),
     );
   });
 
-  it('ignores commented-out wrangler bindings and cron entries during production validation', () => {
+  it('ignores commented-out wrangler bindings during production validation', () => {
     const { spec, drills } = loadCatalog();
     const exampleManifest = loadJson(exampleManifestPath);
     const commentedWrangler = `
 name = "x"
-# [triggers]
-# crons = ["0 3 * * *"]
-# [[d1_databases]]
-# binding = "HISTORY_DB"
-# database_id = "11111111-1111-1111-1111-111111111111"
-# preview_database_id = "22222222-2222-2222-2222-222222222222"
 # [[r2_buckets]]
 # binding = "SNAPSHOT_BUCKET"
 # bucket_name = "bucket-prod"
@@ -170,8 +163,6 @@ name = "x"
       }),
     ).toEqual(
       expect.arrayContaining([
-        'wrangler.toml must keep the daily 03:00 UTC retention cron enabled',
-        'wrangler.toml must define [[d1_databases]] binding = "HISTORY_DB"',
         'wrangler.toml must define [[r2_buckets]] binding = "SNAPSHOT_BUCKET"',
       ]),
     );
@@ -184,14 +175,6 @@ name = "x"
 name = "karakuri-world-ui"
 main = "worker/src/index.ts"
 compatibility_date = "2025-04-14"
-
-[triggers]
-crons = ["0 3 * * *"]
-
-[[d1_databases]]
-binding = "HISTORY_DB"
-database_id = "REPLACE_ME"
-preview_database_id = "CHANGE_ME"
 
 [[r2_buckets]]
 binding = "SNAPSHOT_BUCKET"
@@ -206,13 +189,12 @@ preview_bucket_name = "CHANGE_ME"
       }),
     ).toEqual(
       expect.arrayContaining([
-        'wrangler.toml still contains placeholder D1 database IDs',
         'wrangler.toml still contains placeholder R2 bucket names',
       ]),
     );
   });
 
-  it('rejects production manifests that omit a required primary route binding or record mismatched drill routes', () => {
+  it('rejects production manifests that omit a required route binding or record mismatched drill routes', () => {
     const { spec, drills } = loadCatalog();
     const exampleManifest = loadJson(exampleManifestPath);
     const routeBindings = exampleManifest.route_bindings as Record<string, unknown>;
@@ -223,9 +205,9 @@ preview_bucket_name = "CHANGE_ME"
       route_bindings: remainingBindings,
       staging_drill_receipts: {
         ...drillReceipts,
-        'retention-cron-silence': {
-          ...drillReceipts['retention-cron-silence'],
-          observed_route_ids: ['relay-sustained-pager'],
+        'r2-publish-retry-brake': {
+          ...drillReceipts['r2-publish-retry-brake'],
+          observed_route_ids: ['relay-ops-ticket'],
         },
       },
     };
@@ -239,7 +221,7 @@ preview_bucket_name = "CHANGE_ME"
     ).toEqual(
       expect.arrayContaining([
         'missing route binding for relay-ops-ticket',
-        'staging_drill_receipt retention-cron-silence must record routes relay-ops-ticket, relay-sustained-pager',
+        'staging_drill_receipt r2-publish-retry-brake must record routes relay-sustained-pager',
       ]),
     );
   });
@@ -277,7 +259,6 @@ preview_bucket_name = "CHANGE_ME"
     );
 
     expect(templateRun.status).toBe(1);
-    expect(templateRun.stderr).toContain('wrangler.toml still contains placeholder D1 database IDs');
     expect(templateRun.stderr).toContain('wrangler.toml still contains placeholder R2 bucket names');
     expect(exampleRun.status).toBe(0);
     expect(exampleRun.stdout).toContain('relay readiness validation passed');
@@ -328,59 +309,5 @@ preview_bucket_name = "CHANGE_ME"
     expect(missingManifestRun.stderr).toContain('--target=production requires --manifest');
     expect(missingTargetRun.status).toBe(1);
     expect(missingTargetRun.stderr).toContain('--manifest requires --target=production');
-    expect(missingTargetRun.stderr).toContain('--wrangler requires --target=production');
-  });
-
-  it('treats empty inline manifest and wrangler values as missing arguments', () => {
-    const emptyManifestRun = spawnSync(
-      process.execPath,
-      [
-        readinessScriptPath,
-        '--target=production',
-        '--manifest=',
-        '--wrangler',
-        productionWranglerFixturePath,
-      ],
-      {
-        cwd: repoRootPath,
-        encoding: 'utf8',
-      },
-    );
-    const emptyWranglerRun = spawnSync(
-      process.execPath,
-      [
-        readinessScriptPath,
-        '--target=production',
-        '--manifest',
-        exampleManifestPath,
-        '--wrangler=',
-      ],
-      {
-        cwd: repoRootPath,
-        encoding: 'utf8',
-      },
-    );
-
-    expect(emptyManifestRun.status).toBe(1);
-    expect(emptyManifestRun.stderr).toContain('missing value for --manifest');
-    expect(emptyWranglerRun.status).toBe(1);
-    expect(emptyWranglerRun.stderr).toContain('missing value for --wrangler');
-  });
-
-  it('documents the relay readiness gate in package scripts and README', () => {
-    const readme = readFileSync(readmePath, 'utf8');
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
-      scripts: Record<string, string>;
-    };
-
-    expect(packageJson.scripts['relay:readiness']).toBe('node worker/scripts/relay-readiness.mjs');
-    expect(readme).toContain('## Relay alert wiring and readiness gate');
-    expect(readme).toContain('worker/ops/relay-alerting-spec.json');
-    expect(readme).toContain('worker/ops/relay-synthetic-drills.json');
-    expect(readme).toContain('worker/ops/relay-production-readiness.template.json');
-    expect(readme).toContain('npm run relay:readiness');
-    expect(readme).toContain('--target=production --manifest');
-    expect(readme).toContain('different production destinations');
-    expect(readme).toContain('observed route IDs');
   });
 });

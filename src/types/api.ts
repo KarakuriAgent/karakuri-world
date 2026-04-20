@@ -4,6 +4,7 @@ import type { WorldSnapshot } from './snapshot.js';
 
 export type ApiErrorCode =
   | 'unauthorized'
+  | 'service_unavailable'
   | 'not_logged_in'
   | 'invalid_request'
   | 'state_conflict'

@@ -10,7 +10,7 @@ import { createFixtureSnapshot } from './fixtures/snapshot.js';
 import type { SpectatorAgentSnapshot, SpectatorMapSnapshot, SpectatorSnapshot } from '../../worker/src/contracts/spectator-snapshot.js';
 
 const env = {
-  snapshotUrl: 'https://snapshot.example.com/snapshot/latest.json',
+  snapshotUrl: 'https://snapshot.example.com/snapshot/manifest.json',
   authMode: 'public' as const,
   apiBaseUrl: 'https://relay.example.com/api/history',
 };
@@ -256,7 +256,7 @@ describe('Phase 1 acceptance', () => {
     expect(conversationItems[1]).toHaveTextContent('Alice spoke');
   });
 
-  it('keeps quiet-period polling fresh through the 45-second heartbeat budget and only marks stale after 60 seconds', async () => {
+  it('keeps healthy quiet periods fresh and leaves the stale banner hidden until publish health degrades', async () => {
     vi.useFakeTimers();
 
     const baseNow = new Date('2026-06-20T09:30:00.000Z');
@@ -270,8 +270,8 @@ describe('Phase 1 acceptance', () => {
     };
     const quietRefreshSnapshot = {
       ...initialSnapshot,
-      generated_at: baseNowMs + 30_000,
-      published_at: baseNowMs + 35_000,
+      generated_at: baseNowMs + 180_000,
+      published_at: baseNowMs + 185_000,
     };
 
     let snapshotCallCount = 0;
@@ -283,7 +283,7 @@ describe('Phase 1 acceptance', () => {
       }
 
       snapshotCallCount += 1;
-      return createResponse(snapshotCallCount >= 7 ? quietRefreshSnapshot : initialSnapshot);
+      return createResponse(snapshotCallCount >= 37 ? quietRefreshSnapshot : initialSnapshot);
     });
     const store = createSnapshotStore({
       snapshotUrl: env.snapshotUrl,
@@ -298,25 +298,15 @@ describe('Phase 1 acceptance', () => {
 
     await act(async () => {
       await store.getState().startPolling();
-      await vi.advanceTimersByTimeAsync(45_000);
+      await vi.advanceTimersByTimeAsync(180_000);
     });
+
+    expect(store.getState().is_stale).toBe(false);
+    expect(screen.queryByTestId('snapshot-stale-badge')).not.toBeInTheDocument();
 
     expect(store.getState().snapshot?.generated_at).toBe(quietRefreshSnapshot.generated_at);
     expect(store.getState().is_stale).toBe(false);
     expect(screen.queryByTestId('snapshot-stale-badge')).not.toBeInTheDocument();
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(44_999);
-    });
-
-    expect(store.getState().is_stale).toBe(false);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1_002);
-    });
-
-    expect(store.getState().is_stale).toBe(true);
-    expect(screen.getByTestId('snapshot-stale-badge')).toHaveTextContent('接続遅延中');
 
     store.getState().stopPolling();
   });

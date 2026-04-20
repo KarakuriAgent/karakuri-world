@@ -126,12 +126,14 @@ export interface SpectatorSnapshot {
   recent_server_events: SpectatorRecentServerEvent[];
   generated_at: number;
   published_at: number;
+  last_publish_error_at?: number;
 }
 
 export interface BuildSpectatorSnapshotInput {
   world_snapshot: WorldSnapshot<WorldSnapshotAgentInput, WorldSnapshotConversationInput, WorldSnapshotServerEventInput>;
   recent_server_events: SpectatorRecentServerEvent[];
   published_at: number;
+  last_publish_error_at?: number;
 }
 
 export function toSpectatorWorldSnapshot(world: WorldSnapshotWorldConfigInput): SpectatorWorldSnapshot {
@@ -294,6 +296,7 @@ export function buildSpectatorSnapshot({
   world_snapshot,
   recent_server_events,
   published_at,
+  last_publish_error_at,
 }: BuildSpectatorSnapshotInput): SpectatorSnapshot {
   return {
     schema_version: 1,
@@ -312,5 +315,6 @@ export function buildSpectatorSnapshot({
     recent_server_events: recent_server_events.map((event) => ({ ...event })),
     generated_at: world_snapshot.generated_at,
     published_at,
+    ...(last_publish_error_at !== undefined ? { last_publish_error_at } : {}),
   };
 }

@@ -7,7 +7,7 @@
 `karakuri-world-ui/.env.local`（または他の Vite env ファイル）を作成する：
 
 ```bash
-VITE_SNAPSHOT_URL=https://snapshots.example.com/snapshot/latest.json
+VITE_SNAPSHOT_URL=https://snapshots.example.com/snapshot/manifest.json
 VITE_AUTH_MODE=public
 VITE_API_BASE_URL=https://history.example.com/api/history
 VITE_PHASE3_EFFECTS_ENABLED=false
@@ -21,7 +21,7 @@ VITE_PHASE3_EFFECT_ACTION_PARTICLES_ENABLED=false
 
 ### 必須項目
 
-- `VITE_SNAPSHOT_URL`: ブラウザから直接 fetch できるスナップショット公開 URL の絶対パス。plan12 以降は R2 カスタムドメイン配下のオブジェクト URL を指す。ブラウザバンドルに同梱される値なので、`http` / `https` のみ、かつ認証情報・クエリ・フラグメントを含めてはならない。`/api/snapshot` を指してはならず、ブラウザは常に R2 カスタムドメイン配下のオブジェクト URL を直接ポーリングする。
+- `VITE_SNAPSHOT_URL`: ブラウザから直接 fetch できるスナップショット manifest URL の絶対パス。ブラウザは公開 R2/CDN 上の `snapshot/manifest.json` をポーリングし、その manifest に入っている versioned key から `snapshot/v/{generated_at}.json` を取得する。ブラウザバンドルに同梱される値なので、`http` / `https` のみ、かつ認証情報・クエリ・フラグメントを含めてはならない。`/api/snapshot` を指してはならない。
 - `VITE_AUTH_MODE`: `public` または `access` のいずれか。
 - `VITE_API_BASE_URL`: Worker history API の絶対 URL。必ず `/api/history` までを含む完全な URL とし、Worker オリジンだけ / 親パス `/api` だけでは不可。こちらもブラウザ公開値のため、認証情報・クエリ・フラグメントは禁止。
 - `VITE_PHASE3_EFFECTS_ENABLED`（任意）: `true` / `false`。既定値 `false`。意図的に Phase 3 エフェクトを検証するとき以外は OFF のままにする。
@@ -47,8 +47,8 @@ npm run test:phase1-acceptance
 - 100 エージェントのスナップショット反映が Phase 1 の 15 秒予算内に収まる
 - `/api/history` が空 or 劣化していても、選択中エージェント詳細の一貫性が保たれる
 - `/api/history?agent_id=...&limit=20` が取得できる場合は会話ログ展開が加算的に動く
-- 静穏期の鮮度（`generated_at` の更新で 60 秒閾値に達する前に stale 化しないこと）
-- **Unit 29/32 との整合**: sub-minute 可能な publisher トリガで駆動される定周期スナップショット発行＋直接 R2 ポーリングが、15 秒予算を守ること
+- stale が quiet period の経過時間ではなく publish health メタデータ（`last_publish_error_at`）で決まり、その後の成功 publish または 3 分 fallback resync で回復できること
+- **Unit 29/32 との整合**: event-driven な snapshot/history 配信を primary とし、静穏期経路は sub-minute heartbeat ではなく **3 分 fallback resync** のみとすること
 
 フルスイートは `npm test`、Phase 1 ゲートのみを回すなら `npm run test:phase1-acceptance`。
 
@@ -64,7 +64,7 @@ npm run test:phase1-acceptance
 
 ### R2 カスタムドメインの必須セットアップ
 
-`snapshot_url` は常に「R2 カスタムドメイン + `SNAPSHOT_OBJECT_KEY`」（既定キーなら `https://snapshot.example.com/snapshot/latest.json`）。ブラウザは両認証モードとも同 URL を直接 fetch する。
+`snapshot_url` は常に公開 R2 カスタムドメイン上の manifest URL（既定値: `https://snapshot.example.com/snapshot/manifest.json`）。ブラウザは両認証モードともまず manifest を取得し、そこに入っている `latest_snapshot_key` から immutable な versioned snapshot object を fetch する。`snapshot/latest.json` は互換エイリアスにとどまる。
 
 運用側の設定：
 
@@ -113,10 +113,9 @@ npm run test:phase1-acceptance
     - SPA ポーリング前に、ブラウザから `snapshot_url` へ直接 `credentials: 'include'` で fetch して成功すること。
     - R2 ドメイン側でリダイレクト / challenge が残る場合はデプロイ無効扱い。プロキシ追加禁止。
 
-3. **定周期パブリッシュ継続シナリオ**
-    - デプロイ済 Worker + UI を開いた状態で、静穏期に 3 周期以上連続で publish が走り、sub-minute 可能なトリガ（Durable Object alarm / 外部 cron / 常駐スケジューラ等）によって `generated_at` が更新され続けることを観測。
-    - R2 オブジェクトが 5 秒刻みで更新され続けるあいだ、UI が前フレームを保持し 60 秒閾値まで stale 化しないこと。
-    - 日次 Worker `scheduled()` cron は retention 専用で、この publisher トリガではないこと（単独では 5 秒鮮度を満たさない）。
+3. **event-driven primary path + 静穏期フォールバック**
+    - 代表的な world event を発生させ、Worker がそれを history に ingest しつつ更新済み snapshot を速やかに publish することを確認する。readiness の primary path はこの event-driven 配信。
+    - その後デプロイ済 Worker + UI をアイドル状態で開いたままにし、quiet period だけでは stale バナーが出ないことを確認する。代わりに publish health メタデータが失敗を示したときだけ stale が出て、その後の成功 publish または 3 分 fallback resync で解消されることを観測する。
 
 ## Cloudflare Worker デプロイ
 
@@ -127,54 +126,44 @@ cd karakuri-world-ui
 cp wrangler.toml.example wrangler.toml
 ```
 
-`wrangler.toml.example` にはデプロイ不能なプレースホルダが入っている：
-
-- `database_id = "00000000-0000-0000-0000-000000000000"`
-- `preview_database_id = "00000000-0000-0000-0000-000000000000"`
-
-R2 バケットも同様：
+`wrangler.toml.example` には snapshot/history 共有バケット向けのプレースホルダ R2 バケット名が入っている：
 
 - `bucket_name = "replace-with-real-snapshot-bucket"`
 - `preview_bucket_name = "replace-with-real-snapshot-bucket-preview"`
 
-本番デプロイ前に、UI history 用 D1 を作成または特定し、Wrangler が返した ID でローカル `wrangler.toml` の 2 箇所を置き換える。
-
-テンプレには Worker `scheduled()` ハンドラを 1 日 1 回 `03:00 UTC` に回す cron も入っている（D1 history retention 用）。本番でもこの cron（または同等の日次スケジュール）は維持する。
-
-この日次 cron は **retention 専用**で、スナップショット publisher ではない。本番 readiness にはさらに、静穏期でも publish を継続できる **sub-minute 可能な 5 秒トリガ**（Durable Object alarm / 外部 cron / 常駐スケジューラ等）が必須。
+本番デプロイ前に、スナップショットオブジェクトと history オブジェクトの両方を保存する R2 バケットを作成または特定し、ローカル `wrangler.toml` の値を実名へ置き換える。
 
 例：
 
 ```bash
 cd karakuri-world-ui
-npx wrangler d1 create karakuri-world-ui-history
 npx wrangler r2 bucket create <real-snapshot-bucket>
 npx wrangler r2 bucket create <real-snapshot-bucket-preview>
 ```
 
-その後 `wrangler.toml` に返された `database_id` / `preview_database_id` と実 R2 バケット名を反映し、必要なシークレット（初回のみ）を設定してからデプロイ：
+その後、必要なシークレット（初回のみ）を設定してからデプロイ：
 
 ```bash
 npx wrangler secret put KW_ADMIN_KEY
+npx wrangler secret put SNAPSHOT_PUBLISH_AUTH_KEY
 npm run deploy:prod
 ```
 
+対話式デバッグフロー（`npm run debug:start`）でも、同じ 2 つの Worker secret を入力するようになった。`SNAPSHOT_PUBLISH_AUTH_KEY` には本体サーバーで使っている値と同じ共有キーを設定すること。空文字は不可で、未設定なら Worker の `/api/publish-snapshot` / `/api/publish-agent-history` は default-deny の `503` のまま、空文字・空白だけの secret を設定した場合は Worker 起動時の env parse で失敗する。
+
 `deploy:prod` は以下を順に実行するラッパ：
 
-1. `wrangler.toml` にプレースホルダ値（`00000000-...` / `replace-with-real-...`）が残っていたら fail-closed で停止。
-2. `npx wrangler d1 migrations apply HISTORY_DB --remote` で D1 マイグレーションを適用。
-3. `npx wrangler deploy` でデプロイ。
-4. Worker URL に対して 1 回 `curl` を打ち、DO の `boot()` → `refreshSnapshot('boot')` → `rescheduleAlarm()` をトリガ。ウォームアップが `HTTP 200/204` 以外を返した場合はスクリプトを **失敗扱いで exit** し、snapshot publisher が休眠したままになることを防ぐ。
+1. `wrangler.toml` にプレースホルダ R2 バケット名が残っていたら fail-closed で停止。
+2. `npx wrangler deploy` でデプロイ。
+3. Worker URL に対して 1 回 `curl` を打ち、`UIBridgeDurableObject.boot()` を即時起動して静穏期 alarm 経路を立ち上げる。
 
-この 4 つ目のウォームアップを踏まないと、次に誰かが Worker を叩くまで R2 への publish が始まらない。ウォームアップ後は DO alarm 自身が 5 秒間隔の publisher トリガとして自走するため、外部 cron を追加配線する必要はない。
+最低限、`KW_BASE_URL`、シークレット `KW_ADMIN_KEY`、およびバックエンドが `/api/publish-snapshot` / `/api/publish-agent-history` を叩くときに使う共有シークレット `SNAPSHOT_PUBLISH_AUTH_KEY` が必要。Pages と Worker `/api/history` がクロスオリジンなら `HISTORY_CORS_ALLOWED_ORIGINS` に Pages オリジンリストも設定する。
 
-最低限、`KW_BASE_URL` と Worker で使う非既定のスナップショット publisher 設定も必要。Pages と Worker `/api/history` がクロスオリジンなら `HISTORY_CORS_ALLOWED_ORIGINS` に Pages オリジンリストも設定する。`HISTORY_RETENTION_DAYS` は任意で既定 `180`、上書きする場合は Worker と cron で同じ retention ポリシーにする。
-
-リポジトリ管理の D1 スキーマは `schema/history.sql`、デプロイ用 Wrangler マイグレーションは `migrations/0001_plan05_history_schema.sql`。
+共有 R2 バケットには、公開スナップショットに加えて `GET /api/history` が読む history オブジェクト（例: `history/agents/{agent_id}.json`、`history/conversations/{conversation_id}.json`）も保存される。
 
 ## Relay アラート配線と readiness ゲート
 
-Unit 32 で relay `/ws` は完全に廃止された。readiness は polling + R2/CDN の鮮度、定周期スナップショット発行、認証モードの整合性のみで構成される。relay アラート成果物（`relay-alerting-spec.json` 等）は `ui.*` と `relay.r2.*` シグナルだけをカバーし、relay WebSocket シグナルは残っていない。
+Unit 32 で relay `/ws` は primary path から外れ、バックエンドの legacy `/ws` endpoint も削除済み。Worker 側も `/ws` を Durable Object fallback に流さず `404` で fail-close する。readiness は polling + R2/CDN の鮮度、manifest 経由の versioned snapshot fetch、event-driven な snapshot/history 配信、認証モードの整合性を中心に構成され、静穏期に残る periodic path は 3 分 fallback resync のみ。relay アラート成果物（`relay-alerting-spec.json` 等）は `ui.*` と `relay.r2.*` シグナルだけをカバーし、relay WebSocket シグナルは残っていない。
 
 リポジトリ管理の正本成果物：
 
@@ -191,13 +180,14 @@ npm run relay:readiness
 npm run relay:readiness -- --target=production --manifest worker/ops/relay-production-readiness.example.json --wrangler worker/test/fixtures/wrangler.production.example.toml
 ```
 
-`npm run relay:readiness` 単体はリポ内カタログ / ドリル成果物を検証。primary の polling / R2 readiness は上記手動チェック＋ Unit 29+ の手順が別途必要。本番 relay 検証は manifest が埋まるまで fail-closed のまま。
+`npm run relay:readiness` 単体はリポ内カタログ / ドリル成果物を検証。primary の event-driven + 静穏期 fallback / R2 readiness は上記手動チェック＋ Unit 29+ の手順が別途必要。本番 relay 検証は manifest が埋まるまで fail-closed のまま。
 
 relay ゲートが満たすべき条件：
 
-- readiness アラートは Unit 10/29+ の primary メトリクスセットを使う: `ui.snapshot.refresh_failure_total{reason}`、`ui.snapshot.generated_age_ms`、`ui.snapshot.published_age_ms`、`ui.r2.publish_failure_total`、`ui.r2.publish_failure_streak`、`ui.d1.retention_run_total{result=success}`、`ui.d1.retention_deleted_rows`。
+- readiness アラートは Unit 10/29+ の primary メトリクスセットを使う: `ui.snapshot.refresh_failure_total{reason}`、`ui.snapshot.generated_age_ms`、`ui.snapshot.published_age_ms`、`ui.r2.publish_failure_total`、`ui.r2.publish_failure_streak`。
+- `ui.snapshot.refresh_failure_total{reason}` の `reason` には、Phase 8 の Worker が実際に emit する `boot` / `fallback-refresh` / `world-event` / `manual` / `external-request` を使う。
 - sustained outage の pager ルートが実本番配信先に解決できること。
-- retention cron サイレンス（`ui.d1.retention_run_total{result=success}` が 2 日不在）、retention バックログ肥大（`ui.d1.retention_deleted_rows` がレビュー閾値超過）、R2 retry brake 飽和（`ui.r2.publish_failure_streak >= 5`、60 秒 cap に合致）が明示ゲート項目。
+- R2 retry brake 飽和（`ui.r2.publish_failure_streak >= 5`、60 秒 cap に合致）が明示ゲート項目。
 - 即時（auth/config）pager ルートと sustained outage pager ルートは別の本番配信先に解決されること。
 - 本番 manifest は実通知先 / provider ルール参照 / 要求される全アラート経路の staging ドリル証跡（observed alert ID & observed route ID）/ 事前 sign-off を含むこと。
-- `wrangler.toml` に `HISTORY_DB` / `SNAPSHOT_BUCKET` バインドが無い、プレースホルダ D1/R2 のまま、日次 `03:00 UTC` retention cron が無い場合も本番検証は失敗扱い。
+- `wrangler.toml` に必須の `SNAPSHOT_BUCKET` バインドが無い、またはプレースホルダ R2 のままの場合も本番検証は失敗扱い。
