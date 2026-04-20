@@ -75,6 +75,8 @@ import type { WorldSnapshot } from '../types/snapshot.js';
 import type { ActionTimer, ItemUseTimer, WaitTimer } from '../types/timer.js';
 import { getMapRenderTheme } from '../discord/map-renderer.js';
 import { EventBus } from './event-bus.js';
+import type { AgentHistoryManager } from './agent-history-manager.js';
+import { isSnapshotTriggerEvent, type SnapshotPublisher } from './snapshot-publisher.js';
 import { buildWorldCalendarSnapshot } from './world-snapshot.js';
 import { WorldState } from './state/world-state.js';
 import { TimerManager } from './timer-manager.js';
@@ -149,6 +151,8 @@ export interface WorldEngineOptions {
   onRegistrationChanged?: (agents: AgentRegistration[]) => void;
   weatherService?: WeatherService;
   onError?: (message: string) => void;
+  snapshotPublisher?: SnapshotPublisher;
+  agentHistoryManager?: AgentHistoryManager;
 }
 
 export class WorldEngine {
@@ -160,6 +164,11 @@ export class WorldEngine {
   private readonly registeringAgentIds = new Set<string>();
   private readonly loggingInAgentIds = new Set<string>();
   private readonly weatherService: WeatherService | null;
+  private readonly snapshotPublisher: SnapshotPublisher | null;
+  private readonly agentHistoryManager: AgentHistoryManager | null;
+  private readonly unsubscribeWeather?: () => void;
+  private shutdownSnapshot: WorldSnapshot | null = null;
+  private disposePromise: Promise<void> | null = null;
 
   constructor(
     readonly config: ServerConfig,
@@ -170,6 +179,13 @@ export class WorldEngine {
     this.onRegistrationChanged = options.onRegistrationChanged;
     this.onError = options.onError;
     this.weatherService = options.weatherService ?? null;
+    this.snapshotPublisher = options.snapshotPublisher ?? null;
+    this.agentHistoryManager = options.agentHistoryManager ?? null;
+    if (this.weatherService && this.snapshotPublisher) {
+      this.unsubscribeWeather = this.weatherService.onWeatherUpdated(() => {
+        this.snapshotPublisher?.requestPublish();
+      });
+    }
     this.timerManager.onFire('movement', (timer) => {
       handleMovementCompleted(this, timer);
     });
@@ -496,9 +512,22 @@ export class WorldEngine {
     };
   }
 
+  getSnapshotPublisherStats() {
+    return this.snapshotPublisher?.getStats();
+  }
+
   getSnapshot(): WorldSnapshot {
+    if (this.shutdownSnapshot) {
+      return this.shutdownSnapshot;
+    }
+
+    return this.buildSnapshot();
+  }
+
+  private buildSnapshot(): WorldSnapshot {
     const now = Date.now();
     const weather = this.getWeatherState();
+    const snapshotPublisherStats = this.getSnapshotPublisherStats();
 
     return {
       world: this.config.world,
@@ -610,6 +639,13 @@ export class WorldEngine {
         pending_agent_ids: serverEvent.pending_agent_ids,
       })),
       generated_at: now,
+      ...(snapshotPublisherStats
+        ? {
+            runtime: {
+              snapshot_publisher: snapshotPublisherStats,
+            },
+          }
+        : {}),
     };
   }
 
@@ -674,10 +710,33 @@ export class WorldEngine {
   }
 
   emitEvent(event: EmittableWorldEvent): void {
-    this.eventBus.emit({
+    const fullEvent = {
       ...event,
       event_id: `evt-${randomUUID()}`,
       occurred_at: Date.now(),
-    } as WorldEvent);
+    } as WorldEvent;
+
+    try {
+      this.eventBus.emit(fullEvent);
+    } catch (error) {
+      console.error('World event handler threw.', error);
+    }
+
+    this.agentHistoryManager?.recordEvent(fullEvent);
+
+    if (isSnapshotTriggerEvent(fullEvent.type)) {
+      this.snapshotPublisher?.requestPublish();
+    }
+  }
+
+  async dispose(): Promise<void> {
+    this.shutdownSnapshot ??= this.buildSnapshot();
+    this.disposePromise ??= (async () => {
+      this.unsubscribeWeather?.();
+      this.timerManager.clearAll();
+      await this.snapshotPublisher?.dispose();
+      await this.agentHistoryManager?.dispose();
+    })();
+    await this.disposePromise;
   }
 }

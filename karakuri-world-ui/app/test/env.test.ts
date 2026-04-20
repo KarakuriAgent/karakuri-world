@@ -6,7 +6,7 @@ describe('spectator UI env contract', () => {
   it('reads the required Vite variables with typed auth mode', () => {
     expect(
       readEnv({
-        VITE_SNAPSHOT_URL: 'https://snapshot.example.com/snapshot/latest.json',
+        VITE_SNAPSHOT_URL: 'https://snapshot.example.com/snapshot/manifest.json',
         VITE_AUTH_MODE: 'access',
         VITE_API_BASE_URL: 'https://relay.example.com/api/history',
         VITE_PHASE3_EFFECTS_ENABLED: 'true',
@@ -18,7 +18,7 @@ describe('spectator UI env contract', () => {
         VITE_PHASE3_EFFECT_ACTION_PARTICLES_ENABLED: 'true',
       }),
     ).toEqual({
-      snapshotUrl: 'https://snapshot.example.com/snapshot/latest.json',
+      snapshotUrl: 'https://snapshot.example.com/snapshot/manifest.json',
       authMode: 'access',
       apiBaseUrl: 'https://relay.example.com/api/history',
       phase3EffectsEnabled: true,
@@ -38,12 +38,12 @@ describe('spectator UI env contract', () => {
   it('defaults the Phase 3 effects flag off when omitted', () => {
     expect(
       readEnv({
-        VITE_SNAPSHOT_URL: 'https://snapshot.example.com/snapshot/latest.json',
+        VITE_SNAPSHOT_URL: 'https://snapshot.example.com/snapshot/manifest.json',
         VITE_AUTH_MODE: 'public',
         VITE_API_BASE_URL: 'https://relay.example.com/api/history',
       }),
     ).toEqual({
-      snapshotUrl: 'https://snapshot.example.com/snapshot/latest.json',
+      snapshotUrl: 'https://snapshot.example.com/snapshot/manifest.json',
       authMode: 'public',
       apiBaseUrl: 'https://relay.example.com/api/history',
       phase3EffectsEnabled: false,
@@ -63,7 +63,7 @@ describe('spectator UI env contract', () => {
   it('keeps individual environment flags rolled back unless the Phase 3 master flag is enabled', () => {
     expect(
       readEnv({
-        VITE_SNAPSHOT_URL: 'https://snapshot.example.com/snapshot/latest.json',
+        VITE_SNAPSHOT_URL: 'https://snapshot.example.com/snapshot/manifest.json',
         VITE_AUTH_MODE: 'public',
         VITE_API_BASE_URL: 'https://relay.example.com/api/history',
         VITE_PHASE3_EFFECT_RAIN_ENABLED: 'true',
@@ -72,7 +72,7 @@ describe('spectator UI env contract', () => {
         VITE_PHASE3_EFFECT_ACTION_PARTICLES_ENABLED: 'true',
       }),
     ).toEqual({
-      snapshotUrl: 'https://snapshot.example.com/snapshot/latest.json',
+      snapshotUrl: 'https://snapshot.example.com/snapshot/manifest.json',
       authMode: 'public',
       apiBaseUrl: 'https://relay.example.com/api/history',
       phase3EffectsEnabled: false,
@@ -129,7 +129,7 @@ describe('spectator UI env contract', () => {
   it('throws when VITE_API_BASE_URL does not point to the Worker history endpoint', () => {
     expect(() =>
       readEnv({
-        VITE_SNAPSHOT_URL: 'https://snapshot.example.com/snapshot/latest.json',
+        VITE_SNAPSHOT_URL: 'https://snapshot.example.com/snapshot/manifest.json',
         VITE_AUTH_MODE: 'public',
         VITE_API_BASE_URL: 'https://relay.example.com/api',
       }),
@@ -139,7 +139,7 @@ describe('spectator UI env contract', () => {
   it('throws when VITE_API_BASE_URL includes query parameters or fragments', () => {
     expect(() =>
       readEnv({
-        VITE_SNAPSHOT_URL: 'https://snapshot.example.com/snapshot/latest.json',
+        VITE_SNAPSHOT_URL: 'https://snapshot.example.com/snapshot/manifest.json',
         VITE_AUTH_MODE: 'public',
         VITE_API_BASE_URL: 'https://relay.example.com/api/history?agent_id=alice#latest',
       }),
@@ -149,7 +149,7 @@ describe('spectator UI env contract', () => {
   it('throws when browser-exposed URLs include embedded credentials', () => {
     expect(() =>
       readEnv({
-        VITE_SNAPSHOT_URL: 'https://token:s3cr3t@snapshot.example.com/snapshot/latest.json',
+        VITE_SNAPSHOT_URL: 'https://token:s3cr3t@snapshot.example.com/snapshot/manifest.json',
         VITE_AUTH_MODE: 'public',
         VITE_API_BASE_URL: 'https://relay.example.com/api/history',
       }),
@@ -157,7 +157,7 @@ describe('spectator UI env contract', () => {
 
     expect(() =>
       readEnv({
-        VITE_SNAPSHOT_URL: 'https://snapshot.example.com/snapshot/latest.json',
+        VITE_SNAPSHOT_URL: 'https://snapshot.example.com/snapshot/manifest.json',
         VITE_AUTH_MODE: 'public',
         VITE_API_BASE_URL: 'https://token:s3cr3t@relay.example.com/api/history',
       }),
@@ -167,32 +167,52 @@ describe('spectator UI env contract', () => {
   it('throws when VITE_SNAPSHOT_URL includes query parameters or fragments', () => {
     expect(() =>
       readEnv({
-        VITE_SNAPSHOT_URL: 'https://snapshot.example.com/snapshot/latest.json?token=s3cr3t#current',
+        VITE_SNAPSHOT_URL: 'https://snapshot.example.com/snapshot/manifest.json?token=s3cr3t#current',
         VITE_AUTH_MODE: 'public',
         VITE_API_BASE_URL: 'https://relay.example.com/api/history',
       }),
     ).toThrow(/VITE_SNAPSHOT_URL: must not include query parameters or fragments/);
   });
 
-  it('throws when VITE_SNAPSHOT_URL points to same-origin /api/snapshot instead of the direct snapshot object', () => {
+  it('throws when VITE_SNAPSHOT_URL points to same-origin /api/snapshot instead of the public manifest', () => {
     expect(() =>
       readEnv({
         VITE_SNAPSHOT_URL: 'https://relay.example.com/api/snapshot',
         VITE_AUTH_MODE: 'public',
         VITE_API_BASE_URL: 'https://relay.example.com/api/history',
       }),
-    ).toThrow(/VITE_SNAPSHOT_URL: must point to the direct snapshot object URL, not the same-origin \/api\/snapshot admin endpoint/);
+    ).toThrow(/VITE_SNAPSHOT_URL: must point to the public snapshot manifest URL, not the same-origin \/api\/snapshot admin endpoint/);
   });
 
-  it('allows direct snapshot object URLs whose object key happens to be api/snapshot on a different origin', () => {
+  it('throws when VITE_SNAPSHOT_URL points to the legacy latest snapshot alias', () => {
+    expect(() =>
+      readEnv({
+        VITE_SNAPSHOT_URL: 'https://snapshot.example.com/snapshot/latest.json',
+        VITE_AUTH_MODE: 'public',
+        VITE_API_BASE_URL: 'https://relay.example.com/api/history',
+      }),
+    ).toThrow(/VITE_SNAPSHOT_URL: must point to the public snapshot manifest URL \(\/snapshot\/manifest\.json\)/);
+  });
+
+  it('throws when VITE_SNAPSHOT_URL points directly to a versioned snapshot object', () => {
+    expect(() =>
+      readEnv({
+        VITE_SNAPSHOT_URL: 'https://snapshot.example.com/snapshot/v/1780000000000.json',
+        VITE_AUTH_MODE: 'public',
+        VITE_API_BASE_URL: 'https://relay.example.com/api/history',
+      }),
+    ).toThrow(/VITE_SNAPSHOT_URL: must point to the public snapshot manifest URL \(\/snapshot\/manifest\.json\)/);
+  });
+
+  it('allows the public snapshot manifest on a different origin than the history API', () => {
     expect(
       readEnv({
-        VITE_SNAPSHOT_URL: 'https://snapshot.example.com/api/snapshot',
+        VITE_SNAPSHOT_URL: 'https://snapshot.example.com/snapshot/manifest.json',
         VITE_AUTH_MODE: 'public',
         VITE_API_BASE_URL: 'https://relay.example.com/api/history',
       }),
     ).toEqual({
-      snapshotUrl: 'https://snapshot.example.com/api/snapshot',
+      snapshotUrl: 'https://snapshot.example.com/snapshot/manifest.json',
       authMode: 'public',
       apiBaseUrl: 'https://relay.example.com/api/history',
       phase3EffectsEnabled: false,

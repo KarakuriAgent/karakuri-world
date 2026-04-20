@@ -15,7 +15,7 @@ import {
 import { createFixtureSnapshot } from './fixtures/snapshot.js';
 
 const env = {
-  snapshotUrl: 'https://snapshot.example.com/snapshot/latest.json',
+  snapshotUrl: 'https://snapshot.example.com/snapshot/manifest.json',
   authMode: 'public' as const,
   apiBaseUrl: 'https://relay.example.com/api/history',
 };
@@ -34,6 +34,26 @@ function createSnapshot(overrides: Partial<ReturnType<typeof createFixtureSnapsh
   return {
     ...createFixtureSnapshot(),
     ...overrides,
+  };
+}
+
+function createManifest(
+  snapshot: ReturnType<typeof createSnapshot>,
+  overrides: Partial<{
+    latest_snapshot_key: string;
+    generated_at: number;
+    published_at: number;
+    last_publish_error_at?: number;
+  }> = {},
+) {
+  return {
+    schema_version: 1 as const,
+    latest_snapshot_key: overrides.latest_snapshot_key ?? `snapshot/v/${snapshot.generated_at}.json`,
+    generated_at: overrides.generated_at ?? snapshot.generated_at,
+    published_at: overrides.published_at ?? snapshot.published_at,
+    ...(overrides.last_publish_error_at !== undefined
+      ? { last_publish_error_at: overrides.last_publish_error_at }
+      : {}),
   };
 }
 
@@ -360,7 +380,7 @@ describe('snapshot store polling', () => {
     expect(updatedSnapshot.map_render_theme).toBe(initialTheme);
   });
 
-  it('marks stale from generated_at and does not clear it with fetch-success time alone', async () => {
+  it('keeps healthy idle snapshots fresh even when generated_at grows old', async () => {
     const baseNow = Date.now();
     const current = createSnapshot({ generated_at: baseNow - 50_000, published_at: baseNow - 45_000 });
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(createResponse(current));
@@ -374,17 +394,95 @@ describe('snapshot store polling', () => {
     expect(store.getState().is_stale).toBe(false);
 
     await act(async () => {
-      vi.advanceTimersByTime(10_001);
+      vi.advanceTimersByTime(10 * 60_000);
     });
-    expect(store.getState().is_stale).toBe(true);
+    expect(store.getState().is_stale).toBe(false);
 
     vi.setSystemTime(new Date(baseNow + 12_000));
     await store.getState().poll();
     expect(store.getState().snapshot_status).toBe('ready');
+    expect(store.getState().is_stale).toBe(false);
+  });
+
+  it('marks stale immediately when the snapshot reports a publish error after the last published object', () => {
+    const now = Date.now();
+    const current = createSnapshot({
+      generated_at: now - 1_000,
+      published_at: now - 500,
+      last_publish_error_at: now + 250,
+    });
+    const store = createSnapshotStore({
+      snapshotUrl: env.snapshotUrl,
+      authMode: env.authMode,
+      initialSnapshot: current,
+      staleAfterMs: 60_000,
+    });
+
     expect(store.getState().is_stale).toBe(true);
   });
 
-  it('re-evaluates stale state immediately when polling restarts with an existing snapshot', async () => {
+  it('follows snapshot manifests to versioned snapshot objects', async () => {
+    const snapshot = createSnapshot({ generated_at: Date.now(), published_at: Date.now() + 1_000 });
+    const manifestUrl = 'https://snapshot.example.com/snapshot/manifest.json';
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(createResponse(createManifest(snapshot)))
+      .mockResolvedValueOnce(createResponse(snapshot));
+    const store = createSnapshotStore({
+      snapshotUrl: manifestUrl,
+      authMode: env.authMode,
+      fetchImpl: fetchMock,
+    });
+
+    await store.getState().poll();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      manifestUrl,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://snapshot.example.com/snapshot/v/' + `${snapshot.generated_at}.json`,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(store.getState().snapshot).toMatchObject({
+      generated_at: snapshot.generated_at,
+      published_at: snapshot.published_at,
+    });
+  });
+
+  it('marks stale from manifest metadata without refetching an unchanged versioned snapshot', async () => {
+    const now = Date.now();
+    const current = createSnapshot({
+      generated_at: now - 1_000,
+      published_at: now - 500,
+    });
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        createResponse(
+          createManifest(current, {
+            last_publish_error_at: now + 250,
+          }),
+        ),
+      );
+    const store = createSnapshotStore({
+      snapshotUrl: 'https://snapshot.example.com/snapshot/manifest.json',
+      authMode: env.authMode,
+      fetchImpl: fetchMock,
+      initialSnapshot: current,
+      staleAfterMs: 60_000,
+    });
+
+    await store.getState().poll();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(store.getState().snapshot?.last_publish_error_at).toBe(now + 250);
+    expect(store.getState().is_stale).toBe(true);
+  });
+
+  it('does not mark a healthy snapshot stale when polling restarts after a quiet period', async () => {
     let resolveFetch: ((response: Response) => void) | undefined;
     const current = createSnapshot({ generated_at: Date.now(), published_at: Date.now() + 1_000 });
     const fetchMock = vi.fn<typeof fetch>().mockImplementation(
@@ -397,21 +495,20 @@ describe('snapshot store polling', () => {
       snapshotUrl: env.snapshotUrl,
       authMode: env.authMode,
       fetchImpl: fetchMock,
-      staleAfterMs: 10_000,
       initialSnapshot: current,
     });
 
     store.getState().stopPolling();
 
     await act(async () => {
-      vi.advanceTimersByTime(10_001);
+      vi.advanceTimersByTime(10 * 60_000);
     });
     expect(store.getState().is_stale).toBe(false);
 
     const startPollingPromise = store.getState().startPolling();
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(store.getState().is_stale).toBe(true);
+    expect(store.getState().is_stale).toBe(false);
 
     resolveFetch?.(createResponse(current));
     await startPollingPromise;
@@ -525,7 +622,7 @@ describe('snapshot store polling', () => {
     expect(store.getState().snapshot_status).toBe('ready');
   });
 
-  it('does not recreate intervals, queued polls, or stale timers after stop and restart races', async () => {
+  it('does not recreate intervals or queued polls after stop and restart races', async () => {
     let resolveSecondFetch: ((response: Response) => void) | undefined;
     const firstSnapshot = createSnapshot({ generated_at: Date.now(), published_at: Date.now() + 1_000 });
     const secondSnapshot = createSnapshot({ generated_at: Date.now() + 2_000, published_at: Date.now() + 3_000 });
@@ -554,7 +651,6 @@ describe('snapshot store polling', () => {
       authMode: env.authMode,
       fetchImpl: fetchMock,
       pollIntervalMs: 5_000,
-      staleAfterMs: 10_000,
     });
 
     const firstStart = store.getState().startPolling();

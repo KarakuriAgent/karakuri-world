@@ -180,6 +180,7 @@ export const spectatorSnapshotSchema = z
     recent_server_events: z.array(spectatorRecentServerEventSchema),
     generated_at: z.number().int().nonnegative(),
     published_at: z.number().int().nonnegative(),
+    last_publish_error_at: z.number().int().nonnegative().optional(),
   })
   .superRefine((snapshot, ctx) => {
     if (snapshot.timezone !== snapshot.calendar.timezone) {

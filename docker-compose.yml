@@ -9,6 +9,8 @@ services:
       ADMIN_KEY: ${ADMIN_KEY:?ADMIN_KEY must be set in .env}
       DISCORD_TOKEN: ${DISCORD_TOKEN:?DISCORD_TOKEN must be set in .env}
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:?DISCORD_GUILD_ID must be set in .env}
+      SNAPSHOT_PUBLISH_BASE_URL: ${SNAPSHOT_PUBLISH_BASE_URL:?SNAPSHOT_PUBLISH_BASE_URL must be set in .env}
+      SNAPSHOT_PUBLISH_AUTH_KEY: ${SNAPSHOT_PUBLISH_AUTH_KEY:?SNAPSHOT_PUBLISH_AUTH_KEY must be set in .env}
       PORT: ${PORT:-3000}
       # CONFIG_PATH is constructed from CONFIG_FILE for the container-internal path
       CONFIG_PATH: /app/config/${CONFIG_FILE:-example.yaml}

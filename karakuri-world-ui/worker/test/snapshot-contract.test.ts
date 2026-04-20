@@ -226,6 +226,7 @@ describe('spectator snapshot contract helpers', () => {
         },
       ],
       published_at: 1_750_000_005_000,
+      last_publish_error_at: 1_750_000_004_500,
     });
 
     expect(spectatorSnapshot).toMatchObject({
@@ -273,6 +274,7 @@ describe('spectator snapshot contract helpers', () => {
       ],
       generated_at: 1_750_000_000_000,
       published_at: 1_750_000_005_000,
+      last_publish_error_at: 1_750_000_004_500,
       recent_server_events: [
         {
           server_event_id: 'event-1',

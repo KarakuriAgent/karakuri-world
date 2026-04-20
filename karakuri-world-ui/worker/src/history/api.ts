@@ -1,12 +1,11 @@
 import { z } from 'zod';
 
 import {
-  PERSISTED_SPECTATOR_EVENT_TYPES,
   isPersistedSpectatorEventType,
   type PersistedSpectatorEvent,
   type PersistedSpectatorEventType,
 } from '../contracts/persisted-spectator-event.js';
-import type { D1DatabaseLike, D1PreparedStatementLike } from '../relay/bridge.js';
+import type { R2BucketLike } from '../relay/bridge.js';
 import type { HistoryCorsConfig } from '../relay/env.js';
 
 const textEncoder = new TextEncoder();
@@ -41,6 +40,7 @@ export interface PersistedHistoryEntry extends Omit<HistoryEntry, 'detail'> {
 export interface HistoryResponse {
   items: HistoryEntry[];
   next_cursor?: string;
+  hydration?: 'never-recorded';
 }
 
 export interface PersistedHistoryResponse extends Omit<HistoryResponse, 'items'> {
@@ -69,20 +69,25 @@ class HistoryRequestError extends Error {
   }
 }
 
-const historyRowSchema = z.object({
+const persistedHistoryEntrySchema = z.object({
   event_id: z.string().min(1),
-  event_type: z.string().min(1),
-  occurred_at: z.coerce.number().int().nonnegative(),
-  conversation_id: z.string().min(1).nullable().optional(),
-  summary_emoji: z.string(),
-  summary_title: z.string(),
-  summary_text: z.string(),
-  payload_json: z.string(),
+  type: z.string().min(1),
+  occurred_at: z.number().int().nonnegative(),
+  agent_ids: z.array(z.string().min(1)),
+  conversation_id: z.string().min(1).optional(),
+  summary: z.object({
+    emoji: z.string(),
+    title: z.string(),
+    text: z.string(),
+  }),
+  detail: z.record(z.string(), z.unknown()),
 });
 
-const agentIdRowSchema = z.object({
-  event_id: z.string().min(1),
-  agent_id: z.string().min(1),
+const historyDocumentSchema = z.object({
+  items: z.array(persistedHistoryEntrySchema).optional(),
+  hydration: z.literal('never-recorded').optional(),
+  recent_actions: z.array(persistedHistoryEntrySchema).optional(),
+  recent_conversations: z.array(persistedHistoryEntrySchema).optional(),
 });
 
 function appendHeader(headers: Headers, name: string, value: string): void {
@@ -125,25 +130,6 @@ function jsonResponse(payload: unknown, status = 200, headers = new Headers()): 
 
 function messageFromUnknownError(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
-}
-
-function bindStatement(db: D1DatabaseLike, query: string, values: readonly unknown[] = []): D1PreparedStatementLike {
-  const statement = db.prepare(query.trim());
-
-  if (values.length === 0) {
-    return statement;
-  }
-
-  if (typeof statement.bind !== 'function') {
-    throw new Error('D1 prepared statement does not support bind()');
-  }
-
-  return statement.bind(...values);
-}
-
-async function queryAll(db: D1DatabaseLike, query: string, values: readonly unknown[] = []): Promise<unknown[]> {
-  const result = await bindStatement(db, query, values).all();
-  return result.results ?? [];
 }
 
 function encodeBase64UrlUtf8(value: string): string {
@@ -254,139 +240,110 @@ export function normalizeHistoryQuery(request: Request): NormalizedHistoryQuery 
   };
 }
 
-function parsePersistedHistoryDetail(payloadJson: string, eventType: PersistedSpectatorEventType): PersistedSpectatorEvent {
-  const parsed = JSON.parse(payloadJson) as unknown;
-
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error(`payload_json for ${eventType} must decode to an object`);
+function normalizePersistedHistoryEntry(rawEntry: z.infer<typeof persistedHistoryEntrySchema>): PersistedHistoryEntry {
+  if (!isPersistedSpectatorEventType(rawEntry.type)) {
+    throw new Error(`unknown persisted event type: ${rawEntry.type}`);
   }
 
-  if (!('type' in parsed) || parsed.type !== eventType) {
-    throw new Error(`payload_json type mismatch for ${eventType}`);
+  const detailType = rawEntry.detail.type;
+  if (detailType !== rawEntry.type) {
+    throw new Error(`detail.type mismatch for ${rawEntry.event_id}`);
   }
-
-  return parsed as PersistedSpectatorEvent;
-}
-
-async function readEventAgentIds(db: D1DatabaseLike, eventIds: readonly string[]): Promise<Map<string, string[]>> {
-  if (eventIds.length === 0) {
-    return new Map();
-  }
-
-  const rows = await queryAll(
-    db,
-    `
-      SELECT event_id, agent_id
-      FROM world_event_agents
-      WHERE event_id IN (${eventIds.map(() => '?').join(', ')})
-      ORDER BY event_id ASC, agent_id ASC
-    `,
-    eventIds,
-  );
-
-  const agentIdsByEventId = new Map<string, string[]>();
-
-  for (const row of rows) {
-    const parsedRow = agentIdRowSchema.parse(row);
-    const agentIds = agentIdsByEventId.get(parsedRow.event_id) ?? [];
-    agentIds.push(parsedRow.agent_id);
-    agentIdsByEventId.set(parsedRow.event_id, agentIds);
-  }
-
-  return agentIdsByEventId;
-}
-
-function buildHistoryQuerySql(query: NormalizedHistoryQuery): {
-  sql: string;
-  values: unknown[];
-} {
-  const scopeTable = query.scope === 'agent' ? 'world_event_agents' : 'world_event_conversations';
-  const scopeAlias = query.scope === 'agent' ? 'wea' : 'wec';
-  const scopeColumn = query.scope === 'agent' ? 'agent_id' : 'conversation_id';
-  const scopeValue = query.scope === 'agent' ? query.agent_id : query.conversation_id;
-
-  const values: unknown[] = [scopeValue];
-  const whereClauses = [`${scopeAlias}.${scopeColumn} = ?`];
-
-  if (query.types && query.types.length > 0) {
-    whereClauses.push(`${scopeAlias}.event_type IN (${query.types.map(() => '?').join(', ')})`);
-    values.push(...query.types);
-  }
-
-  if (query.cursor) {
-    whereClauses.push(
-      `(${scopeAlias}.occurred_at < ? OR (${scopeAlias}.occurred_at = ? AND ${scopeAlias}.event_id < ?))`,
-    );
-    values.push(query.cursor.occurred_at, query.cursor.occurred_at, query.cursor.event_id);
-  }
-
-  values.push(query.limit + 1);
 
   return {
-    sql: `
-      SELECT
-        we.event_id,
-        we.event_type,
-        ${scopeAlias}.occurred_at AS occurred_at,
-        we.conversation_id,
-        we.summary_emoji,
-        we.summary_title,
-        we.summary_text,
-        we.payload_json
-      FROM ${scopeTable} ${scopeAlias}
-      JOIN world_events we ON we.event_id = ${scopeAlias}.event_id
-      WHERE ${whereClauses.join('\n        AND ')}
-      ORDER BY ${scopeAlias}.occurred_at DESC, ${scopeAlias}.event_id DESC
-      LIMIT ?
-    `,
-    values,
+    ...rawEntry,
+    type: rawEntry.type,
+    detail: rawEntry.detail as PersistedSpectatorEvent,
   };
 }
 
-export async function queryHistory(db: D1DatabaseLike, query: NormalizedHistoryQuery): Promise<PersistedHistoryResponse> {
-  const { sql, values } = buildHistoryQuerySql(query);
-  const rows = (await queryAll(db, sql, values)).map((row) => historyRowSchema.parse(row));
-  const hasMore = rows.length > query.limit;
-  const pageRows = rows.slice(0, query.limit);
-  const agentIdsByEventId = await readEventAgentIds(
-    db,
-    pageRows.map((row) => row.event_id),
-  );
+function toHistoryObjectKey(query: NormalizedHistoryQuery): string {
+  return query.scope === 'agent'
+    ? `history/agents/${encodeURIComponent(query.agent_id)}.json`
+    : `history/conversations/${encodeURIComponent(query.conversation_id)}.json`;
+}
 
-  return {
-    items: pageRows.map((row) => {
-      if (!isPersistedSpectatorEventType(row.event_type)) {
-        throw new Error(`unknown persisted event type: ${row.event_type}`);
+function dedupeHistoryEntriesByEventId(items: PersistedHistoryEntry[]): PersistedHistoryEntry[] {
+  const seenEventIds = new Set<string>();
+  const dedupedItems: PersistedHistoryEntry[] = [];
+
+  for (const item of items) {
+    if (seenEventIds.has(item.event_id)) {
+      continue;
+    }
+
+    seenEventIds.add(item.event_id);
+    dedupedItems.push(item);
+  }
+
+  return dedupedItems;
+}
+
+async function readHistoryDocument(bucket: R2BucketLike, query: NormalizedHistoryQuery): Promise<HistoryResponse | PersistedHistoryResponse> {
+  const object = await bucket.get(toHistoryObjectKey(query));
+
+  if (!object) {
+    return {
+      items: [],
+      hydration: 'never-recorded',
+    };
+  }
+
+  const parsedDocument = historyDocumentSchema.parse(JSON.parse(await object.text()));
+  const mergedItems = [
+    ...(parsedDocument.items ?? []),
+    ...(parsedDocument.recent_actions ?? []),
+    ...(parsedDocument.recent_conversations ?? []),
+  ].map(normalizePersistedHistoryEntry);
+  const normalizedItems = query.scope === 'agent'
+    ? dedupeHistoryEntriesByEventId(mergedItems)
+    : mergedItems;
+
+  const filteredItems = normalizedItems
+    .filter((item) => (query.types ? query.types.includes(item.type) : true))
+    .filter((item) =>
+      query.scope === 'conversation' ? item.conversation_id === query.conversation_id : true,
+    )
+    .sort((left, right) => right.occurred_at - left.occurred_at || right.event_id.localeCompare(left.event_id))
+    .filter((item) => {
+      if (!query.cursor) {
+        return true;
       }
 
-      return {
-        event_id: row.event_id,
-        type: row.event_type,
-        occurred_at: row.occurred_at,
-        agent_ids: agentIdsByEventId.get(row.event_id) ?? [],
-        ...(row.conversation_id ? { conversation_id: row.conversation_id } : {}),
-        summary: {
-          emoji: row.summary_emoji,
-          title: row.summary_title,
-          text: row.summary_text,
-        },
-        detail: parsePersistedHistoryDetail(row.payload_json, row.event_type),
-      };
-    }),
-    ...(hasMore
+      return item.occurred_at < query.cursor.occurred_at || (
+        item.occurred_at === query.cursor.occurred_at && item.event_id < query.cursor.event_id
+      );
+    });
+
+  const pageItems = filteredItems.slice(0, query.limit);
+  const nextItem = filteredItems.at(query.limit);
+
+  return {
+    items: pageItems,
+    ...(nextItem
       ? {
           next_cursor: encodeHistoryCursor({
-            occurred_at: pageRows.at(-1)?.occurred_at ?? rows[query.limit].occurred_at,
-            event_id: pageRows.at(-1)?.event_id ?? rows[query.limit].event_id,
+            occurred_at: pageItems.at(-1)?.occurred_at ?? nextItem.occurred_at,
+            event_id: pageItems.at(-1)?.event_id ?? nextItem.event_id,
           }),
         }
       : {}),
+    ...(parsedDocument.hydration ? { hydration: parsedDocument.hydration } : {}),
+  };
+}
+
+export async function queryHistory(bucket: R2BucketLike, query: NormalizedHistoryQuery): Promise<PersistedHistoryResponse> {
+  const response = await readHistoryDocument(bucket, query);
+  return {
+    items: response.items.map((item) => item as PersistedHistoryEntry),
+    ...(response.next_cursor ? { next_cursor: response.next_cursor } : {}),
+    ...(response.hydration ? { hydration: response.hydration } : {}),
   };
 }
 
 export async function handleHistoryRequest(
   request: Request,
-  db?: D1DatabaseLike,
+  bucket?: R2BucketLike,
   cors: HistoryCorsConfig = { authMode: 'public', allowedOrigins: [] },
   configError?: unknown,
 ): Promise<Response> {
@@ -443,12 +400,12 @@ export async function handleHistoryRequest(
     });
   }
 
-  if (!db) {
+  if (!bucket) {
     return jsonResponse(
       {
         error: {
           code: 'internal_error',
-          message: 'HISTORY_DB is required for GET /api/history',
+          message: 'SNAPSHOT_BUCKET is required for GET /api/history',
         },
       },
       500,
@@ -458,7 +415,7 @@ export async function handleHistoryRequest(
 
   try {
     const query = normalizeHistoryQuery(request);
-    const response = await queryHistory(db, query);
+    const response = await queryHistory(bucket, query);
     return jsonResponse(response, 200, corsHeaders);
   } catch (error) {
     if (error instanceof HistoryRequestError) {

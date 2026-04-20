@@ -2,9 +2,6 @@ name = "karakuri-world-ui"
 main = "worker/src/index.ts"
 compatibility_date = "2025-04-14"
 
-[triggers]
-crons = ["0 3 * * *"]
-
 [[durable_objects.bindings]]
 name = "UI_BRIDGE"
 class_name = "UIBridgeDurableObject"
@@ -12,14 +9,6 @@ class_name = "UIBridgeDurableObject"
 [[migrations]]
 tag = "plan04-ui-bridge"
 new_sqlite_classes = ["UIBridgeDurableObject"]
-
-[[d1_databases]]
-binding = "HISTORY_DB"
-database_name = "karakuri-world-ui-history"
-# Replace these placeholder IDs with the real D1 IDs from `wrangler d1 create`
-# before deploying. See karakuri-world-ui/README.md#cloudflare-worker-deployment.
-database_id = "00000000-0000-0000-0000-000000000000"
-preview_database_id = "00000000-0000-0000-0000-000000000000"
 
 [[r2_buckets]]
 binding = "SNAPSHOT_BUCKET"

@@ -73,6 +73,7 @@ export async function fetchWeather(lat: number, lon: number, apiKey: string): Pr
 export class WeatherService {
   private state: WeatherState | null = null;
   private intervalId: ReturnType<typeof setInterval> | null = null;
+  private readonly listeners = new Set<(state: WeatherState) => void>();
 
   constructor(
     private readonly config: WeatherConfig,
@@ -98,9 +99,25 @@ export class WeatherService {
     return this.state;
   }
 
+  onWeatherUpdated(listener: (state: WeatherState) => void): () => void {
+    this.listeners.add(listener);
+
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
   private async poll(): Promise<void> {
     try {
       this.state = await fetchWeather(this.config.location.latitude, this.config.location.longitude, this.apiKey);
+
+      for (const listener of this.listeners) {
+        try {
+          listener(this.state);
+        } catch (error) {
+          console.error('Weather listener threw.', error);
+        }
+      }
     } catch (error) {
       console.error('Failed to fetch weather data.', error);
       this.onError?.(`天気データの取得に失敗しました: ${error instanceof Error ? error.message : String(error)}`);

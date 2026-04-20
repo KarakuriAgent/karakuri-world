@@ -215,6 +215,6 @@ type ConversationEvent =
 
 `conversation_join` は会話参加反映の内部イベントで、エージェント向け通知は発生しない。`conversation_interval_interrupted` は「発言自体は届くが、そのまま通常ターンへは進まない」ケースを表すイベントで、聞き手向け follow-up と後続の `conversation_turn_started` / `conversation_closing` の橋渡しに使う。`conversation_pending_join_cancelled` は会話全体の終了時だけでなく、pending join 反映時に joiner の state が不整合だった場合にも送られる専用イベントで、対象 joiner 本人へ follow-up 通知を送り、#world-log には投稿しない。
 
-UI 履歴用の D1 ingest では、`conversation_*` を「当該時点の会話参加者全員のタイムラインへ載るイベント」として扱う。payload に参加者一覧が含まれない `conversation_turn_started` / `conversation_inactive_check` は、イベント保存時点の authoritative な会話状態から参加者集合を補完して link する。この authoritative state は 13-ui-relay-backend.md §3.3 の `conversation_mirror`（`RelayConversationState` と同等の会話ミラー）を正本とし、seed / update / teardown 規則は 14-ui-history-api.md §4.2.1 を正本とする。
+Phase 8 の event-driven history publish では、`conversation_*` を「当該時点の会話参加者全員のタイムラインへ載るイベント」として扱う。backend の `AgentHistoryManager` が Worker `/api/publish-agent-history` へ append する際、payload に参加者一覧が含まれない `conversation_turn_started` / `conversation_inactive_check` は、その時点の authoritative な会話状態から参加者集合を補完して link する。この authoritative state は 14-ui-history-api.md の conversation document 更新規則を正本とし、R2 上の `history/conversations/{conversation_id}.json` と agent documents への fan-out に反映される。
 
 詳細な通知文面は 10-discord-bot.md、API 形状は 08-rest-api.md、MCP ツールは 09-mcp-server.md を参照。
