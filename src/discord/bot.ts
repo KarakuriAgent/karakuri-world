@@ -236,6 +236,11 @@ export class DiscordBot implements DiscordNotificationAdapter {
     await channel.send(content);
   }
 
+  async sendWorldAdminMessage(content: string): Promise<void> {
+    const channel = await this.channelManager.getWorldAdminChannel();
+    await channel.send(content);
+  }
+
   async sendWorldLogAsAgent(content: string, identity: WebhookIdentity): Promise<void> {
     const webhook = await this.getOrCreateWorldLogWebhook();
     try {
@@ -253,9 +258,8 @@ export class DiscordBot implements DiscordNotificationAdapter {
   }
 
   async sendErrorReport(message: string): Promise<void> {
-    const channel = await this.channelManager.getWorldAdminChannel();
     const timestamp = new Date().toISOString();
-    await channel.send(`⚠️ **エラー報告** (${timestamp})\n${message}`);
+    await this.sendWorldAdminMessage(`⚠️ **エラー報告** (${timestamp})\n${message}`);
   }
 
   async getStatusBoardChannel(): Promise<StatusBoardChannel> {

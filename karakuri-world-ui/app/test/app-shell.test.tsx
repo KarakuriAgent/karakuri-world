@@ -10,7 +10,7 @@ import { createFixtureSnapshot } from './fixtures/snapshot.js';
 import type { SpectatorSnapshot } from '../../worker/src/contracts/spectator-snapshot.js';
 
 const env = {
-  snapshotUrl: 'https://snapshot.example.com/snapshot/latest.json',
+  snapshotUrl: 'https://snapshot.example.com/snapshot/manifest.json',
   authMode: 'public' as const,
   apiBaseUrl: 'https://relay.example.com/api/history',
 };

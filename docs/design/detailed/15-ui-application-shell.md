@@ -1,5 +1,7 @@
 # 15 - UI アプリケーションシェル
 
+> **Issue #60 / Phase 8 追記**: 正本は manifest + versioned snapshot を使う event-driven publish である。quiet period の再同期は backend 側 3 分 fallback resync だけを保険として残し、UI の stale 判定は age-based timer ではなく publish-health metadata を使う。
+
 ## 1. 画面責務
 
 ### 1.1 UI 実装スタック
@@ -81,60 +83,57 @@ interface SnapshotStore {
 
 履歴キャッシュ key は `agent:{agent_id}` と `conversation:{conversation_id}` を使い、エージェント履歴と会話履歴を同じ store で扱う。
 
-### 3.2 snapshot 適用の単調性
+### 3.2 manifest-aware snapshot 適用
 
-snapshot poll は **single-flight** を必須とする。5 秒 interval はそのまま維持するが、ある fetch が未完了の間は次の poll を同時発行しない。interval tick が重なった場合は `pollQueued = true` のようなフラグだけを立て、進行中 fetch の完了後に 1 回だけ追随 fetch を行う。
+snapshot poll は **single-flight** を必須とする。実装既定値として interval polling を行ってよいが、ある fetch が未完了の間は次の poll を同時発行しない。interval tick が重なった場合は `pollQueued = true` のようなフラグだけを立て、進行中 fetch の完了後に 1 回だけ追随 fetch を行う。
 
-また、成功レスポンスを store へ反映する前に、現在保持中 snapshot と以下の順で比較し、**version の採用は新しいものだけ** に制限する。
+`snapshot_url` の正本は `snapshot/manifest.json` であり、UI は以下の順で成功レスポンスを解釈する。
+
+1. body が manifest なら `latest_snapshot_key` / `generated_at` / `published_at` / `last_publish_error_at` を読む
+2. 現在保持中 snapshot と `generated_at` が同一なら、versioned snapshot object は再取得せず、manifest の publish-health metadata（`published_at`, `last_publish_error_at`）だけを現行 snapshot へ merge する
+3. `generated_at` が新しければ、manifest が指す versioned snapshot object を取得して store へ反映する
+4. 互換経路として direct snapshot body を受け取った場合も受理できるが、primary path は常に manifest 経由とする
+
+store へ反映する前に、現在保持中 snapshot と以下の順で比較し、**新しい version だけを採用する**。
 
 1. `generated_at` が大きい
 2. `generated_at` が同一なら `published_at` が大きい
-3. それも同一なら同一版として idempotent に再適用可
+3. それも同一なら `last_publish_error_at` が大きい
+4. すべて同一なら同一版として idempotent に扱う
 
-同一版の成功レスポンスは、payload を再適用してもしなくても version 意味論は変えないが、**poll 自体は成功として扱う**。したがって直前が fetch error でも、same-version fetch が成功した時点で `snapshot_status = 'ready'`, `last_success_at = Date.now()` へ回復してよい。一方で `snapshot.generated_at` / `published_at`、そこから導かれる stale 判定、version の単調性は巻き戻さず、stale deadline も常に `snapshot.generated_at + 60000` 基準のままとする。
-
-上記に当てはまらない遅延レスポンスは破棄し、`snapshot`, `snapshot_status`, `last_success_at`, `is_stale`, stale timer を巻き戻してはならない。これにより、R2 / CDN / ブラウザで古いレスポンスが遅れて返ってきても UI 状態は単調増加の snapshot だけを採用する。
+同一 `generated_at` の manifest 更新は「snapshot payload 自体は同じだが publish-health metadata だけが進んだ」ケースを含む。したがって metadata だけが更新された poll でも `snapshot_status = 'ready'`, `last_success_at = Date.now()` へ回復してよい。一方で上記順序に当てはまらない遅延レスポンスは破棄し、`snapshot`, `snapshot_status`, `last_success_at`, `is_stale` を巻き戻してはならない。
 
 ### 3.3 stale 判定
 
-overview に合わせ、UI の stale 判定は `generated_at` を正本とする。13-ui-relay-backend.md セクション 5.3 の primary path では publisher が quiet period 中も 5 秒 cadence で `/api/snapshot` を再取得して `generated_at` 自体を進めるため、UI は `published_at` を stale 解除条件に使わない。クライアント自身の fetch 成否は別軸で扱う。
-
-13-ui-relay-backend.md の既定値では、quiet period 中に `generated_at` が更新された snapshot が UI へ届くまでの正常系予算は以下になる。
-
-- publisher cadence: 5 秒
-- CDN Edge TTL: 5 秒
-- クライアント polling: 5 秒
-
-合計 15 秒が正常系の上限となる。そこで UI の stale 閾値は 60 秒とし、正常系に対して 45 秒の運用バッファを残す。
+overview と `13-ui-relay-backend.md` に合わせ、UI の stale 判定は **publish-health metadata** だけで扱う。quiet period 中の age-based stale timer は置かず、healthy な snapshot は `generated_at` が古くなっても stale にしない。クライアント自身の fetch 成否は別軸で扱う。
 
 以下を満たした場合に stale とみなす。
 
-- `Date.now() - snapshot.generated_at > 60000`
+- `snapshot.last_publish_error_at !== undefined && snapshot.last_publish_error_at > snapshot.published_at`
 
-`is_stale` は `snapshot.generated_at` と現在時刻から導く派生状態である。store に bool を保持してよいが、**snapshot fetch 成功時だけでなくローカル時刻の経過でも再評価され続けなければならない**。そのため UI は最新 snapshot を受け取るたびに `stale_deadline = snapshot.generated_at + 60000` を再計算し、期限到達時に `is_stale = true` へ遷移させる one-shot timer（または同等の定期 reevaluation）を必ず張り直す。fetch 失敗中もこの timer は止めない。
+この条件は「last good publish より後に publish/refresh error が発生した」ことを示す。manifest だけが更新され、versioned snapshot object を再取得しないケースでも stale へ遷移できなければならない。
 
-`last_success_at` は「最後に poll 自体が成功した時刻」の診断用であり、stale 判定を打ち消す条件には使わない。`published_at` も stale 判定には使わず、snapshot publisher が最後に正常 publish できた時刻を示す補助診断値として扱う。したがって CDN/R2 配信だけが継続していても、`generated_at` が進まない snapshot は stale と判定される。
+`is_stale` は受理済み snapshot の metadata から導く派生状態であり、**ローカル時刻経過だけで true に遷移させない**。poll 再開後に healthy manifest を受け取った場合は `is_stale = false` を維持し、quiet period だけを理由に stale バナーを出さない。
 
-fetch 失敗は stale と別状態であり、`snapshot_status = 'error'` と `last_error_at` で管理する。stale 中も最後に取得した snapshot は表示し続ける。
+`last_success_at` は「最後に poll 自体が成功した時刻」の診断用であり、stale 判定を打ち消す条件にも、発火条件にも使わない。fetch 失敗は stale と別状態であり、`snapshot_status = 'error'` と `last_error_at` で管理する。stale 中も最後に取得した snapshot は表示し続ける。
 
 ## 4. snapshot ポーリング
 
 ### 4.1 取得先
 
-- URL: 配備時に注入する `snapshot_url`（R2 カスタムドメイン + `SNAPSHOT_OBJECT_KEY` の CDN 絶対 URL。例: 既定値のままなら `https://snapshot.example.com/snapshot/latest.json`）
-- 間隔: 5000ms 固定
+- URL: 配備時に注入する `snapshot_url`（R2 カスタムドメイン上の public manifest URL。例: `https://snapshot.example.com/snapshot/manifest.json`）
+- 間隔: manifest polling を行う（現行実装の既定値は 5000ms だが、publisher cadence と結合した固定契約ではない）
 
 ### 4.2 取得フロー
 
 1. 初回マウント時に即時 fetch
-2. 以後 5 秒ごとに再取得するが、3.2 のとおり poll 自体は single-flight とし、重複 tick は 1 回分だけ queue する
-3. fetch レスポンスは「**ステータス確認 → JSON parse → schema_version 検証**」の順で必ず妥当性を検証する。HTTP 非 2xx または JSON parse 失敗は transient な fetch error として 8 と同じ失敗扱いとし、`snapshot_status = 'error'`, `last_error_at = Date.now()` を記録する。`schema_version !== 1` は transient error ではなく永続エラー扱いとし、`snapshot_status = 'incompatible'` を記録する。どちらの場合も既存 snapshot はそのまま残す。検証を 3.2 の version 比較より前に行い、壊れた body を `ready` で素通りさせない。`incompatible` は次回以降の poll 成功で `ready` に戻せるが、スキーマが復旧しないまま次回も `schema_version !== 1` であれば `incompatible` を維持する
-4. 検証通過した成功時は 3.2 の比較規則で処理する。現在より新しい snapshot は採用し、same-version success は version を進めずに成功扱いとする。どちらも `snapshot_status = 'ready'`, `last_success_at = Date.now()` を記録する
-5. 4 の成功時は、現在 store に残っている最新 snapshot に対して 3.3 の stale 条件を再評価する。新しい snapshot を採用した場合はその snapshot 用に stale timer を張り直し、same-version success の場合も stale 判定だけは回復後の現在時刻で再評価してよい。ただし stale deadline は常に当該 snapshot の `generated_at + 60000` を使い、fetch 成功時刻基準へ延長しない
-6. stale timer の callback は、張り直し時点の `{ generated_at, published_at }` もしくは同等の version token を capture し、発火時に「まだ同じ snapshot が store に載っている場合だけ」`is_stale = true` を適用する。これにより古い timer が新しい snapshot 到着後に遅れて発火しても stale 表示へ巻き戻さない
-7. 3.2 の比較で破棄された遅延成功レスポンスは no-op とし、`snapshot_status`, `last_success_at`, stale timer を更新しない。recover 対象になるのはあくまで「現在 store 上の snapshot と同一版」または「それより新しい版」の成功だけである
-8. 失敗時は既存 snapshot を保持したまま `snapshot_status = 'error'`, `last_error_at = Date.now()` を記録する
-9. 失敗時も既存 snapshot に対する stale timer / 定期 reevaluation は継続し、最後の成功 snapshot が 60 秒を超えた時点で `is_stale = true` へ遷移させる
+2. 以後は manifest を定期再取得するが、3.2 のとおり poll 自体は single-flight とし、重複 tick は 1 回分だけ queue する
+3. fetch レスポンスは「**ステータス確認 → JSON parse → schema_version 検証**」の順で必ず妥当性を検証する。HTTP 非 2xx または JSON parse 失敗は transient な fetch error として `snapshot_status = 'error'`, `last_error_at = Date.now()` を記録する。`schema_version !== 1` は transient error ではなく永続エラー扱いとし、`snapshot_status = 'incompatible'` を記録する。どちらの場合も既存 snapshot はそのまま残す
+4. body が manifest の場合、まず `generated_at` を見て current snapshot と同一版かを判定する。同一版なら `latest_snapshot_key` を追わず、manifest の `published_at` / `last_publish_error_at` だけを merge する
+5. manifest が新しい `generated_at` を指す場合だけ versioned snapshot object を取得し、manifest metadata を merge したうえで 3.2 の比較規則で採用する
+6. 4 または 5 の成功時は `snapshot_status = 'ready'`, `last_success_at = Date.now()` を記録し、3.3 の publish-health 条件で `is_stale` を即時計算する。age-based stale timer は張らない
+7. 3.2 の比較で破棄された遅延成功レスポンスは no-op とし、`snapshot_status`, `last_success_at`, `is_stale` を巻き戻さない。recover 対象になるのはあくまで「現在 store 上の snapshot と同一版」または「それより新しい版」の成功だけである
+8. 失敗時は既存 snapshot を保持したまま `snapshot_status = 'error'`, `last_error_at = Date.now()` を記録する。fetch error だけで `is_stale` を true にしない
 
 Phase 1 の polling は常に通常の GET で行い、毎回 200 + body を受け取る前提で実装する。`If-None-Match` / 304 は本書のスコープ外であり、このフェーズでは送出・処理しない。
 

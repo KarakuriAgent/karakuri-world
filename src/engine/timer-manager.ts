@@ -71,6 +71,13 @@ export class TimerManager {
       .sort((left, right) => left.fires_at - right.fires_at);
   }
 
+  clearAll(): void {
+    for (const record of this.timers.values()) {
+      clearTimeout(record.timeout);
+    }
+    this.timers.clear();
+  }
+
   find<T extends Timer>(predicate: (timer: Timer) => timer is T): T | undefined;
   find(predicate: (timer: Timer) => boolean): Timer | undefined;
   find(predicate: ((timer: Timer) => boolean) | ((timer: Timer) => timer is Timer)): Timer | undefined {

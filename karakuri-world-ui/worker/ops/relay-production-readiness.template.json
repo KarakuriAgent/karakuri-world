@@ -19,11 +19,9 @@
     "r2_custom_domain_verified_at": null,
     "cache_rules_edge_ttl_verified_at": null,
     "auth_mode_smoke_verified_at": null,
-    "retention_silence_verified_at": null,
     "r2_retry_brake_verified_at": null,
     "notification_receipts_verified_at": null,
     "synthetic_drill_receipts_verified_at": null,
-    "wrangler_cron_verified_at": null,
     "preproduction_signoff_by": "REPLACE_ME",
     "preproduction_signoff_at": null
   }

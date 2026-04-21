@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { getRequestListener } from '@hono/node-server';
 
 import { createApp } from './api/app.js';
+import { getShutdownErrorResponse, isRequestAllowedDuringShutdown } from './api/shutdown.js';
 import { loadConfigFromFile } from './config/index.js';
 import { AdminCommandHandler } from './discord/admin-commands.js';
 import { DiscordBot } from './discord/bot.js';
@@ -11,6 +12,8 @@ import { DiscordEventHandler } from './discord/event-handler.js';
 import { renderMapImage } from './discord/map-renderer.js';
 import { StatusBoard } from './discord/status-board.js';
 import { WeatherService } from './domain/weather.js';
+import { AgentHistoryManager } from './engine/agent-history-manager.js';
+import { SnapshotPublisher } from './engine/snapshot-publisher.js';
 import { WorldEngine } from './engine/world-engine.js';
 import { McpServerManager } from './mcp/server.js';
 import { loadAgents, saveAgents } from './storage/agent-storage.js';
@@ -21,6 +24,8 @@ export interface RuntimeOptions {
   dataDir: string;
   port: number;
   publicBaseUrl: string;
+  snapshotPublishBaseUrl: string;
+  snapshotPublishAuthKey: string;
   discordToken: string;
   discordGuildId: string;
   openWeatherMapApiKey?: string;
@@ -66,6 +71,8 @@ export function resolveRuntimeOptions(env: NodeJS.ProcessEnv = process.env): Run
     dataDir: getOptionalEnv(env.DATA_DIR) ?? './data',
     port,
     publicBaseUrl: getOptionalEnv(env.PUBLIC_BASE_URL) ?? `http://127.0.0.1:${port}`,
+    snapshotPublishBaseUrl: getRequiredEnv('SNAPSHOT_PUBLISH_BASE_URL', env.SNAPSHOT_PUBLISH_BASE_URL),
+    snapshotPublishAuthKey: getRequiredEnv('SNAPSHOT_PUBLISH_AUTH_KEY', env.SNAPSHOT_PUBLISH_AUTH_KEY),
     discordToken: getRequiredEnv('DISCORD_TOKEN', env.DISCORD_TOKEN),
     discordGuildId: getRequiredEnv('DISCORD_GUILD_ID', env.DISCORD_GUILD_ID),
     openWeatherMapApiKey: getOptionalEnv(env.OPENWEATHERMAP_API_KEY),
@@ -83,11 +90,12 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
   });
   let server: Server | null = null;
   let mcpServerManager: McpServerManager | null = null;
-  let websocketManager: ReturnType<typeof createApp>['websocketManager'] | null = null;
   let discordEventHandler: DiscordEventHandler | null = null;
   let adminCommandHandler: AdminCommandHandler | null = null;
   let statusBoard: StatusBoard | null = null;
   let weatherService: WeatherService | null = null;
+  const shutdownState = { active: false };
+  let stopPromise: Promise<void> | null = null;
 
   const reportError = (message: string) => {
     void discordBot.sendErrorReport(message).catch((err) => {
@@ -103,11 +111,24 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
       console.warn('Weather config is present but OPENWEATHERMAP_API_KEY is not set. Weather updates are disabled.');
     }
 
-    const engine = new WorldEngine(config, discordBot, {
+    const snapshotPublisher = new SnapshotPublisher({
+      workerBaseUrl: new URL(options.snapshotPublishBaseUrl),
+      authKey: options.snapshotPublishAuthKey,
+    });
+    let engine!: WorldEngine;
+    const agentHistoryManager = new AgentHistoryManager({
+      workerBaseUrl: new URL(options.snapshotPublishBaseUrl),
+      authKey: options.snapshotPublishAuthKey,
+      resolveConversationParticipantAgentIds: (conversationId): string[] =>
+        engine.state.conversations.get(conversationId)?.participant_agent_ids ?? [],
+    });
+    engine = new WorldEngine(config, discordBot, {
       initialRegistrations,
       onRegistrationChanged: (agents) => saveAgents(agentsFilePath, agents),
       weatherService: weatherService ?? undefined,
       onError: reportError,
+      snapshotPublisher,
+      agentHistoryManager,
     });
     const adminRoleId = discordBot.getAdminRoleId();
     const worldAdminChannelId = discordBot.getWorldAdminChannelId();
@@ -126,16 +147,23 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
       mapImage,
       onError: reportError,
     });
-    const { app, injectWebSocket, websocketManager: createdWebsocketManager } = createApp(engine, {
+    const { app } = createApp(engine, {
       adminKey: options.adminKey,
       publicBaseUrl: options.publicBaseUrl,
+      isShuttingDown: () => shutdownState.active,
     });
-    websocketManager = createdWebsocketManager;
     mcpServerManager = new McpServerManager(engine);
     const requestListener = getRequestListener(app.fetch);
 
     server = createServer((req, res) => {
       const url = new URL(req.url ?? '/', `http://${req.headers.host ?? '127.0.0.1'}`);
+      if (shutdownState.active && !isRequestAllowedDuringShutdown(req.method ?? 'GET', url.pathname)) {
+        res.statusCode = 503;
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.end(JSON.stringify(getShutdownErrorResponse()));
+        return;
+      }
+
       if (url.pathname === '/mcp') {
         void mcpServerManager!.handleRequest(req, res);
         return;
@@ -150,7 +178,6 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
       });
     });
 
-    injectWebSocket(server);
     discordEventHandler.register();
 
     await new Promise<void>((resolve, reject) => {
@@ -172,7 +199,6 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
 
     const activeServer = server!;
     const activeDiscordEventHandler = discordEventHandler!;
-    const activeWebsocketManager = websocketManager!;
     const activeMcpServerManager = mcpServerManager!;
     const activeWeatherService = weatherService;
 
@@ -182,23 +208,33 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
       discordBot,
       mcpServerManager: activeMcpServerManager,
       async stop() {
-        await statusBoard?.dispose();
-        adminCommandHandler?.dispose();
-        activeDiscordEventHandler.dispose();
-        activeWebsocketManager.dispose();
-        await activeMcpServerManager.close();
-        activeWeatherService?.stop();
-        await new Promise<void>((resolve, reject) => {
-          activeServer.close((error) => {
-            if (error) {
-              reject(error);
-              return;
-            }
+        if (stopPromise) {
+          await stopPromise;
+          return;
+        }
 
-            resolve();
+        shutdownState.active = true;
+        stopPromise = (async () => {
+          await new Promise<void>((resolve, reject) => {
+            activeServer.close((error) => {
+              if (error) {
+                reject(error);
+                return;
+              }
+
+              resolve();
+            });
           });
-        });
-        await discordBot.close();
+          await engine.dispose();
+          activeWeatherService?.stop();
+          await statusBoard?.dispose();
+          adminCommandHandler?.dispose();
+          activeDiscordEventHandler.dispose();
+          await activeMcpServerManager.close();
+          await discordBot.close();
+        })();
+
+        await stopPromise;
       },
     };
   } catch (error) {
@@ -210,7 +246,6 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
     }
     adminCommandHandler?.dispose();
     discordEventHandler?.dispose();
-    websocketManager?.dispose();
     if (mcpServerManager) {
       await mcpServerManager.close().catch((closeError) => {
         console.error('Failed to close MCP server manager after startup error.', closeError);

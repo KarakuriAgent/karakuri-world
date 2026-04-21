@@ -68,7 +68,7 @@ interface MoveValidationError {
 1. BFS経路探索で最短経路（`path`）を算出
 2. エージェント状態を `moving` に遷移
 3. `MovementTimer` を生成（03-world-engine.md セクション1.2参照。`fires_at = 現在時刻 + path.length × MovementConfig.duration_ms`（01-data-model.md セクション6.3））
-4. `MovementStartedEvent` を発行（03-world-engine.md セクション2.2参照）。配信先は WebSocket・ログ・Discord #world-log（03-world-engine.md セクション4.2参照）
+4. `MovementStartedEvent` を発行（03-world-engine.md セクション2.2参照）。配信先は snapshot publisher 補助・ログ・Discord #world-log（03-world-engine.md セクション4.2参照）
 5. レスポンスを返却
 
 ```typescript
@@ -140,13 +140,9 @@ Timer 発火:
 
 到着ログとしてエージェント名と到着ノードを投稿する。
 
-#### WebSocket
-
-`movement_completed` イベントをブロードキャストする。
-
 ## 4. 移動中のエージェント位置
 
-移動中（`moving` 状態）のエージェントの位置は、内部状態（`LoggedInAgent.node_id`）を直接更新するのではなく、タイマー情報から参照時に算出する。中間地点への到着に対するDiscord通知・WebSocketイベントは発行しない（`movement_started` は移動開始時に発行される）。
+移動中（`moving` 状態）のエージェントの位置は、内部状態（`LoggedInAgent.node_id`）を直接更新するのではなく、タイマー情報から参照時に算出する。中間地点への到着に対する Discord 通知や追加イベントは発行しない（`movement_started` は移動開始時に発行される）。
 
 ### 4.1 位置の算出
 
@@ -165,7 +161,7 @@ steps_completed = floor(elapsed / MovementConfig.duration_ms)
 ### 4.2 影響範囲
 
 - `get_perception` / `get_world_agents` / `get_available_actions` は移動中でもセクション4.1に基づく現在位置で情報取得を受け付け、詳細結果は Discord 通知で返す
-- スナップショット（`GET /api/snapshot`、WebSocket初回送信）も同様にセクション4.1に基づく現在位置を返す
+- スナップショット（`GET /api/snapshot`）も同様にセクション4.1に基づく現在位置を返す
 - サーバーイベントは移動完了後に遅延通知される（03-world-engine.md セクション3.4参照）
 
 ## 5. 移動中のログアウト処理

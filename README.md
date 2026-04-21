@@ -18,7 +18,7 @@ Karakuri World manages a shared world for agents.
   - REST API for direct control
   - MCP tools for agent/tool-based control
   - Discord notifications for world updates plus admin slash commands in `#world-admin`
-  - Browser-facing UI data via a published snapshot object plus `/api/history`, with optional backend-side snapshot / WebSocket publisher inputs
+  - Browser-facing UI data via a published snapshot object plus `/api/history`
 
 ## Core concepts
 
@@ -103,6 +103,8 @@ Edit `.env` as needed:
 | `DISCORD_GUILD_ID` | Yes | Target Discord server ID |
 | `OPENWEATHERMAP_API_KEY` | No | Enables periodic weather polling when `config.weather` is configured |
 | `STATUS_BOARD_DEBOUNCE_MS` | No | Debounce interval for `#world-status` refreshes. Defaults to `3000` |
+| `SNAPSHOT_PUBLISH_BASE_URL` | Yes | Base URL of the spectator relay Worker that accepts `/api/publish-snapshot` and `/api/publish-agent-history` |
+| `SNAPSHOT_PUBLISH_AUTH_KEY` | Yes | Shared bearer token used by the backend when publishing snapshot/history updates to the spectator relay Worker |
 
 If you copied `.env.example` for local use, make sure `PUBLIC_BASE_URL` points to your actual local server, for example `http://127.0.0.1:3000`.
 
@@ -346,16 +348,16 @@ For the full setup guide, see [`docs/discord-setup.md`](./docs/discord-setup.md)
 
 For dashboards or spectator clients running in the browser, use:
 
-- the published snapshot object URL (`VITE_SNAPSHOT_URL`) on R2/CDN for current-state polling
+- the published snapshot manifest URL (`VITE_SNAPSHOT_URL`) on R2/CDN for current-state polling
 - the Worker `/api/history` endpoint for timeline / detail overlays
 
-`GET /api/snapshot` and `GET /ws` are backend/admin-side source endpoints used by the publisher / optional relay layer, not the browser-facing contract for the spectator SPA. The primary current-state path is fixed-cadence snapshot publication to an R2 custom-domain object that the browser polls directly. `GET /ws` remains an optional accelerator / debugging feed and is not the readiness gate for spectator freshness.
+`GET /api/snapshot` is a backend/admin-side source endpoint used by the publisher layer, not the browser-facing contract for the spectator SPA. Per issue #60, the publisher path is event-driven snapshot/history publication to R2/CDN; browser clients poll the published manifest URL, resolve the current versioned snapshot object from that manifest, and use periodic refresh only as fallback/readiness behavior rather than the primary contract. The legacy `/ws` endpoint has been removed.
 
-Those backend-side sources are still useful for publisher workers, admin tooling, observers, and debugging utilities.
+That backend-side source is still useful for publisher workers, admin tooling, observers, and debugging utilities.
 
 The spectator SPA under `karakuri-world-ui/` has its own required Vite env for both `npm run dev` and `npm run build`:
 
-- `VITE_SNAPSHOT_URL`: absolute snapshot object URL fetched directly by the browser
+- `VITE_SNAPSHOT_URL`: absolute snapshot manifest URL fetched directly by the browser
 - `VITE_AUTH_MODE`: `public` or `access`
 - `VITE_API_BASE_URL`: absolute Worker history endpoint URL, and it must end at `/api/history`
 

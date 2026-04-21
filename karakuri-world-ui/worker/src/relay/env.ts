@@ -4,15 +4,12 @@ export type RelayAuthMode = 'public' | 'access';
 
 export interface RelayConfig {
   kwBaseUrl: URL;
-  wsUrl: URL;
   snapshotUrl: URL;
   kwAdminKey: string;
+  snapshotPublishAuthKey?: string;
   snapshotObjectKey: string;
-  snapshotPublishIntervalMs: number;
-  snapshotHeartbeatIntervalMs: number;
   snapshotCacheMaxAgeSec: number;
   authMode: RelayAuthMode;
-  historyRetentionDays: number;
 }
 
 export interface HistoryCorsConfig {
@@ -21,10 +18,7 @@ export interface HistoryCorsConfig {
 }
 
 const DEFAULT_SNAPSHOT_OBJECT_KEY = 'snapshot/latest.json';
-const DEFAULT_SNAPSHOT_PUBLISH_INTERVAL_MS = 5_000;
-const DEFAULT_SNAPSHOT_HEARTBEAT_INTERVAL_MS = 30_000;
 const DEFAULT_SNAPSHOT_CACHE_MAX_AGE_SEC = 5;
-const DEFAULT_HISTORY_RETENTION_DAYS = 180;
 
 const authModeSchema = z.enum(['public', 'access']);
 
@@ -58,10 +52,6 @@ function parsePositiveInteger(value: unknown, fieldName: string, defaultValue: n
   }
 
   return parsed;
-}
-
-export function parseHistoryRetentionDays(env: Record<string, unknown>): number {
-  return parsePositiveInteger(env.HISTORY_RETENTION_DAYS, 'HISTORY_RETENTION_DAYS', DEFAULT_HISTORY_RETENTION_DAYS);
 }
 
 function normalizeCorsOrigin(origin: string): string {
@@ -163,47 +153,37 @@ function normalizeBaseUrl(baseUrl: string): URL {
   return new URL(parsedUrl.origin);
 }
 
-export function deriveRelayUrls(baseUrl: string | URL): Pick<RelayConfig, 'kwBaseUrl' | 'wsUrl' | 'snapshotUrl'> {
+export function deriveRelayUrls(baseUrl: string | URL): Pick<RelayConfig, 'kwBaseUrl' | 'snapshotUrl'> {
   const kwBaseUrl = normalizeBaseUrl(baseUrl.toString());
-  const wsUrl = new URL('/ws', kwBaseUrl);
-  wsUrl.protocol = kwBaseUrl.protocol === 'https:' ? 'wss:' : 'ws:';
 
   return {
     kwBaseUrl,
-    wsUrl,
     snapshotUrl: new URL('/api/snapshot', kwBaseUrl),
   };
 }
 
 export function parseRelayEnv(env: Record<string, unknown>): RelayConfig {
-  const { kwBaseUrl, wsUrl, snapshotUrl } = deriveRelayUrls(parseRequiredString(env.KW_BASE_URL, 'KW_BASE_URL'));
+  const { kwBaseUrl, snapshotUrl } = deriveRelayUrls(parseRequiredString(env.KW_BASE_URL, 'KW_BASE_URL'));
   const authMode = parseAuthMode(env.AUTH_MODE);
+  const snapshotPublishAuthKey =
+    env.SNAPSHOT_PUBLISH_AUTH_KEY === undefined
+      ? undefined
+      : parseRequiredString(env.SNAPSHOT_PUBLISH_AUTH_KEY, 'SNAPSHOT_PUBLISH_AUTH_KEY');
 
   return {
     kwBaseUrl,
-    wsUrl,
     snapshotUrl,
     kwAdminKey: parseRequiredString(env.KW_ADMIN_KEY, 'KW_ADMIN_KEY'),
+    ...(snapshotPublishAuthKey ? { snapshotPublishAuthKey } : {}),
     snapshotObjectKey:
       env.SNAPSHOT_OBJECT_KEY === undefined
         ? DEFAULT_SNAPSHOT_OBJECT_KEY
         : parseRequiredString(env.SNAPSHOT_OBJECT_KEY, 'SNAPSHOT_OBJECT_KEY'),
-    snapshotPublishIntervalMs: parsePositiveInteger(
-      env.SNAPSHOT_PUBLISH_INTERVAL_MS,
-      'SNAPSHOT_PUBLISH_INTERVAL_MS',
-      DEFAULT_SNAPSHOT_PUBLISH_INTERVAL_MS,
-    ),
-    snapshotHeartbeatIntervalMs: parsePositiveInteger(
-      env.SNAPSHOT_HEARTBEAT_INTERVAL_MS,
-      'SNAPSHOT_HEARTBEAT_INTERVAL_MS',
-      DEFAULT_SNAPSHOT_HEARTBEAT_INTERVAL_MS,
-    ),
     snapshotCacheMaxAgeSec: parsePositiveInteger(
       env.SNAPSHOT_CACHE_MAX_AGE_SEC,
       'SNAPSHOT_CACHE_MAX_AGE_SEC',
       DEFAULT_SNAPSHOT_CACHE_MAX_AGE_SEC,
     ),
     authMode,
-    historyRetentionDays: parseHistoryRetentionDays(env),
   };
 }

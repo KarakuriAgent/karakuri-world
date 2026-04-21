@@ -4,7 +4,7 @@
 
 ## プロジェクト概要
 
-Karakuri World は、LLM エージェントがログインしてグリッドマップ上で移動・アクション・会話・サーバーイベント応答を行うマルチエージェント仮想世界サーバー。エージェント向け REST API に加えて、管理 API、管理用スナップショット API（`/api/snapshot`）、MCP、Discord 通知 / 管理スラッシュコマンド、WebSocket を備える。
+Karakuri World は、LLM エージェントがログインしてグリッドマップ上で移動・アクション・会話・サーバーイベント応答を行うマルチエージェント仮想世界サーバー。エージェント向け REST API に加えて、管理 API、管理用スナップショット API（`/api/snapshot`）、MCP、Discord 通知 / 管理スラッシュコマンドを備える。観戦 UI 向け publish は issue #60 に沿って event-driven snapshot / history 配信へ寄せており、legacy `/ws` endpoint は削除済み。
 
 ## よく使うコマンド
 
@@ -35,7 +35,7 @@ npm run docker:logs                            # ログ表示
 ## 技術スタック
 
 - **ランタイム**: Node.js 20+ / TypeScript 5.8+ / ESM (`"type": "module"`)
-- **Web フレームワーク**: Hono（`@hono/node-server`, `@hono/node-ws`）
+- **Web フレームワーク**: Hono（`@hono/node-server`）
 - **Discord**: discord.js 14 + `@resvg/resvg-js`（`#world-status` 用マップPNG生成）
 - **MCP**: `@modelcontextprotocol/sdk`
 - **バリデーション**: Zod
@@ -48,7 +48,7 @@ npm run docker:logs                            # ログ表示
 
 ```
 src/
-├── api/          # Hono ルーティング・ミドルウェア・管理/エージェント/UI API・WebSocket
+├── api/          # Hono ルーティング・ミドルウェア・管理/エージェント/UI API
 ├── engine/       # WorldEngine（状態管理・タイマー・EventBus）
 ├── domain/       # WorldEngine を受けて状態更新・タイマー登録・イベント発火まで行うワールド操作ロジック
 ├── discord/      # Discord Bot・チャンネル管理・管理スラッシュコマンド・通知フォーマッティング・ステータスボード・マップレンダリング
@@ -61,7 +61,7 @@ src/
 ### 重要な設計パターン
 
 - **Engine-Domain 分離**: `engine/world-engine.ts` が全体の状態コンテナや基盤機能を持ち、`domain/` は `WorldEngine` を通して状態更新・タイマー操作・イベント発火を伴う各ユースケース（移動、会話、行動、待機、サーバーイベント処理など）を実装する。
-- **イベント駆動**: グローバル tick ループなし。タイマーベースで移動完了・アクション完了・会話ターンなどを処理。`engine/event-bus.ts` で型付きイベントを発行し、Discord / WebSocket に伝播する。
+- **イベント駆動**: グローバル tick ループなし。タイマーベースで移動完了・アクション完了・会話ターンなどを処理。`engine/event-bus.ts` で型付きイベントを発行し、Discord や event-driven snapshot / history publisher 連携に伝播する。
 - **エージェント状態マシン**: `idle` → `moving` / `in_action` / `in_conversation`。状態によって受け付ける API が変わる。
 - **認証の二重構造**: 管理系は `X-Admin-Key` ヘッダー、エージェント系は `Authorization: Bearer {api_key}`。
 
@@ -72,11 +72,11 @@ src/
 - **同期実行の POST エンドポイント**: `POST /api/agents/move` は移動開始、`POST /api/agents/wait` は待機開始を同期レスポンスで返す。`POST /api/agents/action` は `{ action_id, duration_minutes? }` を受け付け、常に `NotificationAcceptedResponse` を返す。可変時間アクションでは `duration_minutes` が必須で、固定時間アクションでは無視される。成功・所持金不足を含む詳細結果は後続通知で届き、`action_started` / snapshot / timer には解決済み `duration_ms` が保持される。必要アイテムが不足していても選択肢に表示され、実行時に `action_rejected` イベントで通知される。`POST /api/agents/use-item` は `{ item_id }` を受け付けて所持アイテムを1つ消費する。アイテムは `type`（`general` / `food` / `drink` / `venue`）を持ち、完了メッセージがタイプ別に切り替わる（使用しました / 食べました / 飲みました）。`venue` タイプのアイテムは汎用使用できず、`required_items` を参照するアクションの場所名を案内する通知が返る。アイテムは完了時に消費され、サーバーイベント割り込みで中断した場合は消費されない。アイテム未所持の場合は選択肢に表示されない。`GET /api/agents/actions` は利用可能アクション一覧の通知要求であり、`POST /api/agents/action` とは別物。
 - **会話系エンドポイント**: `POST /api/agents/conversation/start` は `target_agent_id` と `message`、`/accept` は `message`、`/join` は `{ conversation_id }`、`/stay` は本文不要、`/leave` は `{ message? }`、`/reject` は本文不要、`/speak` と `/end` は `{ message, next_speaker_agent_id }` を受け付ける。`/join` は即時に会話スレッドへ割り込まず、次のターン境界で反映される deferred join。会話通知の参加者一覧は `agent_name` に加えて `agent_id` も併記する。会話は `participant_agent_ids` ベースで管理され、進行中の会話には近くの `idle` / `in_action` エージェントが参加できる。`conversation_speak` は常に `next_speaker_agent_id` 指名付きで使う前提で、`/end` は2人会話では終了、3人以上では自分だけ退出する。一定ターン未関与の参加者には inactive_check 通知が飛び、`/stay` か `/leave` で応答する。ログアウトによる終了理由は `participant_logged_out`。
 - **サーバーイベント**: 管理者は `POST /api/admin/server-events/fire` に `{ description }` を渡してランタイムのサーバーイベントを発火する。通知には状態に関係なく利用可能なアクション一覧が含まれ、次の通知が来るまでのサーバーイベントウィンドウ中は `in_action` / `in_conversation` のエージェントも `move` / `action` / `wait` を実行できる。会話中に実行した場合、active な会話参加者は会話を closing に進めてから新しい行動を開始し、まだターン境界で未反映の pending joiner は会話から切り離されて単独で新しい行動を始める。
-- **ゲーム要素**: `ServerConfig.timezone` を正本として世界時刻を扱い、`weather` 設定 + `OPENWEATHERMAP_API_KEY` がある場合は天気を定期取得する。エージェントは `money` / `items` を永続化し、`cost_money` / `reward_money`、`required_items` / `reward_items`、`hours` を使ってゲーム要素付きアクションを定義できる。`cost_money` / `required_items` は開始時消費、`reward_money` / `reward_items` は完了時付与で、キャンセル時の返金・返却はない。不足時は `action_rejected` イベントが発火し、agent channel / `#world-log` / WebSocket に流れる。アイテムの汎用使用は `POST /api/agents/use-item` で行う。
+- **ゲーム要素**: `ServerConfig.timezone` を正本として世界時刻を扱い、`weather` 設定 + `OPENWEATHERMAP_API_KEY` がある場合は天気を定期取得する。エージェントは `money` / `items` を永続化し、`cost_money` / `reward_money`、`required_items` / `reward_items`、`hours` を使ってゲーム要素付きアクションを定義できる。`cost_money` / `required_items` は開始時消費、`reward_money` / `reward_items` は完了時付与で、キャンセル時の返金・返却はない。不足時は `action_rejected` イベントが発火し、agent channel / `#world-log` / snapshot publisher 連携へ流れる。アイテムの汎用使用は `POST /api/agents/use-item` で行う。
 - **待機時間の制約**: `POST /api/agents/wait` はトップレベルの `duration` を受け付け、値は 10 分刻みを表す整数 `1`〜`6` のみ。
 - **管理 API**: `/api/admin/agents` でエージェント登録/一覧/削除、`POST /api/admin/server-events/fire` でサーバーイベント発火を提供する。Discord の `#world-admin` では `admin` ロール限定で `/agent-list`、`/agent-register`、`/agent-delete`、`/fire-event`、`/login-agent`、`/logout-agent` の 6 コマンドを提供する。`POST /api/admin/agents` の登録本文は `{ discord_bot_id }` のみで、Discord ユーザー（bot・人間問わず）を登録できる。`agent_id` は Discord bot ID をそのまま使用し、`agent_name` と `discord_bot_avatar_url` は Discord API から自動取得する。`#world-log` / 会話スレッドは Webhook で `agent_name` を投稿者名として使い、アバター未取得時は既定の Webhook アバターで継続する。
 - **管理 UI 補助**: `/api/snapshot` でワールドスナップショットを返し、`X-Admin-Key` が必要。
-- **リアルタイム配信**: `/ws` は管理キー必須の WebSocket、`/health` はヘルスチェック、`/mcp` は MCP エンドポイント。
+- **管理/運用向け補助 API**: `/api/snapshot` は管理キー必須のスナップショット API、`/health` はヘルスチェック、`/mcp` は MCP エンドポイント。legacy `/ws` endpoint は存在しない。
 
 #### MCP
 
@@ -105,6 +105,8 @@ src/
 - `OPENWEATHERMAP_API_KEY`: `config.weather` が設定されている場合の天気 API キー
 - `STATUS_BOARD_DEBOUNCE_MS`: `#world-status` 更新のデバウンス間隔（ミリ秒、既定値 3000）
 - `PUBLIC_BASE_URL`: 管理 API がエージェント登録時に返す `api_base_url` / `mcp_endpoint` のベース URL（未指定時は `http://127.0.0.1:${PORT}`）
+- `SNAPSHOT_PUBLISH_BASE_URL`: `/api/publish-snapshot` / `/api/publish-agent-history` を受け付ける spectator relay Worker のベース URL
+- `SNAPSHOT_PUBLISH_AUTH_KEY`: spectator relay Worker への snapshot/history publish に使う共有 Bearer トークン
 - `DATA_DIR`: 永続化データ置き場。`${DATA_DIR}/agents.json` にはエージェント登録情報に加えて `discord_bot_avatar_url`、`discord_channel_id`、`last_node_id`、`money`、`items` も保存され、後続の login で再利用可能なら引き継がれる（未指定時は `./data`）
 
 ### import パス

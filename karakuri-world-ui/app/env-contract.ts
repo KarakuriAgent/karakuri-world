@@ -55,6 +55,8 @@ const publicHttpUrlSchema = z.string().trim().url().superRefine((value, ctx) => 
   rejectSecretBearingUrlParts(url, ctx);
 });
 
+const SNAPSHOT_MANIFEST_PATH = '/snapshot/manifest.json';
+
 const historyApiUrlSchema = publicHttpUrlSchema.superRefine((value, ctx) => {
   const url = parseUrl(value);
   if (!url) {
@@ -76,7 +78,19 @@ const historyApiUrlSchema = publicHttpUrlSchema.superRefine((value, ctx) => {
   }
 });
 
-const snapshotUrlSchema = publicHttpUrlSchema;
+const snapshotUrlSchema = publicHttpUrlSchema.superRefine((value, ctx) => {
+  const url = parseUrl(value);
+  if (!url) {
+    return;
+  }
+
+  if (url.pathname !== SNAPSHOT_MANIFEST_PATH) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `must point to the public snapshot manifest URL (${SNAPSHOT_MANIFEST_PATH})`,
+    });
+  }
+});
 
 const runtimeEnvSchema = z
   .object({
@@ -103,7 +117,7 @@ const runtimeEnvSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['VITE_SNAPSHOT_URL'],
-        message: 'must point to the direct snapshot object URL, not the same-origin /api/snapshot admin endpoint',
+        message: 'must point to the public snapshot manifest URL, not the same-origin /api/snapshot admin endpoint',
       });
     }
   });

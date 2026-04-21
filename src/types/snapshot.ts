@@ -1,6 +1,7 @@
 import type { AgentItem, AgentState } from './agent.js';
 import type { ConversationClosureReason, ConversationStatus } from './conversation.js';
 import type { MapConfig, NodeId, WorldConfig } from './data-model.js';
+import type { SnapshotPublisherStats } from '../engine/snapshot-publisher.js';
 
 export type AgentActivitySnapshot =
   | {
@@ -100,4 +101,7 @@ export interface WorldSnapshot {
   conversations: ConversationSnapshot[];
   server_events: ServerEventSnapshot[];
   generated_at: number;
+  runtime?: {
+    snapshot_publisher: SnapshotPublisherStats;
+  };
 }

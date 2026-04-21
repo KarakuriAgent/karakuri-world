@@ -220,11 +220,6 @@ export function validateAlertCatalog(spec, drills) {
     }
   }
 
-  const retentionSilenceAlert = findAlert(spec, 'relay-retention-silence-page');
-  if (retentionSilenceAlert?.condition?.type !== 'absent_counter' || retentionSilenceAlert.condition?.missing_for_days < 2) {
-    issues.push('relay-retention-silence-page must enforce at least a two-day silence window');
-  }
-
   const retryBrakeAlert = findAlert(spec, 'relay-r2-backoff-saturation-page');
   if (retryBrakeAlert?.condition?.type !== 'gauge' || retryBrakeAlert.condition?.metric !== 'ui.r2.publish_failure_streak' || retryBrakeAlert.condition?.min_value < 5) {
     issues.push('relay-r2-backoff-saturation-page must alert once publish_failure_streak reaches the 60-second retry ceiling');
@@ -403,29 +398,6 @@ function stripTomlComments(wranglerText) {
 export function validateWranglerProductionConfig(wranglerText) {
   const issues = [];
   const normalizedWranglerText = stripTomlComments(wranglerText);
-
-  if (!/crons\s*=\s*\[\s*"0 3 \* \* \*"\s*\]/.test(normalizedWranglerText)) {
-    issues.push('wrangler.toml must keep the daily 03:00 UTC retention cron enabled');
-  }
-
-  const historyDatabaseBlock = findTomlBindingBlock(normalizedWranglerText, 'd1_databases', 'HISTORY_DB');
-  if (!historyDatabaseBlock) {
-    issues.push('wrangler.toml must define [[d1_databases]] binding = "HISTORY_DB"');
-  } else {
-    const databaseId = extractTomlBindingValue(historyDatabaseBlock, 'database_id');
-    const previewDatabaseId = extractTomlBindingValue(historyDatabaseBlock, 'preview_database_id');
-
-    if (databaseId === undefined) {
-      issues.push('wrangler.toml must define a database_id for HISTORY_DB');
-    }
-    if (previewDatabaseId === undefined) {
-      issues.push('wrangler.toml must define a preview_database_id for HISTORY_DB');
-    }
-
-    if ((databaseId !== undefined && !isFilledString(databaseId)) || (previewDatabaseId !== undefined && !isFilledString(previewDatabaseId))) {
-      issues.push('wrangler.toml still contains placeholder D1 database IDs');
-    }
-  }
 
   const snapshotBucketBlock = findTomlBindingBlock(normalizedWranglerText, 'r2_buckets', 'SNAPSHOT_BUCKET');
   if (!snapshotBucketBlock) {

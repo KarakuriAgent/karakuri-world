@@ -287,12 +287,11 @@ sequenceDiagram
 graph LR
     WE["World Engine<br/>状態変化イベント発行"] --> DC["Discord通知<br/>（エージェント向け）"]
     WE --> SNAP["/api/snapshot + publisher<br/>R2/CDN配信（UI primary）"]
-    WE --> WS["optional /ws / relay<br/>（backend-side / debugging）"]
     WE --> LOG["ログ記録"]
 ```
 
-UI の主経路は fixed-cadence で生成・publish された snapshot object を R2/CDN 経由でブラウザが polling する方式とする。
-`/ws` は optional な relay / backend-side の補助経路であり、debugging や加速用途には使えるが、current-state 配信の primary readiness gate ではない。
+UI の主経路は `/api/snapshot` を正本にした event-driven snapshot / history publish を R2/CDN に反映し、ブラウザが公開 snapshot object を polling する方式とする。定期 refresh を使う場合も fallback/readiness 用であり primary ではない。
+ブラウザ向け current-state 配信は `/api/snapshot` を正本にした publish 経路へ集約し、backend-side legacy `/ws` endpoint は削除済みとする。
 
 ## 11. サーバー管理者の設定項目
 

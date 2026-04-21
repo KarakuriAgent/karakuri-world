@@ -1,4 +1,5 @@
 import type { AgentState, NodeId } from './world-snapshot.js';
+import type { EventType as BackendEventType } from '../../../../src/types/event.js';
 
 export type ItemType = 'general' | 'food' | 'drink' | 'venue';
 export type ConversationRejectionReason = 'rejected' | 'timeout' | 'target_logged_out' | 'server_event';
@@ -47,6 +48,14 @@ export type EventType =
   | 'world_agents_info_requested'
   | 'perception_requested'
   | 'available_actions_requested';
+
+type _BackendWorkerEventTypeParity = [Exclude<BackendEventType, EventType>, Exclude<EventType, BackendEventType>] extends [
+  never,
+  never,
+]
+  ? true
+  : never;
+const _backendWorkerEventTypeParity: _BackendWorkerEventTypeParity = true;
 
 export interface EventBase {
   event_id: string;
