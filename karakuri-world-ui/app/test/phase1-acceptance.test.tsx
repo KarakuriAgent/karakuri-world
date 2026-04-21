@@ -163,7 +163,6 @@ describe('Phase 1 acceptance', () => {
 
     expect(store.getState().snapshot?.generated_at).toBe(refreshedSnapshot.generated_at);
     expect(screen.getByTestId('desktop-agent-location')).toHaveTextContent('1-1');
-    expect(screen.getByTestId('map-selection-summary')).toHaveTextContent('Agent 100 @ 1-1');
 
     store.getState().stopPolling();
   });
@@ -252,8 +251,8 @@ describe('Phase 1 acceptance', () => {
       'desktop-conversation-history-conv-1-item',
     );
     expect(conversationItems).toHaveLength(2);
-    expect(conversationItems[0]).toHaveTextContent('Bob replied');
-    expect(conversationItems[1]).toHaveTextContent('Alice spoke');
+    expect(conversationItems[0]).toHaveTextContent('Alice spoke');
+    expect(conversationItems[1]).toHaveTextContent('Bob replied');
   });
 
   it('keeps healthy quiet periods fresh and leaves the stale banner hidden until publish health degrades', async () => {

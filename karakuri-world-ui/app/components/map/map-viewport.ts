@@ -1,9 +1,9 @@
 import type { SpectatorSnapshot } from '../../../worker/src/contracts/spectator-snapshot.js';
 import type { MapSelectionFocusCommand, MapViewportViewState } from './selection-focus.js';
 
-export const MAP_VIEWPORT_MARGIN_PX = 24;
 export const MAP_VIEWPORT_MIN_ZOOM = 0.5;
 export const MAP_VIEWPORT_MAX_ZOOM = 3.0;
+export const MAP_VIEWPORT_ZOOM_STEP = 1.25;
 export const MAP_VIEWPORT_DRAG_THRESHOLD_PX = 4;
 const MAP_VIEWPORT_FOCUS_EASING = 'easeInOutSine';
 
@@ -15,7 +15,6 @@ export interface WorldDimensions {
 export interface MapViewportMetrics extends WorldDimensions {
   screenWidth: number;
   screenHeight: number;
-  marginPx?: number;
   minZoom?: number;
   maxZoom?: number;
 }
@@ -59,16 +58,15 @@ export function calculateInitialViewportZoom({
   screenHeight,
   worldWidth,
   worldHeight,
-  marginPx = MAP_VIEWPORT_MARGIN_PX,
   minZoom = MAP_VIEWPORT_MIN_ZOOM,
   maxZoom = MAP_VIEWPORT_MAX_ZOOM,
 }: MapViewportMetrics): number {
-  const usableWidth = Math.max(screenWidth - marginPx * 2, 1);
-  const usableHeight = Math.max(screenHeight - marginPx * 2, 1);
+  const usableWidth = Math.max(screenWidth, 1);
+  const usableHeight = Math.max(screenHeight, 1);
   const horizontalZoom = usableWidth / Math.max(worldWidth, 1);
   const verticalZoom = usableHeight / Math.max(worldHeight, 1);
 
-  return clampMapViewportZoom(Math.min(horizontalZoom, verticalZoom), minZoom, maxZoom);
+  return clampMapViewportZoom(Math.max(horizontalZoom, verticalZoom), minZoom, maxZoom);
 }
 
 export function applyInitialViewportFrame(

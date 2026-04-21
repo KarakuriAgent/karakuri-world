@@ -5,7 +5,9 @@ import type {
   SpectatorSnapshot,
 } from '../../../worker/src/contracts/spectator-snapshot.js';
 import type { HistoryCacheEntry, MobileSheetMode, SnapshotStoreState } from '../../store/snapshot-store.js';
-import { getOutstandingServerEventCount, getSidebarServerEventsState } from '../../lib/recent-server-events.js';
+import { getAgentStateLabel } from '../../lib/agent-state-label.js';
+import { getSidebarServerEvents } from '../../lib/recent-server-events.js';
+import { formatHistoryTimestamp } from '../../lib/timestamp.js';
 import { AgentOverlay } from '../overlay/AgentOverlay.js';
 
 export interface BottomSheetProps {
@@ -81,9 +83,7 @@ export function BottomSheet({
   onModeChange,
 }: BottomSheetProps) {
   const dragStartY = useRef<number | null>(null);
-  const serverEventsState = useMemo(() => getSidebarServerEventsState(snapshot), [snapshot]);
-  const recentServerEvents = serverEventsState.events;
-  const activeServerEventCount = getOutstandingServerEventCount(snapshot);
+  const recentServerEvents = useMemo(() => getSidebarServerEvents(snapshot), [snapshot]);
   const hasSelectedAgent = Boolean(selectedAgent);
 
   const setMode = (nextMode: MobileSheetMode) => {
@@ -165,39 +165,20 @@ export function BottomSheet({
             </div>
             <div className="text-right text-xs text-slate-400">
               <p>エージェント {agents.length} 人</p>
-              <p>進行中イベント {activeServerEventCount} 件</p>
             </div>
           </div>
         </button>
 
         <div className="min-h-0 flex-1 overflow-hidden px-4 pb-4">
-          {mode === 'peek' ? <div className="sr-only" data-testid="mobile-peek-panel">エージェント数 {agents.length} 進行中イベント数 {activeServerEventCount}</div> : null}
+          {mode === 'peek' ? <div className="sr-only" data-testid="mobile-peek-panel">エージェント数 {agents.length}</div> : null}
 
           {mode === 'list' ? (
             <div className="flex h-full flex-col gap-4 overflow-hidden" data-testid="mobile-list-panel">
               <section className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-sm font-medium text-slate-200">直近サーバーイベント</h2>
-                    {serverEventsState.is_degraded_fallback ? (
-                      <span
-                        className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-200"
-                        data-testid="mobile-server-events-fallback-badge"
-                      >
-                        フォールバック表示
-                      </span>
-                    ) : null}
-                  </div>
+                  <h2 className="text-sm font-medium text-slate-200">直近サーバーイベント</h2>
                   <span className="text-xs text-slate-400">{recentServerEvents.length} 件</span>
                 </div>
-                {serverEventsState.is_degraded_fallback ? (
-                  <div
-                    className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100"
-                    data-testid="mobile-server-events-fallback-note"
-                  >
-                    直近履歴を復元できなかったため、進行中イベントを暫定表示しています。
-                  </div>
-                ) : null}
                 {recentServerEvents.length ? (
                   <div className="space-y-2">
                     {recentServerEvents.map((event) => (
@@ -206,16 +187,10 @@ export function BottomSheet({
                         className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3 text-sm"
                         data-testid="mobile-server-event-item"
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <p className="text-slate-100">{event.description}</p>
-                          <span
-                            className={`rounded-full px-2 py-1 text-[11px] font-medium ${
-                              event.is_active_now ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-800 text-slate-300'
-                            }`}
-                          >
-                            {event.is_active_now ? '進行中' : '履歴'}
-                          </span>
-                        </div>
+                        <p className="text-slate-100">{event.description}</p>
+                        <time className="mt-1 block text-xs text-slate-500">
+                          {formatHistoryTimestamp(event.occurred_at, snapshot?.timezone)}
+                        </time>
                       </div>
                     ))}
                   </div>
@@ -249,7 +224,7 @@ export function BottomSheet({
                             </div>
                             <div className="text-right">
                               <p className="text-lg leading-none">{agent.status_emoji}</p>
-                              <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">{agent.state}</p>
+                              <p className="mt-1 text-xs text-slate-400">{getAgentStateLabel(agent.state)}</p>
                             </div>
                           </div>
                         </button>

@@ -8,6 +8,8 @@ import type {
   SpectatorSnapshot,
 } from '../../../worker/src/contracts/spectator-snapshot.js';
 import { getAgentAvatarFallbackLabel } from '../../lib/agent-avatar.js';
+import { collapseConversationHistoryForAgentTimeline, resolveHistorySpeaker } from '../../lib/history-speaker.js';
+import { formatHistoryTimestamp } from '../../lib/timestamp.js';
 
 export interface AgentOverlayProps {
   agent: SpectatorAgentSnapshot;
@@ -21,9 +23,27 @@ export interface AgentOverlayProps {
   snapshot?: Pick<SpectatorSnapshot, 'agents' | 'conversations' | 'timezone'>;
 }
 
-function AgentAvatar({ agent, compact }: { agent: SpectatorAgentSnapshot; compact: boolean }) {
+type AgentAvatarSize = 'sm' | 'md' | 'lg';
+
+const AGENT_AVATAR_SIZE_CLASSES: Record<AgentAvatarSize, string> = {
+  sm: 'h-8 w-8 text-sm',
+  md: 'h-14 w-14 text-xl',
+  lg: 'h-16 w-16 text-2xl',
+};
+
+function AgentAvatar({
+  agent,
+  size = 'lg',
+  testId,
+  fallbackTestId,
+}: {
+  agent: Pick<SpectatorAgentSnapshot, 'agent_id' | 'agent_name' | 'discord_bot_avatar_url'>;
+  size?: AgentAvatarSize;
+  testId?: string;
+  fallbackTestId?: string;
+}) {
   const [hasImageError, setHasImageError] = useState(false);
-  const sizeClassName = compact ? 'h-14 w-14 text-xl' : 'h-16 w-16 text-2xl';
+  const sizeClassName = AGENT_AVATAR_SIZE_CLASSES[size];
   const fallbackLabel = getAgentAvatarFallbackLabel(agent.agent_name);
   const shouldRenderImage = Boolean(agent.discord_bot_avatar_url) && !hasImageError;
 
@@ -34,7 +54,7 @@ function AgentAvatar({ agent, compact }: { agent: SpectatorAgentSnapshot; compac
   return (
     <div
       className={`${sizeClassName} flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-700 bg-slate-800 font-semibold text-white`}
-      data-testid={compact ? 'mobile-agent-avatar' : 'desktop-agent-avatar'}
+      data-testid={testId}
     >
       {shouldRenderImage ? (
         <img
@@ -44,7 +64,7 @@ function AgentAvatar({ agent, compact }: { agent: SpectatorAgentSnapshot; compac
           onError={() => setHasImageError(true)}
         />
       ) : (
-        <span data-testid={compact ? 'mobile-agent-avatar-fallback' : 'desktop-agent-avatar-fallback'}>{fallbackLabel}</span>
+        <span data-testid={fallbackTestId}>{fallbackLabel}</span>
       )}
     </div>
   );
@@ -56,7 +76,7 @@ function getConversationLabel(
   snapshot: Pick<SpectatorSnapshot, 'agents' | 'conversations' | 'timezone'> | undefined,
 ): string {
   if (!conversation) {
-    return agent.current_conversation_id ? `会話中 (${agent.current_conversation_id})` : '会話中';
+    return '会話中';
   }
 
   const participantNames = conversation.participant_agent_ids
@@ -71,7 +91,7 @@ function getConversationLabel(
   return `会話中${participantLabel}${speakerLabel}`;
 }
 
-function getCurrentActivityLabel(
+function getCurrentActivitySummary(
   agent: SpectatorAgentSnapshot,
   snapshot: Pick<SpectatorSnapshot, 'agents' | 'conversations' | 'timezone'> | undefined,
 ): string {
@@ -95,19 +115,6 @@ function getCurrentActivityLabel(
   }
 }
 
-function getStateLabel(agent: SpectatorAgentSnapshot): string {
-  switch (agent.state) {
-    case 'moving':
-      return '移動中';
-    case 'in_action':
-      return 'アクション中';
-    case 'in_conversation':
-      return '会話中';
-    case 'idle':
-      return '待機中';
-  }
-}
-
 function DetailCard({
   title,
   value,
@@ -125,20 +132,6 @@ function DetailCard({
       </p>
     </div>
   );
-}
-
-function formatHistoryTimestamp(occurredAt: number, timeZone?: string): string {
-  try {
-    return new Intl.DateTimeFormat('ja-JP', {
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZone,
-    }).format(new Date(occurredAt));
-  } catch {
-    return new Date(occurredAt).toLocaleString('ja-JP');
-  }
 }
 
 function HistoryRetryButton({
@@ -172,6 +165,9 @@ interface HistoryTimelineProps {
   baseTestId: string;
   timeZone?: string;
   allowConversationExpansion?: boolean;
+  collapseConversationsToHeadUtterance?: boolean;
+  reverseItemOrder?: boolean;
+  snapshot?: Pick<SpectatorSnapshot, 'agents'>;
 }
 
 function HistoryTimeline({
@@ -186,6 +182,9 @@ function HistoryTimeline({
   baseTestId,
   timeZone,
   allowConversationExpansion = false,
+  collapseConversationsToHeadUtterance = false,
+  reverseItemOrder = false,
+  snapshot,
 }: HistoryTimelineProps) {
   const handleFetch = (options?: FetchHistoryOptions) => {
     void fetchHistory?.(scope, options);
@@ -229,7 +228,11 @@ function HistoryTimeline({
     );
   }
 
-  const items = history.response?.items ?? [];
+  const rawItems = history.response?.items ?? [];
+  const collapsedItems = collapseConversationsToHeadUtterance
+    ? collapseConversationHistoryForAgentTimeline(rawItems)
+    : rawItems;
+  const items = reverseItemOrder ? [...collapsedItems].reverse() : collapsedItems;
   const isReplaceLoading = history.status === 'loading' && history.request.merge === 'replace';
   const isReplaceError = history.status === 'error' && Boolean(history.response) && history.request.merge === 'replace';
   const isAppendLoading = history.status === 'loading' && history.request.merge === 'append';
@@ -290,10 +293,18 @@ function HistoryTimeline({
         ) : null}
       </div>
       <ol className="mt-3 space-y-3" data-testid={`${baseTestId}-list`}>
-        {items.map((item) => {
+        {(() => {
+          const seenConversationIds = new Set<string>();
+          return items.map((item) => {
           const conversationId = allowConversationExpansion ? item.conversation_id : undefined;
+          const isFirstInConversationGroup = conversationId ? !seenConversationIds.has(conversationId) : false;
+          if (conversationId) {
+            seenConversationIds.add(conversationId);
+          }
+          const showConversationToggle = Boolean(conversationId && isFirstInConversationGroup);
           const isExpanded = conversationId ? Boolean(expandedConversationIds?.[conversationId]) : false;
           const conversationEntry = conversationId ? historyCache?.[toHistoryScopeKey({ conversation_id: conversationId })] : undefined;
+          const speaker = resolveHistorySpeaker(item, snapshot);
 
           return (
             <li
@@ -302,18 +313,45 @@ function HistoryTimeline({
               data-testid={`${baseTestId}-item`}
             >
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-medium text-white">
-                    <span className="mr-2" aria-hidden="true">
-                      {item.summary.emoji}
-                    </span>
-                    {item.summary.title}
-                  </p>
-                  <p className="mt-1 text-sm text-slate-300">{item.summary.text}</p>
-                  {conversationId ? (
+                <div className="min-w-0 flex-1">
+                  {speaker ? (
+                    <div className="flex items-start gap-2">
+                      <AgentAvatar
+                        agent={
+                          speaker.agent ?? {
+                            agent_id: speaker.speaker_agent_id,
+                            agent_name: speaker.display_name,
+                            discord_bot_avatar_url: undefined,
+                          }
+                        }
+                        size="sm"
+                        testId={`${baseTestId}-item-speaker-avatar-${item.event_id}`}
+                        fallbackTestId={`${baseTestId}-item-speaker-avatar-fallback-${item.event_id}`}
+                      />
+                      <div className="min-w-0">
+                        <p
+                          className="text-sm font-medium text-white"
+                          data-testid={`${baseTestId}-item-speaker-name-${item.event_id}`}
+                        >
+                          {speaker.display_name}
+                        </p>
+                        <p className="mt-1 text-sm text-slate-200">{item.summary.text}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="font-medium text-white">
+                        <span className="mr-2" aria-hidden="true">
+                          {item.summary.emoji}
+                        </span>
+                        {item.summary.title}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-300">{item.summary.text}</p>
+                    </>
+                  )}
+                  {showConversationToggle && conversationId ? (
                     <div className="mt-2 space-y-3">
                       <div className="flex items-center gap-3">
-                        <p className="text-xs text-slate-500">conversation: {conversationId}</p>
                         <button
                           type="button"
                           className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-200 transition-colors hover:border-slate-500 hover:text-white"
@@ -349,6 +387,8 @@ function HistoryTimeline({
                             title="会話ログ"
                             baseTestId={`${prefix}-conversation-history-${conversationId}`}
                             timeZone={timeZone}
+                            reverseItemOrder
+                            snapshot={snapshot}
                           />
                         </div>
                       ) : null}
@@ -359,7 +399,8 @@ function HistoryTimeline({
               </div>
             </li>
           );
-        })}
+          });
+        })()}
       </ol>
       {nextCursor || isAppendLoading || isAppendError ? (
         <div className="mt-4 flex flex-wrap items-center gap-3" data-testid={`${baseTestId}-pagination`}>
@@ -400,48 +441,47 @@ export function AgentOverlay({
   const Wrapper = compact ? 'div' : 'aside';
   const containerClassName = compact
     ? 'rounded-3xl border border-slate-800 bg-slate-900/80 p-4'
-    : 'flex min-h-screen flex-col border-l border-slate-800 bg-slate-950/95 p-6';
+    : 'flex h-screen flex-col overflow-y-auto border-l border-slate-800 bg-slate-950/95 p-6';
   const prefix = compact ? 'mobile' : 'desktop';
 
   return (
     <Wrapper className={containerClassName} data-testid={compact ? 'mobile-agent-overlay' : 'desktop-overlay'}>
       <div className="flex items-start justify-between gap-4">
-        <div className="flex items-start gap-4">
-          <AgentAvatar agent={agent} compact={compact} />
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300">Agent detail</p>
-            <h2 className="mt-2 text-2xl font-semibold text-white" data-testid={`${prefix}-agent-name`}>
+        <div className="flex min-w-0 items-start gap-4">
+          <AgentAvatar
+            agent={agent}
+            size={compact ? 'md' : 'lg'}
+            testId={compact ? 'mobile-agent-avatar' : 'desktop-agent-avatar'}
+            fallbackTestId={compact ? 'mobile-agent-avatar-fallback' : 'desktop-agent-avatar-fallback'}
+          />
+          <div className="min-w-0">
+            <h2 className="text-2xl font-semibold text-white" data-testid={`${prefix}-agent-name`}>
               {agent.agent_name}
             </h2>
-            <p className="mt-1 text-sm text-slate-400">selected_agent_id: {agent.agent_id}</p>
-          </div>
-        </div>
-        <div className="flex items-start gap-3">
-          <div className="text-right">
-            <p className="text-3xl leading-none" data-testid={`${prefix}-agent-status-emoji`}>
-              {agent.status_emoji}
+            <p className="mt-1 text-sm text-slate-400">
+              現在地:{' '}
+              <span className="text-slate-200" data-testid={`${prefix}-agent-location`}>
+                {agent.node_id}
+              </span>
             </p>
-            <p className="mt-2 text-xs uppercase tracking-wide text-slate-400">{getStateLabel(agent)}</p>
           </div>
-          {onClose ? (
-            <button
-              type="button"
-              className="rounded-full border border-slate-700 px-3 py-1 text-sm text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
-              data-testid={compact ? 'mobile-overlay-close' : 'desktop-overlay-close'}
-              onClick={onClose}
-            >
-              {compact ? '一覧へ戻る' : '閉じる'}
-            </button>
-          ) : null}
         </div>
+        {onClose ? (
+          <button
+            type="button"
+            className="shrink-0 rounded-full border border-slate-700 px-3 py-1 text-sm text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
+            data-testid={compact ? 'mobile-overlay-close' : 'desktop-overlay-close'}
+            onClick={onClose}
+          >
+            {compact ? '一覧へ戻る' : '閉じる'}
+          </button>
+        ) : null}
       </div>
 
       <div className="mt-6 grid gap-3 text-sm text-slate-300">
-        <DetailCard title="現在地" value={agent.node_id} testId={`${prefix}-agent-location`} />
-        <DetailCard title="状態" value={getStateLabel(agent)} testId={`${prefix}-agent-state`} />
         <DetailCard
           title="現在の行動"
-          value={getCurrentActivityLabel(agent, snapshot)}
+          value={getCurrentActivitySummary(agent, snapshot)}
           testId={`${prefix}-agent-activity`}
         />
         <HistoryTimeline
@@ -456,6 +496,8 @@ export function AgentOverlay({
           baseTestId={`${prefix}-agent-history`}
           timeZone={snapshot?.timezone}
           allowConversationExpansion
+          collapseConversationsToHeadUtterance
+          snapshot={snapshot}
         />
       </div>
     </Wrapper>

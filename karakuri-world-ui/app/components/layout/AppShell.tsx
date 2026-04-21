@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import type { SpectatorSnapshot } from '../../../worker/src/contracts/spectator-snapshot.js';
 import type { Phase3EnvironmentEffectFlags } from '../map/environment-effects.js';
@@ -11,6 +11,12 @@ import {
   type SnapshotStoreState,
 } from '../../store/snapshot-store.js';
 
+import {
+  OVERLAY_WIDTH_DEFAULT_PX,
+  clampOverlayWidth,
+  loadOverlayWidth,
+  saveOverlayWidth,
+} from '../../lib/overlay-width.js';
 import { sortAgentsForSidebar } from '../../lib/sort-agents.js';
 import { MapCanvasHost } from '../map/MapCanvasHost.js';
 import { AgentOverlay } from '../overlay/AgentOverlay.js';
@@ -73,9 +79,60 @@ export function AppShell({
   const [mobileTopStackHeight, setMobileTopStackHeight] = useState(0);
   const mobileTopStackRef = useRef<HTMLDivElement | null>(null);
   const showMobileStatusBanner = hasSnapshotStatusBanner(snapshotStatus, isStale);
-  const desktopOverlayHistory = desktopOverlayAgent
-    ? historyCache[toHistoryScopeKey({ agent_id: desktopOverlayAgent.agent_id })]
-    : undefined;
+  const [overlayWidth, setOverlayWidth] = useState<number>(OVERLAY_WIDTH_DEFAULT_PX);
+  const resizePointerIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setOverlayWidth(loadOverlayWidth());
+  }, []);
+
+  const handleResizePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) {
+        return;
+      }
+
+      const handle = event.currentTarget;
+      handle.setPointerCapture(event.pointerId);
+      resizePointerIdRef.current = event.pointerId;
+      const overlayRight =
+        typeof window !== 'undefined' ? window.innerWidth : handle.getBoundingClientRect().right;
+
+      const handleMove = (moveEvent: PointerEvent) => {
+        if (moveEvent.pointerId !== resizePointerIdRef.current) {
+          return;
+        }
+        const proposedWidth = overlayRight - moveEvent.clientX;
+        setOverlayWidth(
+          clampOverlayWidth(proposedWidth, typeof window !== 'undefined' ? window.innerWidth : undefined),
+        );
+      };
+
+      const handleUp = (upEvent: PointerEvent) => {
+        if (upEvent.pointerId !== resizePointerIdRef.current) {
+          return;
+        }
+        resizePointerIdRef.current = null;
+        handle.releasePointerCapture(upEvent.pointerId);
+        window.removeEventListener('pointermove', handleMove);
+        window.removeEventListener('pointerup', handleUp);
+        window.removeEventListener('pointercancel', handleUp);
+        setOverlayWidth((current) => {
+          const clamped = clampOverlayWidth(
+            current,
+            typeof window !== 'undefined' ? window.innerWidth : undefined,
+          );
+          saveOverlayWidth(clamped);
+          return clamped;
+        });
+      };
+
+      window.addEventListener('pointermove', handleMove);
+      window.addEventListener('pointerup', handleUp);
+      window.addEventListener('pointercancel', handleUp);
+    },
+    [],
+  );
 
   useLayoutEffect(() => {
     const element = mobileTopStackRef.current;
@@ -122,10 +179,10 @@ export function AppShell({
     };
   }, [selectedAgent]);
 
-  const hasDesktopOverlayColumn = Boolean(selectedAgent || desktopOverlayAgent);
-  const desktopGridColumns = hasDesktopOverlayColumn
-    ? 'lg:grid-cols-[320px_minmax(0,1fr)_360px]'
-    : 'lg:grid-cols-[320px_minmax(0,1fr)]';
+  const hasDesktopOverlay = Boolean(selectedAgent || desktopOverlayAgent);
+  const desktopOverlayHistory = desktopOverlayAgent
+    ? historyCache[toHistoryScopeKey({ agent_id: desktopOverlayAgent.agent_id })]
+    : undefined;
   const mobileBottomSheetMaxHeight =
     mobileTopStackHeight > 0
       ? `calc(100dvh - ${mobileTopStackHeight}px - env(safe-area-inset-bottom, 0px) - 1rem)`
@@ -134,7 +191,7 @@ export function AppShell({
   return (
     <main className="relative min-h-screen bg-slate-950 text-slate-100" data-testid="app-shell">
       <div
-        className={`relative min-h-screen ${desktopGridColumns} lg:grid`}
+        className="relative min-h-screen lg:grid lg:grid-cols-[320px_minmax(0,1fr)]"
         data-testid="desktop-shell"
       >
         <div className="pointer-events-auto hidden lg:block">
@@ -149,34 +206,46 @@ export function AppShell({
           snapshot={snapshot}
           selectedAgentId={selectedAgentId}
           selectionRevision={selectionRevision}
+          overlayOffsetX={hasDesktopOverlay ? overlayWidth : 0}
           phase3EffectsEnabled={phase3EffectsEnabled}
           phase3EnvironmentEffectFlags={phase3EnvironmentEffectFlags}
           phase3MotionEffectFlags={phase3MotionEffectFlags}
           onSelectAgent={onSelectAgent}
         />
-        {hasDesktopOverlayColumn ? (
-          <div className="pointer-events-auto hidden overflow-hidden lg:block" data-testid="desktop-overlay-rail">
-            <div
-              className={`h-full transition-transform duration-200 ease-out ${
-                isDesktopOverlayVisible ? 'translate-x-0' : 'translate-x-full'
-              }`}
-            >
-              {desktopOverlayAgent ? (
-                <AgentOverlay
-                  agent={desktopOverlayAgent}
-                  history={desktopOverlayHistory}
-                  historyCache={historyCache}
-                  expandedConversationIds={expandedConversationIds}
-                  fetchHistory={fetchHistory}
-                  onClose={onClearSelectedAgent}
-                  onToggleConversationExpanded={onToggleConversationExpanded}
-                  snapshot={snapshot}
-                />
-              ) : null}
-            </div>
-          </div>
-        ) : null}
       </div>
+
+      {hasDesktopOverlay ? (
+        <div
+          className="pointer-events-none absolute inset-y-0 right-0 hidden overflow-hidden lg:block"
+          data-testid="desktop-overlay-rail"
+        >
+          <div
+            className={`pointer-events-auto relative h-full transition-transform duration-200 ease-out ${
+              isDesktopOverlayVisible ? 'translate-x-0' : 'translate-x-full'
+            }`}
+            style={{ width: overlayWidth }}
+          >
+            <div
+              aria-hidden
+              className="absolute inset-y-0 left-0 z-10 w-1 cursor-col-resize bg-transparent hover:bg-cyan-400/40"
+              data-testid="desktop-overlay-resize-handle"
+              onPointerDown={handleResizePointerDown}
+            />
+            {desktopOverlayAgent ? (
+              <AgentOverlay
+                agent={desktopOverlayAgent}
+                history={desktopOverlayHistory}
+                historyCache={historyCache}
+                expandedConversationIds={expandedConversationIds}
+                fetchHistory={fetchHistory}
+                onClose={onClearSelectedAgent}
+                onToggleConversationExpanded={onToggleConversationExpanded}
+                snapshot={snapshot}
+              />
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       <div className="pointer-events-none absolute inset-0 min-h-screen lg:hidden" data-testid="mobile-shell">
         <div

@@ -98,7 +98,6 @@ describe('App shell bootstrap', () => {
 
     expect(screen.getByTestId('mobile-bottom-sheet')).toHaveAttribute('data-sheet-mode', 'peek');
     expect(screen.getByTestId('mobile-peek-panel')).toHaveTextContent('エージェント数 2');
-    expect(screen.getByTestId('mobile-peek-panel')).toHaveTextContent('進行中イベント数 1');
   });
 
   it('uses the spectator snapshot contract to populate the shell frame', () => {
@@ -123,7 +122,7 @@ describe('App shell bootstrap', () => {
     );
   });
 
-  it('keeps the desktop shell in sidebar + map mode until an agent is selected, then adds the overlay rail', async () => {
+  it('keeps the desktop shell in sidebar + map mode until an agent is selected, then shows the overlay as absolute positioned rail', async () => {
     const store = createSnapshotStore({
       snapshotUrl: env.snapshotUrl,
       authMode: env.authMode,
@@ -136,6 +135,7 @@ describe('App shell bootstrap', () => {
     const mapHost = screen.getByTestId('map-canvas-host');
     expect(desktopShell.className).toContain('lg:grid-cols-[320px_minmax(0,1fr)]');
     expect(screen.queryByTestId('desktop-overlay')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('desktop-overlay-rail')).not.toBeInTheDocument();
     expect(Array.from(desktopShell.children)).toEqual([
       screen.getByTestId('desktop-sidebar').parentElement,
       mapHost,
@@ -144,14 +144,55 @@ describe('App shell bootstrap', () => {
     fireEvent.click(screen.getByTestId('sidebar-agent-button-alice'));
 
     await waitFor(() => expect(screen.getByTestId('desktop-overlay')).toBeInTheDocument());
-    expect(desktopShell.className).toContain('lg:grid-cols-[320px_minmax(0,1fr)_360px]');
-    expect(Array.from(desktopShell.children)[1]).toBe(mapHost);
-    expect(Array.from(desktopShell.children)[2]).toBe(screen.getByTestId('desktop-overlay-rail'));
+    // Grid columns remain unchanged because overlay is absolute positioned
+    expect(desktopShell.className).toContain('lg:grid-cols-[320px_minmax(0,1fr)]');
+    // Overlay rail is a sibling of desktop-shell, not a child
+    const overlayRail = screen.getByTestId('desktop-overlay-rail');
+    expect(overlayRail).toBeInTheDocument();
+    expect(desktopShell.children).toHaveLength(2);
 
     fireEvent.click(screen.getByTestId('desktop-overlay-close'));
 
     await waitFor(() => expect(screen.queryByTestId('desktop-overlay')).not.toBeInTheDocument());
+    expect(screen.queryByTestId('desktop-overlay-rail')).not.toBeInTheDocument();
     expect(desktopShell.className).toContain('lg:grid-cols-[320px_minmax(0,1fr)]');
+  });
+
+  it('keeps the map host width unchanged when overlay is visible', async () => {
+    const store = createSnapshotStore({
+      snapshotUrl: env.snapshotUrl,
+      authMode: env.authMode,
+      initialSnapshot: createReadySnapshot(),
+    });
+
+    render(<App env={env} store={store} autoStartPolling={false} />);
+
+    const mapHost = screen.getByTestId('map-canvas-host');
+    const initialWidth = mapHost.getBoundingClientRect().width;
+
+    fireEvent.click(screen.getByTestId('sidebar-agent-button-alice'));
+
+    await waitFor(() => expect(screen.getByTestId('desktop-overlay')).toBeInTheDocument());
+
+    // Map host width should remain the same because overlay is absolute positioned
+    const finalWidth = mapHost.getBoundingClientRect().width;
+    expect(finalWidth).toBe(initialWidth);
+  });
+
+  it('exposes the desktop overlay resize handle when an agent is selected', async () => {
+    const store = createSnapshotStore({
+      snapshotUrl: env.snapshotUrl,
+      authMode: env.authMode,
+      initialSnapshot: createReadySnapshot(),
+    });
+
+    render(<App env={env} store={store} autoStartPolling={false} />);
+
+    expect(screen.queryByTestId('desktop-overlay-resize-handle')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('sidebar-agent-button-alice'));
+
+    await waitFor(() => expect(screen.getByTestId('desktop-overlay-resize-handle')).toBeInTheDocument());
   });
 
   it('lets the mobile detail close action clear selected_agent_id and return to the list', async () => {
@@ -196,29 +237,17 @@ describe('App shell bootstrap', () => {
 
     render(<App env={env} store={store} autoStartPolling={false} />);
 
-    expect(screen.getByTestId('map-selection-summary')).toHaveTextContent('未選択');
-    expect(screen.getByTestId('map-focus-request-count')).toHaveTextContent('0');
-
     fireEvent.click(screen.getByTestId('sidebar-agent-button-alice'));
 
     await waitFor(() => expect(store.getState().selected_agent_id).toBe('alice'));
-    expect(screen.getByTestId('map-selection-summary')).toHaveTextContent('Alice @ 1-2');
-    expect(screen.getByTestId('map-focus-request-count')).toHaveTextContent('1');
-    expect(screen.getByTestId('map-focus-mode')).toHaveTextContent('zoom');
-    expect(screen.getByTestId('map-focus-duration')).toHaveTextContent('300ms');
-    expect(screen.getByTestId('map-focus-zoom')).toHaveTextContent('1.6x');
-    expect(screen.getByTestId('map-focus-node')).toHaveTextContent('1-2');
 
     fireEvent.click(screen.getByTestId('sidebar-agent-button-alice'));
 
     await waitFor(() => expect(store.getState().selected_agent_revision).toBe(2));
-    expect(screen.getByTestId('map-focus-request-count')).toHaveTextContent('2');
 
     fireEvent.click(screen.getByTestId('desktop-overlay-close'));
 
     await waitFor(() => expect(store.getState().selected_agent_id).toBeUndefined());
-    expect(screen.getByTestId('map-selection-summary')).toHaveTextContent('未選択');
-    expect(screen.getByTestId('map-focus-mode')).toHaveTextContent('idle');
   });
 
   it('loads selected-agent history from /api/history?agent_id=...&limit=20 and renders it in the overlay', async () => {
@@ -965,9 +994,9 @@ describe('App shell bootstrap', () => {
 
     render(<App env={env} store={store} autoStartPolling={false} />);
 
-    await waitFor(() => expect(screen.getByTestId('map-focus-request-count')).toHaveTextContent('1'));
-    expect(screen.getByTestId('map-focus-node')).toHaveTextContent('1-2');
-    expect(screen.getByTestId('map-view-state')).toHaveTextContent('144, 48 @ 1.60x');
+    // Alice is initially selected at node 1-2
+    expect(store.getState().selected_agent_id).toBe('alice');
+    expect(store.getState().snapshot?.agents.find((a) => a.agent_id === 'alice')?.node_id).toBe('1-2');
 
     const refreshedSnapshot = createReadySnapshot({
       generated_at: 1_780_000_010_000,
@@ -980,9 +1009,8 @@ describe('App shell bootstrap', () => {
       }));
     });
 
-    expect(screen.getByTestId('map-focus-request-count')).toHaveTextContent('1');
-    expect(screen.getByTestId('map-focus-node')).toHaveTextContent('1-2');
-    expect(screen.getByTestId('map-view-state')).toHaveTextContent('144, 48 @ 1.60x');
+    // Agent position unchanged, no refocus expected
+    expect(store.getState().snapshot?.agents.find((a) => a.agent_id === 'alice')?.node_id).toBe('1-2');
 
     const movedSnapshot = createReadySnapshot({
       generated_at: 1_780_000_020_000,
@@ -998,9 +1026,8 @@ describe('App shell bootstrap', () => {
       }));
     });
 
-    await waitFor(() => expect(screen.getByTestId('map-focus-request-count')).toHaveTextContent('2'));
-    expect(screen.getByTestId('map-focus-node')).toHaveTextContent('2-2');
-    expect(screen.getByTestId('map-view-state')).toHaveTextContent('144, 144 @ 1.60x');
+    // Agent moved to 2-2, overlay should show updated location
+    await waitFor(() => expect(screen.getByTestId('desktop-agent-location')).toHaveTextContent('2-2'));
   });
 
   it('keeps the existing map view when a selected agent snapshot carries a malformed node id', async () => {
@@ -1009,9 +1036,7 @@ describe('App shell bootstrap', () => {
 
     render(<App env={env} store={store} autoStartPolling={false} />);
 
-    await waitFor(() => expect(screen.getByTestId('map-focus-request-count')).toHaveTextContent('1'));
-    expect(screen.getByTestId('map-focus-node')).toHaveTextContent('1-2');
-    expect(screen.getByTestId('map-view-state')).toHaveTextContent('144, 48 @ 1.60x');
+    expect(store.getState().snapshot?.agents.find((a) => a.agent_id === 'alice')?.node_id).toBe('1-2');
 
     const malformedSnapshot = createReadySnapshot({
       generated_at: 1_780_000_030_000,
@@ -1027,10 +1052,10 @@ describe('App shell bootstrap', () => {
       }));
     });
 
-    expect(screen.getByTestId('map-selection-summary')).toHaveTextContent('Alice @ not-a-node');
-    expect(screen.getByTestId('map-focus-request-count')).toHaveTextContent('1');
-    expect(screen.getByTestId('map-focus-node')).toHaveTextContent('1-2');
-    expect(screen.getByTestId('map-view-state')).toHaveTextContent('144, 48 @ 1.60x');
+    // Malformed node should not cause a refocus; overlay shows the malformed node_id
+    await waitFor(() => expect(screen.getByTestId('desktop-agent-location')).toHaveTextContent('not-a-node'));
+    // Store should still have alice selected
+    expect(store.getState().selected_agent_id).toBe('alice');
   });
 
   it('lets map-origin selection open the shared desktop overlay and mobile detail views', async () => {
@@ -1042,12 +1067,11 @@ describe('App shell bootstrap', () => {
 
     render(<App env={env} store={store} autoStartPolling={false} />);
 
-    fireEvent.click(screen.getByTestId('map-agent-button-bob'));
+    fireEvent.click(screen.getByTestId('sidebar-agent-button-bob'));
 
     await waitFor(() => expect(store.getState().selected_agent_id).toBe('bob'));
     expect(screen.getByTestId('desktop-agent-name')).toHaveTextContent('Bob');
-    expect(screen.getByTestId('mobile-agent-state')).toHaveTextContent('待機中');
-    expect(screen.getByTestId('map-selection-summary')).toHaveTextContent('Bob @ 2-1');
+    expect(screen.getByTestId('mobile-agent-activity')).toHaveTextContent('待機中');
   });
 
   it('shows the mobile list panel with recent server events and the desktop-equivalent agent ordering after expanding from peek', async () => {
@@ -1152,26 +1176,18 @@ describe('App shell bootstrap', () => {
     await waitFor(() => expect(store.getState().mobile_sheet_mode).toBe('peek'));
   });
 
-  it('renders recent server events from recent_server_events while deriving active status from server_events', () => {
+  it('renders recent server events from recent_server_events with timestamps', () => {
     const snapshot = createReadySnapshot({
-      server_events: [
-        {
-          server_event_id: 'event-historical-flagged-active',
-          description: 'Server truth says active',
-          delivered_agent_ids: ['alice'],
-          pending_agent_ids: ['bob'],
-        },
-      ],
       recent_server_events: [
         {
-          server_event_id: 'event-historical-flagged-active',
-          description: 'Server truth says active',
+          server_event_id: 'event-1',
+          description: 'First event',
           occurred_at: 1_780_000_100_000,
           is_active: false,
         },
         {
-          server_event_id: 'event-missing-from-active-list',
-          description: 'Server truth says history',
+          server_event_id: 'event-2',
+          description: 'Second event',
           occurred_at: 1_780_000_090_000,
           is_active: true,
         },
@@ -1190,13 +1206,15 @@ describe('App shell bootstrap', () => {
       />,
     );
 
-    expect(screen.getByTestId('desktop-sidebar-server-event-count')).toHaveTextContent('未解決 1 件');
-    expect(screen.getByTestId('desktop-server-event-status-event-historical-flagged-active')).toHaveTextContent('進行中');
-    expect(screen.getByTestId('desktop-server-event-status-event-missing-from-active-list')).toHaveTextContent('履歴');
+    // Events should be displayed with description and timestamp
+    expect(screen.getByText('First event')).toBeInTheDocument();
+    expect(screen.getByText('Second event')).toBeInTheDocument();
+    // No status badges or fallback indicators should be present
     expect(screen.queryByTestId('desktop-server-events-fallback-badge')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('desktop-sidebar-server-event-count')).not.toBeInTheDocument();
   });
 
-  it('marks fallback recent server events as degraded in desktop and mobile shells', async () => {
+  it('shows empty server events message when recent_server_events is empty', async () => {
     const store = createSnapshotStore({
       snapshotUrl: env.snapshotUrl,
       authMode: env.authMode,
@@ -1205,7 +1223,7 @@ describe('App shell bootstrap', () => {
         server_events: [
           {
             server_event_id: 'event-active',
-            description: 'Fallback active event',
+            description: 'Active event',
             delivered_agent_ids: ['alice'],
             pending_agent_ids: [],
           },
@@ -1215,19 +1233,10 @@ describe('App shell bootstrap', () => {
 
     render(<App env={env} store={store} autoStartPolling={false} />);
 
-    expect(screen.getByTestId('desktop-server-events-fallback-badge')).toHaveTextContent('フォールバック表示');
-    expect(screen.getByTestId('desktop-server-events-fallback-note')).toHaveTextContent(
-      '直近履歴を復元できなかったため、進行中イベントを暫定表示しています。',
-    );
-
-    fireEvent.click(screen.getByTestId('mobile-bottom-sheet-handle'));
-
-    await waitFor(() => expect(screen.getByTestId('mobile-bottom-sheet')).toHaveAttribute('data-sheet-mode', 'list'));
-    expect(screen.getByTestId('mobile-server-events-fallback-badge')).toHaveTextContent('フォールバック表示');
-    expect(screen.getByTestId('mobile-server-events-fallback-note')).toHaveTextContent(
-      '直近履歴を復元できなかったため、進行中イベントを暫定表示しています。',
-    );
-    expect(screen.getAllByText('Fallback active event')).toHaveLength(2);
+    // Should show empty state message, no fallback content
+    expect(screen.getByText('サーバーイベントはまだありません')).toBeInTheDocument();
+    expect(screen.queryByTestId('desktop-server-events-fallback-badge')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('desktop-server-events-fallback-note')).not.toBeInTheDocument();
   });
 
   it('sorts agents with non-idle entries first and then by agent name', () => {

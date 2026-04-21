@@ -35,6 +35,7 @@ import {
 import {
   createInitialMapViewState,
   type MapSelectionFocusCommand,
+  type MapViewportCommand,
   type MapViewportViewState,
 } from './selection-focus.js';
 
@@ -54,6 +55,7 @@ export interface MapPixiCanvasProps {
   phase3EnvironmentEffectFlags?: Partial<Phase3EnvironmentEffectFlags>;
   phase3MotionEffectFlags?: Partial<Phase3MotionEffectFlags>;
   focusCommand?: MapSelectionFocusCommand;
+  viewportCommand?: MapViewportCommand;
   onSelectAgent?: (agentId: string) => void;
   onLiveViewStateChange?: (viewState: MapViewportViewState) => void;
   onViewStateChange?: (viewState: MapViewportViewState) => void;
@@ -353,6 +355,33 @@ function MapSelectionViewportBridge({
   return null;
 }
 
+function MapViewportCommandBridge({
+  viewportCommand,
+}: {
+  viewportCommand?: MapViewportCommand;
+}) {
+  const viewport = useMapViewport();
+
+  useEffect(() => {
+    if (!viewport || !viewportCommand) {
+      return;
+    }
+
+    viewport.animate({
+      position: {
+        x: viewportCommand.target_center_x,
+        y: viewportCommand.target_center_y,
+      },
+      scale: viewportCommand.target_zoom,
+      time: viewportCommand.duration_ms,
+      ease: 'easeInOutSine',
+      removeOnInterrupt: true,
+    });
+  }, [viewport, viewportCommand]);
+
+  return null;
+}
+
 const AgentAvatarVisual = memo(function AgentAvatarVisual({ avatar }: { avatar: AgentAvatarRenderModel }) {
   const [textureSnapshot, setTextureSnapshot] = useState<AvatarTextureSnapshot>(() =>
     getAvatarTextureSnapshot(avatar.avatarUrl),
@@ -580,6 +609,7 @@ export function MapPixiCanvas({
   phase3EnvironmentEffectFlags,
   phase3MotionEffectFlags,
   focusCommand,
+  viewportCommand,
   onSelectAgent,
   onLiveViewStateChange,
   onViewStateChange,
@@ -776,6 +806,7 @@ export function MapPixiCanvas({
           onViewStateChange={handleViewStateChange}
         >
           <MapSelectionViewportBridge focusCommand={focusCommand} />
+          <MapViewportCommandBridge viewportCommand={viewportCommand} />
           <pixiContainer data-testid="map-render-layers">
             <pixiContainer data-testid="map-grid-layer">
               <GridLayer renderModel={renderModel} />

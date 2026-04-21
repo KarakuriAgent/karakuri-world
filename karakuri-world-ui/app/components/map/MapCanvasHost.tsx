@@ -9,16 +9,21 @@ import type { Phase3EnvironmentEffectFlags } from './environment-effects.js';
 import type { Phase3MotionEffectFlags } from './motion-effects.js';
 import {
   applyMapSelectionFocusCommand,
+  applyMapViewportCommand,
   createInitialMapViewState,
+  createViewportZoomCommand,
   planMapSelectionFocusCommand,
   type MapSelectionFocusCommand,
+  type MapViewportCommand,
   type MapViewportViewState,
+  type MapViewportZoomIntent,
 } from './selection-focus.js';
 
 export interface MapCanvasHostProps {
   snapshot?: SpectatorSnapshot;
   selectedAgentId?: string;
   selectionRevision?: number;
+  overlayOffsetX?: number;
   phase3EffectsEnabled?: boolean;
   phase3EnvironmentEffectFlags?: Partial<Phase3EnvironmentEffectFlags>;
   phase3MotionEffectFlags?: Partial<Phase3MotionEffectFlags>;
@@ -27,10 +32,6 @@ export interface MapCanvasHostProps {
 
 function canRenderPixiCanvas(): boolean {
   return typeof navigator !== 'undefined' && !/jsdom/i.test(navigator.userAgent);
-}
-
-function getSelectionDescription(selectedAgent: SpectatorAgentSnapshot | undefined): string {
-  return selectedAgent ? `${selectedAgent.agent_name} @ ${selectedAgent.node_id}` : '未選択';
 }
 
 const MapPixiCanvas = lazy(async () => {
@@ -45,6 +46,7 @@ export function MapCanvasHost({
   snapshot,
   selectedAgentId,
   selectionRevision = 0,
+  overlayOffsetX = 0,
   phase3EffectsEnabled = false,
   phase3EnvironmentEffectFlags,
   phase3MotionEffectFlags,
@@ -72,6 +74,8 @@ export function MapCanvasHost({
   const [viewState, setViewState] = useState<MapViewportViewState | undefined>(viewStateRef.current);
   const [lastFocusCommand, setLastFocusCommand] = useState<MapSelectionFocusCommand | undefined>(undefined);
   const [focusRequestCount, setFocusRequestCount] = useState(0);
+  const [viewportCommand, setViewportCommand] = useState<MapViewportCommand | undefined>(undefined);
+  const zoomTokenRef = useRef(0);
 
   useEffect(() => {
     snapshotRef.current = snapshot;
@@ -109,6 +113,7 @@ export function MapCanvasHost({
       snapshot: currentSnapshot,
       agent: currentSelectedAgent,
       currentView,
+      overlayOffsetX,
     });
 
     if (!nextFocusCommand) {
@@ -117,7 +122,7 @@ export function MapCanvasHost({
 
     setLastFocusCommand(nextFocusCommand);
     setFocusRequestCount((count) => count + 1);
-  }, [mapGeometryKey, selectedAgentId, selectedAgentPositionKey, selectionRevision]);
+  }, [mapGeometryKey, selectedAgentId, selectedAgentPositionKey, selectionRevision, overlayOffsetX]);
 
   const handleViewportLiveViewStateChange = useCallback((nextViewState: MapViewportViewState) => {
     viewStateRef.current = nextViewState;
@@ -145,6 +150,39 @@ export function MapCanvasHost({
 
   const worldDimensions = snapshot ? getWorldDimensions(snapshot) : undefined;
 
+  const handleZoomIntent = useCallback(
+    (intent: MapViewportZoomIntent) => {
+      const currentSnapshot = snapshotRef.current;
+
+      if (!currentSnapshot) {
+        return;
+      }
+
+      const currentView = viewStateRef.current ?? createInitialMapViewState(currentSnapshot);
+      const dimensions = getWorldDimensions(currentSnapshot);
+      const viewportDimensions =
+        typeof window !== 'undefined'
+          ? { width: window.innerWidth, height: window.innerHeight }
+          : undefined;
+      zoomTokenRef.current += 1;
+      const command = createViewportZoomCommand({
+        intent,
+        currentView,
+        worldDimensions: dimensions,
+        viewportDimensions,
+        overlayOffsetX,
+        token: zoomTokenRef.current,
+      });
+
+      setViewportCommand(command);
+
+      if (!canRenderPixiCanvas()) {
+        handleViewportViewStateChange(applyMapViewportCommand(currentView, command));
+      }
+    },
+    [handleViewportViewStateChange, overlayOffsetX],
+  );
+
   return (
     <section
       aria-label="World map"
@@ -152,187 +190,72 @@ export function MapCanvasHost({
       data-testid="map-canvas-host"
       style={viewportBackgroundStyle}
     >
-      <div className="absolute inset-4 rounded-[32px] border border-cyan-500/30 bg-slate-950/60 shadow-[0_0_0_1px_rgba(34,211,238,0.12)] backdrop-blur-sm lg:inset-6">
-        <div className="flex h-full flex-col gap-6 p-6">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300">Map viewport bridge</p>
-            <h2 className="mt-2 text-3xl font-semibold text-white">Selection-driven overlay contract</h2>
-            <p className="mt-3 max-w-2xl text-sm text-slate-300">
-              pixi-viewport の bridge を先に固定し、selection / overlay / map focus が同じ contract を共有します。
-            </p>
-          </div>
-
-          <dl className="grid gap-3 text-sm text-slate-300 sm:grid-cols-2 xl:grid-cols-5">
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-              <dt className="text-xs uppercase tracking-wide text-slate-500">World</dt>
-              <dd className="mt-2 text-base text-white">{snapshot?.world.name ?? 'Karakuri World'}</dd>
-            </div>
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-              <dt className="text-xs uppercase tracking-wide text-slate-500">Grid</dt>
-              <dd className="mt-2 text-base text-white">
-                {snapshot ? `${snapshot.map.rows} × ${snapshot.map.cols}` : 'snapshot待ち'}
-              </dd>
-            </div>
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-              <dt className="text-xs uppercase tracking-wide text-slate-500">Agents</dt>
-              <dd className="mt-2 text-base text-white">{snapshot?.agents.length ?? 0}</dd>
-            </div>
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-              <dt className="text-xs uppercase tracking-wide text-slate-500">Selection</dt>
-              <dd className="mt-2 text-base text-white" data-testid="map-selection-summary">
-                {getSelectionDescription(selectedAgent)}
-              </dd>
-            </div>
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-              <dt className="text-xs uppercase tracking-wide text-slate-500">Focus requests</dt>
-              <dd className="mt-2 text-base text-white" data-testid="map-focus-request-count">
-                {focusRequestCount}
-              </dd>
-            </div>
-          </dl>
-
-          <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-            <section className="min-h-0 rounded-[28px] border border-slate-800 bg-slate-950/80 p-5">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-semibold text-white">Viewport smoke</h3>
-                  <p className="mt-1 text-sm text-slate-400">
-                    wheel / drag / pinch / tap を同居させる最小 host。4px 未満の微小 drag は tap を優先します。
-                  </p>
-                </div>
-                <span className="rounded-full border border-cyan-400/40 bg-cyan-400/10 px-3 py-1 text-xs font-medium text-cyan-200">
-                  zoom 0.5x–3.0x / 24px frame
-                </span>
-              </div>
-
-              <div
-                className="mt-4 h-[360px] overflow-hidden rounded-[24px] border border-slate-800"
-                data-testid="map-viewport-root"
-                style={viewportBackgroundStyle}
-              >
-                {snapshot && worldDimensions && shouldRenderPixi ? (
-                  <Suspense
-                    fallback={
-                      <div
-                        className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-400"
-                        data-testid="map-pixi-loading"
-                      >
-                        viewport bridge を読み込んでいます…
-                      </div>
-                    }
-                  >
-                    <MapPixiCanvas
-                      focusCommand={lastFocusCommand}
-                      onLiveViewStateChange={handleViewportLiveViewStateChange}
-                      onSelectAgent={onSelectAgent}
-                      onViewStateChange={handleViewportViewStateChange}
-                      phase3EffectsEnabled={phase3EffectsEnabled}
-                      phase3EnvironmentEffectFlags={phase3EnvironmentEffectFlags}
-                      phase3MotionEffectFlags={phase3MotionEffectFlags}
-                      selectedAgentId={selectedAgentId}
-                      snapshot={snapshot}
-                    />
-                  </Suspense>
-                ) : (
-                  <div
-                    className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-400"
-                    data-testid="map-pixi-fallback"
-                  >
-                    ブラウザ runtime では viewport spike を描画します。test 環境では selection bridge の DOM fallback を使います。
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-4 grid gap-3 sm:grid-cols-2" data-testid="map-agent-button-list">
-                {snapshot?.agents.length ? (
-                  snapshot.agents.map((agent) => (
-                    <button
-                      key={agent.agent_id}
-                      type="button"
-                      className={`rounded-2xl border p-4 text-left transition-colors ${
-                        selectedAgentId === agent.agent_id
-                          ? 'border-cyan-400/70 bg-cyan-400/10 shadow-[0_0_0_1px_rgba(34,211,238,0.2)]'
-                          : 'border-slate-800 bg-slate-900/80 hover:border-slate-700 hover:bg-slate-900'
-                      }`}
-                      data-testid={`map-agent-button-${agent.agent_id}`}
-                      aria-pressed={selectedAgentId === agent.agent_id}
-                      onClick={() => onSelectAgent?.(agent.agent_id)}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="font-medium text-slate-100">{agent.agent_name}</p>
-                          <p className="mt-1 text-xs text-slate-400">{agent.node_id}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-lg leading-none">{agent.status_emoji}</p>
-                          <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">{agent.state}</p>
-                        </div>
-                      </div>
-                    </button>
-                  ))
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-400 sm:col-span-2">
-                    エージェントが接続すると map selection target がここに表示されます
-                  </div>
-                )}
-              </div>
-            </section>
-
-            <section
-              className="rounded-[28px] border border-slate-800 bg-slate-950/80 p-5 text-sm text-slate-300"
-              data-testid="map-focus-contract"
+      {snapshot && worldDimensions && shouldRenderPixi ? (
+        <Suspense
+          fallback={
+            <div
+              className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-400"
+              data-testid="map-pixi-loading"
             >
-              <h3 className="text-sm font-semibold text-white">Focus contract</h3>
-              <p className="mt-1 text-sm text-slate-400">
-                selection に追従して node 中心へ 300ms で移動し、通常時は 1.6x へ寄せます。
-              </p>
-
-              <dl className="mt-4 space-y-3">
-                <div className="flex items-center justify-between gap-4">
-                  <dt className="text-slate-500">Mode</dt>
-                  <dd className="text-white" data-testid="map-focus-mode">
-                    {lastFocusCommand ? lastFocusCommand.mode : 'idle'}
-                  </dd>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <dt className="text-slate-500">Duration</dt>
-                  <dd className="text-white" data-testid="map-focus-duration">
-                    {lastFocusCommand ? `${lastFocusCommand.duration_ms}ms` : '—'}
-                  </dd>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <dt className="text-slate-500">Zoom</dt>
-                  <dd className="text-white" data-testid="map-focus-zoom">
-                    {lastFocusCommand?.target_zoom ? `${lastFocusCommand.target_zoom.toFixed(1)}x` : 'keep'}
-                  </dd>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <dt className="text-slate-500">Node</dt>
-                  <dd className="text-white" data-testid="map-focus-node">
-                    {lastFocusCommand?.node_id ?? '—'}
-                  </dd>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <dt className="text-slate-500">Center</dt>
-                  <dd className="text-white" data-testid="map-focus-center">
-                    {lastFocusCommand
-                      ? `${lastFocusCommand.target_center_x.toFixed(0)}, ${lastFocusCommand.target_center_y.toFixed(0)}`
-                      : '—'}
-                  </dd>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <dt className="text-slate-500">Viewport</dt>
-                  <dd className="text-white" data-testid="map-view-state">
-                    {viewState
-                      ? `${viewState.centerX.toFixed(0)}, ${viewState.centerY.toFixed(0)} @ ${viewState.zoom.toFixed(2)}x`
-                      : '—'}
-                  </dd>
-                </div>
-              </dl>
-            </section>
-          </div>
+              viewport bridge を読み込んでいます…
+            </div>
+          }
+        >
+          <MapPixiCanvas
+            focusCommand={lastFocusCommand}
+            onLiveViewStateChange={handleViewportLiveViewStateChange}
+            onSelectAgent={onSelectAgent}
+            onViewStateChange={handleViewportViewStateChange}
+            phase3EffectsEnabled={phase3EffectsEnabled}
+            phase3EnvironmentEffectFlags={phase3EnvironmentEffectFlags}
+            phase3MotionEffectFlags={phase3MotionEffectFlags}
+            selectedAgentId={selectedAgentId}
+            snapshot={snapshot}
+            viewportCommand={viewportCommand}
+          />
+        </Suspense>
+      ) : (
+        <div
+          className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-400"
+          data-testid="map-pixi-fallback"
+        >
+          ブラウザ runtime では viewport spike を描画します。test 環境では selection bridge の DOM fallback を使います。
         </div>
-      </div>
+      )}
+      {snapshot ? (
+        <div
+          className="pointer-events-none absolute bottom-6 right-6 z-10 flex flex-col gap-2"
+          data-testid="map-zoom-controls"
+        >
+          <button
+            aria-label="ズームイン"
+            className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full border border-slate-700 bg-slate-950/80 text-lg font-semibold text-slate-100 shadow-lg transition hover:bg-slate-800"
+            data-testid="map-zoom-in"
+            onClick={() => handleZoomIntent('zoom-in')}
+            type="button"
+          >
+            +
+          </button>
+          <button
+            aria-label="初期位置に戻す"
+            className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full border border-slate-700 bg-slate-950/80 text-xs font-semibold text-slate-100 shadow-lg transition hover:bg-slate-800"
+            data-testid="map-zoom-reset"
+            onClick={() => handleZoomIntent('reset')}
+            type="button"
+          >
+            初期
+          </button>
+          <button
+            aria-label="ズームアウト"
+            className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full border border-slate-700 bg-slate-950/80 text-lg font-semibold text-slate-100 shadow-lg transition hover:bg-slate-800"
+            data-testid="map-zoom-out"
+            onClick={() => handleZoomIntent('zoom-out')}
+            type="button"
+          >
+            −
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }

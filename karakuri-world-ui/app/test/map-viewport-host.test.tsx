@@ -175,7 +175,7 @@ describe('MapViewportHost', () => {
       maxScale: MAP_VIEWPORT_MAX_ZOOM,
       minScale: MAP_VIEWPORT_MIN_ZOOM,
     });
-    expect(viewport?.setZoom).toHaveBeenCalledWith(2, true);
+    expect(viewport?.setZoom).toHaveBeenCalledWith(MAP_VIEWPORT_MAX_ZOOM, true);
     expect(viewport?.moveCenter).toHaveBeenCalledWith(48, 48);
     expect(PixiViewportElementMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -246,7 +246,7 @@ describe('MapViewportHost', () => {
       expect(onViewStateChange).toHaveBeenCalledWith({
         centerX: 48,
         centerY: 48,
-        zoom: 2,
+        zoom: MAP_VIEWPORT_MAX_ZOOM,
       }),
     );
     const viewport = viewportInstances[0]!;
@@ -340,7 +340,7 @@ describe('MapViewportHost', () => {
       expect(onViewStateChange).toHaveBeenCalledWith({
         centerX: 48,
         centerY: 48,
-        zoom: 2,
+        zoom: MAP_VIEWPORT_MAX_ZOOM,
       }),
     );
     onLiveViewStateChange.mockClear();
@@ -353,7 +353,7 @@ describe('MapViewportHost', () => {
       expect(onLiveViewStateChange).toHaveBeenLastCalledWith({
         centerX: 64,
         centerY: 40,
-        zoom: 2,
+        zoom: MAP_VIEWPORT_MAX_ZOOM,
       }),
     );
     expect(onViewStateChange).not.toHaveBeenCalled();

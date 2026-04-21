@@ -64,11 +64,12 @@ describe('AgentOverlay', () => {
     renderOverlay(agent, snapshot);
 
     expect(screen.getByTestId('desktop-agent-name')).toHaveTextContent('Alice');
-    expect(screen.getByTestId('desktop-agent-status-emoji')).toHaveTextContent('🛠️');
     expect(screen.getByTestId('desktop-agent-location')).toHaveTextContent('1-2');
-    expect(screen.getByTestId('desktop-agent-state')).toHaveTextContent('アクション中');
     expect(screen.getByTestId('desktop-agent-activity')).toHaveTextContent('Craft');
     expect(screen.getByRole('img', { name: 'Alice avatar' })).toHaveAttribute('src', 'https://example.com/alice.png');
+    expect(screen.queryByTestId('desktop-agent-status-emoji')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('desktop-agent-state')).not.toBeInTheDocument();
+    expect(screen.queryByText(/selected_agent_id/i)).not.toBeInTheDocument();
   });
 
   it('derives moving activity text from movement when current_activity is absent', () => {
@@ -131,7 +132,7 @@ describe('AgentOverlay', () => {
     const mobileOverlay = screen.getByTestId('mobile-agent-overlay');
     expect(within(mobileOverlay).queryByRole('img', { name: 'Bob avatar' })).not.toBeInTheDocument();
     expect(within(mobileOverlay).getByTestId('mobile-agent-avatar-fallback')).toHaveTextContent('B');
-    expect(within(mobileOverlay).getByTestId('mobile-agent-state')).toHaveTextContent('待機中');
+    expect(within(mobileOverlay).getByTestId('mobile-agent-activity')).toHaveTextContent('待機中');
   });
 
   it('retries rendering a new avatar after the previous agent image failed', () => {
@@ -217,16 +218,20 @@ describe('AgentOverlay', () => {
         items: [
           {
             event_id: 'event-conv',
-            type: 'conversation_message',
+            type: 'conversation_requested',
             occurred_at: 1_780_000_020_000,
             agent_ids: ['alice', 'bob'],
             conversation_id: 'conv-1',
             summary: {
-              emoji: '💬',
-              title: 'Conversation',
-              text: 'Alice talked with Bob.',
+              emoji: '📨',
+              title: 'Conversation requested',
+              text: 'Hello Bob?',
             },
-            detail: {},
+            detail: {
+              initiator_agent_id: 'alice',
+              target_agent_id: 'bob',
+              message: 'Hello Bob?',
+            },
           },
         ],
       },
@@ -332,6 +337,145 @@ describe('AgentOverlay', () => {
     });
   });
 
+  it('collapses each conversation to its head utterance in the agent timeline and shows the full log with speaker bubbles when expanded', () => {
+    const snapshot = createFixtureSnapshot();
+    const agent = snapshot.agents[0]!;
+    const agentHistory: HistoryCacheEntry = {
+      status: 'ready',
+      request: { limit: 20, merge: 'replace' },
+      last_fetched_at: 1_780_000_010_000,
+      response: {
+        items: [
+          {
+            event_id: 'event-speak',
+            type: 'conversation_message',
+            occurred_at: 1_780_000_030_000,
+            agent_ids: ['alice', 'bob'],
+            conversation_id: 'conv-1',
+            summary: {
+              emoji: '💬',
+              title: 'Message sent',
+              text: 'Alice said hi.',
+            },
+            detail: { speaker_agent_id: 'alice' },
+          },
+          {
+            event_id: 'event-accepted',
+            type: 'conversation_accepted',
+            occurred_at: 1_780_000_025_000,
+            agent_ids: ['alice', 'bob'],
+            conversation_id: 'conv-1',
+            summary: {
+              emoji: '🤝',
+              title: 'Conversation accepted',
+              text: 'Accepted.',
+            },
+            detail: {},
+          },
+          {
+            event_id: 'event-requested',
+            type: 'conversation_requested',
+            occurred_at: 1_780_000_020_000,
+            agent_ids: ['alice', 'bob'],
+            conversation_id: 'conv-1',
+            summary: {
+              emoji: '📨',
+              title: 'Conversation requested',
+              text: 'Hello?',
+            },
+            detail: {
+              initiator_agent_id: 'alice',
+              target_agent_id: 'bob',
+              message: 'Hello?',
+            },
+          },
+        ],
+      },
+    };
+    const conversationHistory: HistoryCacheEntry = {
+      status: 'ready',
+      request: { limit: 50, merge: 'replace' },
+      last_fetched_at: 1_780_000_040_000,
+      response: {
+        items: [
+          {
+            event_id: 'event-speak',
+            type: 'conversation_message',
+            occurred_at: 1_780_000_030_000,
+            agent_ids: ['alice', 'bob'],
+            conversation_id: 'conv-1',
+            summary: {
+              emoji: '💬',
+              title: 'Message sent',
+              text: 'Alice said hi.',
+            },
+            detail: { speaker_agent_id: 'alice' },
+          },
+          {
+            event_id: 'event-requested',
+            type: 'conversation_requested',
+            occurred_at: 1_780_000_020_000,
+            agent_ids: ['alice', 'bob'],
+            conversation_id: 'conv-1',
+            summary: {
+              emoji: '📨',
+              title: 'Conversation requested',
+              text: 'Hello?',
+            },
+            detail: {
+              initiator_agent_id: 'alice',
+              target_agent_id: 'bob',
+              message: 'Hello?',
+            },
+          },
+        ],
+      },
+    };
+
+    render(
+      <AgentOverlay
+        agent={agent}
+        snapshot={snapshot}
+        history={agentHistory}
+        historyCache={{ 'conversation:conv-1': conversationHistory }}
+        expandedConversationIds={{ 'conv-1': true }}
+      />,
+    );
+
+    const timelineList = screen.getByTestId('desktop-agent-history-list');
+    const timelineItems = within(timelineList).getAllByTestId('desktop-agent-history-item');
+    expect(timelineItems).toHaveLength(1);
+    expect(
+      within(timelineItems[0]!).getByTestId('desktop-agent-history-item-speaker-avatar-event-requested'),
+    ).toBeInTheDocument();
+    expect(
+      within(timelineItems[0]!).getByTestId('desktop-agent-history-item-speaker-name-event-requested'),
+    ).toHaveTextContent('Alice');
+    expect(timelineItems[0]).toHaveTextContent('Hello?');
+    expect(timelineItems[0]).not.toHaveTextContent('Conversation accepted');
+    expect(timelineItems[0]).not.toHaveTextContent('Message sent');
+
+    const conversationPanel = screen.getByTestId('desktop-conversation-history-panel-conv-1');
+    const conversationItems = within(conversationPanel).getAllByTestId('desktop-conversation-history-conv-1-item');
+    expect(conversationItems).toHaveLength(2);
+    expect(
+      within(conversationPanel).getByTestId('desktop-conversation-history-conv-1-item-speaker-avatar-event-speak'),
+    ).toBeInTheDocument();
+    expect(
+      within(conversationPanel).getByTestId('desktop-conversation-history-conv-1-item-speaker-avatar-event-requested'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/conversation:\s*conv-1/i)).not.toBeInTheDocument();
+  });
+
+  it('falls back to emoji + title for non-speaking history items', () => {
+    const snapshot = createFixtureSnapshot();
+    const agent = snapshot.agents[0]!;
+    renderOverlay(agent, snapshot, false, createReadyHistory());
+
+    expect(screen.getByText('Craft complete')).toBeInTheDocument();
+    expect(screen.queryByTestId('desktop-agent-history-item-speaker-avatar-event-new')).not.toBeInTheDocument();
+  });
+
   it('keeps replace-failure retry affordances visible for empty nested conversation history', () => {
     const snapshot = createFixtureSnapshot();
     const agent = snapshot.agents[0]!;
@@ -346,16 +490,20 @@ describe('AgentOverlay', () => {
         items: [
           {
             event_id: 'event-conv',
-            type: 'conversation_message',
+            type: 'conversation_requested',
             occurred_at: 1_780_000_020_000,
             agent_ids: ['alice', 'bob'],
             conversation_id: 'conv-1',
             summary: {
-              emoji: '💬',
-              title: 'Conversation',
-              text: 'Alice talked with Bob.',
+              emoji: '📨',
+              title: 'Conversation requested',
+              text: 'Alice asked Bob for a chat.',
             },
-            detail: {},
+            detail: {
+              initiator_agent_id: 'alice',
+              target_agent_id: 'bob',
+              message: 'Alice asked Bob for a chat.',
+            },
           },
         ],
       },
