@@ -638,6 +638,7 @@ export class WorldEngine {
         delivered_agent_ids: serverEvent.delivered_agent_ids,
         pending_agent_ids: serverEvent.pending_agent_ids,
       })),
+      recent_server_events: this.state.recentServerEvents.list(),
       generated_at: now,
       ...(snapshotPublisherStats
         ? {

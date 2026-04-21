@@ -4,6 +4,7 @@ import { createApp } from '../../src/api/app.js';
 import { SnapshotPublisher } from '../../src/engine/snapshot-publisher.js';
 import { WorldEngine } from '../../src/engine/world-engine.js';
 import { WorldError } from '../../src/types/api.js';
+import type { WorldSnapshot } from '../../src/types/snapshot.js';
 import { createTestWorld } from '../helpers/test-world.js';
 import { createTestConfig } from '../helpers/test-map.js';
 
@@ -135,22 +136,24 @@ describe('REST API', () => {
       message: '正常に受け付けました。結果が通知されるまで待機してください。',
     });
 
-    const snapshot = await requestJson(app, '/api/snapshot', {
-      headers: { 'X-Admin-Key': ADMIN_KEY },
-    });
-    expect(snapshot.response.status).toBe(200);
-    expect(snapshot.data.calendar).toEqual({
+    const snapshot = engine.getSnapshot();
+    expect(snapshot.calendar).toEqual({
       timezone: 'Asia/Tokyo',
       local_date: '2026-01-01',
       local_time: '09:00:00',
       display_label: '2026-01-01 09:00 (Asia/Tokyo)',
     });
-    expect(snapshot.data.map_render_theme).toMatchObject({
+    expect(snapshot.map_render_theme).toMatchObject({
       cell_size: 96,
       node_id_font_size: 12,
       background_fill: '#e2e8f0',
     });
-    expect(snapshot.data.agents).toHaveLength(1);
+    expect(snapshot.agents).toHaveLength(1);
+
+    const removedSnapshotEndpoint = await requestJson(app, '/api/snapshot', {
+      headers: { 'X-Admin-Key': ADMIN_KEY },
+    });
+    expect(removedSnapshotEndpoint.response.status).toBe(404);
 
     const removedWs = await requestJson(app, '/ws');
     expect(removedWs.response.status).toBe(404);
@@ -168,11 +171,12 @@ describe('REST API', () => {
     expect(deleted.data).toEqual({ status: 'ok' });
   });
 
-  it('surfaces failed snapshot publisher health in /health and /api/snapshot', async () => {
+  it('surfaces failed snapshot publisher health in /health', async () => {
     const snapshotPublisher = new SnapshotPublisher({
       workerBaseUrl: new URL('https://relay.example.com'),
       authKey: 'publish-key',
       fetchImpl: vi.fn<typeof fetch>().mockRejectedValue(new Error('relay offline')),
+      buildSnapshot: () => ({ agents: [] }) as unknown as WorldSnapshot,
       debounceMs: 10,
       retryBaseIntervalMs: 10,
       retryMaxIntervalMs: 10,
@@ -200,22 +204,9 @@ describe('REST API', () => {
         state: 'failed',
       },
     });
-
-    const snapshot = await requestJson(app, '/api/snapshot', {
-      headers: { 'X-Admin-Key': ADMIN_KEY },
-    });
-    expect(snapshot.response.status).toBe(200);
-    expect(snapshot.data.runtime).toEqual({
-      snapshot_publisher: {
-        pending: false,
-        consecutiveFailures: 2,
-        gaveUp: true,
-        state: 'failed',
-      },
-    });
   });
 
-  it('rejects mutating requests during shutdown while still serving health and snapshot reads', async () => {
+  it('rejects mutating requests during shutdown while still serving health', async () => {
     const { engine } = createTestWorld();
     const { app } = createApp(engine, {
       adminKey: ADMIN_KEY,
@@ -240,17 +231,6 @@ describe('REST API', () => {
     const health = await requestJson(app, '/health');
     expect(health.response.status).toBe(200);
     expect(health.data.status).toBe('ok');
-
-    const snapshot = await requestJson(app, '/api/snapshot', {
-      headers: { 'X-Admin-Key': ADMIN_KEY },
-    });
-    expect(snapshot.response.status).toBe(200);
-    expect(snapshot.data.agents).toEqual([
-      expect.objectContaining({
-        agent_id: registered.agent_id,
-        state: 'idle',
-      }),
-    ]);
   });
 
   it('returns 401, 403, 400, and 409 errors in representative cases', async () => {
@@ -274,9 +254,8 @@ describe('REST API', () => {
     expect(unauthorized.response.status).toBe(401);
     expect(unauthorized.data.error).toBe('unauthorized');
 
-    const snapshotUnauthorized = await requestJson(app, '/api/snapshot');
-    expect(snapshotUnauthorized.response.status).toBe(401);
-    expect(snapshotUnauthorized.data.error).toBe('unauthorized');
+    const removedSnapshotEndpoint = await requestJson(app, '/api/snapshot');
+    expect(removedSnapshotEndpoint.response.status).toBe(404);
 
     const removedWs = await requestJson(app, '/ws');
     expect(removedWs.response.status).toBe(404);

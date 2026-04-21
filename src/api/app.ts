@@ -8,7 +8,6 @@ import { registerAgentActionRoutes } from './routes/agent-actions.js';
 import { registerAgentConversationRoutes } from './routes/agent-conversation.js';
 import { registerAgentInfoRoutes } from './routes/agent-info.js';
 import { registerAgentLifecycleRoutes } from './routes/agent-lifecycle.js';
-import { registerUiRoutes } from './routes/ui.js';
 import { getShutdownErrorResponse, isRequestAllowedDuringShutdown } from './shutdown.js';
 
 export interface AppOptions {
@@ -42,7 +41,6 @@ export function createApp(engine: WorldEngine, options: AppOptions) {
   registerAgentActionRoutes(app, engine);
   registerAgentConversationRoutes(app, engine);
   registerAgentInfoRoutes(app, engine);
-  registerUiRoutes(app, engine, { adminKey: options.adminKey });
 
   app.get('/health', (c) => {
     const snapshotPublisher = engine.getSnapshotPublisherStats();

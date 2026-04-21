@@ -3,9 +3,6 @@ import { z } from 'zod';
 export type RelayAuthMode = 'public' | 'access';
 
 export interface RelayConfig {
-  kwBaseUrl: URL;
-  snapshotUrl: URL;
-  kwAdminKey: string;
   snapshotPublishAuthKey?: string;
   snapshotObjectKey: string;
   snapshotCacheMaxAgeSec: number;
@@ -133,37 +130,7 @@ export function parseHistoryCorsConfigFallback(env: Record<string, unknown>): Hi
   };
 }
 
-function normalizeBaseUrl(baseUrl: string): URL {
-  let parsedUrl: URL;
-
-  try {
-    parsedUrl = new URL(baseUrl);
-  } catch {
-    throw new Error('KW_BASE_URL must be an absolute URL');
-  }
-
-  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
-    throw new Error('KW_BASE_URL must use http or https');
-  }
-
-  if ((parsedUrl.pathname !== '' && parsedUrl.pathname !== '/') || parsedUrl.search !== '' || parsedUrl.hash !== '') {
-    throw new Error('KW_BASE_URL must not include path, query, or fragment');
-  }
-
-  return new URL(parsedUrl.origin);
-}
-
-export function deriveRelayUrls(baseUrl: string | URL): Pick<RelayConfig, 'kwBaseUrl' | 'snapshotUrl'> {
-  const kwBaseUrl = normalizeBaseUrl(baseUrl.toString());
-
-  return {
-    kwBaseUrl,
-    snapshotUrl: new URL('/api/snapshot', kwBaseUrl),
-  };
-}
-
 export function parseRelayEnv(env: Record<string, unknown>): RelayConfig {
-  const { kwBaseUrl, snapshotUrl } = deriveRelayUrls(parseRequiredString(env.KW_BASE_URL, 'KW_BASE_URL'));
   const authMode = parseAuthMode(env.AUTH_MODE);
   const snapshotPublishAuthKey =
     env.SNAPSHOT_PUBLISH_AUTH_KEY === undefined
@@ -171,9 +138,6 @@ export function parseRelayEnv(env: Record<string, unknown>): RelayConfig {
       : parseRequiredString(env.SNAPSHOT_PUBLISH_AUTH_KEY, 'SNAPSHOT_PUBLISH_AUTH_KEY');
 
   return {
-    kwBaseUrl,
-    snapshotUrl,
-    kwAdminKey: parseRequiredString(env.KW_ADMIN_KEY, 'KW_ADMIN_KEY'),
     ...(snapshotPublishAuthKey ? { snapshotPublishAuthKey } : {}),
     snapshotObjectKey:
       env.SNAPSHOT_OBJECT_KEY === undefined

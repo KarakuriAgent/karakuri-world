@@ -102,6 +102,7 @@ function createSnapshot(): WorldSnapshot {
         pending_agent_ids: ['agent-2', 'agent-3'],
       },
     ],
+    recent_server_events: [],
     generated_at: Date.UTC(2026, 0, 1, 5, 30, 0),
   };
 }

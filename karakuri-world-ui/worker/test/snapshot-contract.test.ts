@@ -158,6 +158,7 @@ function createWorldSnapshot(): WorldSnapshot<
         admin_secret: 'drop-me',
       },
     ],
+    recent_server_events: [],
     generated_at: 1_750_000_000_000,
   };
 }

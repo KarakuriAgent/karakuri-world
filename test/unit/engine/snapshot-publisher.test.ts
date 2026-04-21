@@ -1,6 +1,46 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { SnapshotPublisher, isSnapshotTriggerEvent } from '../../../src/engine/snapshot-publisher.js';
+import type { WorldSnapshot } from '../../../src/types/snapshot.js';
+
+function createMinimalSnapshot(generatedAt = 1_000): WorldSnapshot {
+  return {
+    world: { name: 'test-world', description: 'test', skill_name: 'test-skill' },
+    map: {
+      rows: 1,
+      cols: 1,
+      nodes: { '1-1': { type: 'normal' } },
+      buildings: [],
+      npcs: [],
+    },
+    calendar: {
+      timezone: 'UTC',
+      local_date: '2026-01-01',
+      local_time: '00:00:00',
+      display_label: '2026-01-01 00:00 (UTC)',
+    },
+    map_render_theme: {
+      cell_size: 1,
+      label_font_size: 1,
+      node_id_font_size: 1,
+      background_fill: '#000',
+      grid_stroke: '#000',
+      default_node_fill: '#000',
+      normal_node_fill: '#000',
+      wall_node_fill: '#000',
+      door_node_fill: '#000',
+      npc_node_fill: '#000',
+      building_palette: [],
+      wall_text_color: '#000',
+      default_text_color: '#000',
+    },
+    agents: [],
+    conversations: [],
+    server_events: [],
+    recent_server_events: [],
+    generated_at: generatedAt,
+  };
+}
 
 describe('SnapshotPublisher', () => {
   afterEach(() => {
@@ -13,6 +53,67 @@ describe('SnapshotPublisher', () => {
     expect(isSnapshotTriggerEvent('available_actions_requested')).toBe(false);
   });
 
+  it('pushes the snapshot body with JSON content-type and bearer auth', async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
+    const snapshot = createMinimalSnapshot(42);
+    const buildSnapshot = vi.fn(() => snapshot);
+    const publisher = new SnapshotPublisher({
+      workerBaseUrl: new URL('https://relay.example.com'),
+      authKey: 'publish-key',
+      fetchImpl,
+      buildSnapshot,
+      debounceMs: 10,
+      now: () => 100,
+    });
+
+    publisher.requestPublish();
+    await vi.runAllTimersAsync();
+
+    expect(buildSnapshot).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchImpl.mock.calls[0] as [URL, RequestInit];
+    expect(url.toString()).toBe('https://relay.example.com/api/publish-snapshot');
+    expect(init.method).toBe('POST');
+    const headers = init.headers as Record<string, string>;
+    expect(headers['Content-Type']).toBe('application/json');
+    expect(headers.Authorization).toBe('Bearer publish-key');
+    expect(typeof init.body).toBe('string');
+    expect(JSON.parse(init.body as string)).toEqual(snapshot);
+  });
+
+  it('calls buildSnapshot on every retry to send the latest snapshot', async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    const buildSnapshot = vi
+      .fn<() => WorldSnapshot>()
+      .mockReturnValueOnce(createMinimalSnapshot(1))
+      .mockReturnValueOnce(createMinimalSnapshot(2));
+    const publisher = new SnapshotPublisher({
+      workerBaseUrl: new URL('https://relay.example.com'),
+      authKey: 'publish-key',
+      fetchImpl,
+      buildSnapshot,
+      debounceMs: 10,
+      retryBaseIntervalMs: 10,
+      retryMaxIntervalMs: 10,
+      retryMaxAttempts: 3,
+      now: () => 5,
+    });
+
+    publisher.requestPublish();
+    await vi.runAllTimersAsync();
+
+    expect(buildSnapshot).toHaveBeenCalledTimes(2);
+    const firstBody = JSON.parse((fetchImpl.mock.calls[0]![1] as RequestInit).body as string);
+    const secondBody = JSON.parse((fetchImpl.mock.calls[1]![1] as RequestInit).body as string);
+    expect(firstBody.generated_at).toBe(1);
+    expect(secondBody.generated_at).toBe(2);
+  });
+
   it('gives up after the retry budget is exhausted', async () => {
     vi.useFakeTimers();
     const fetchImpl = vi.fn<typeof fetch>().mockRejectedValue(new Error('boom'));
@@ -20,6 +121,7 @@ describe('SnapshotPublisher', () => {
       workerBaseUrl: new URL('https://relay.example.com'),
       authKey: 'publish-key',
       fetchImpl,
+      buildSnapshot: () => createMinimalSnapshot(),
       debounceMs: 10,
       retryBaseIntervalMs: 10,
       retryMaxIntervalMs: 10,
@@ -52,6 +154,7 @@ describe('SnapshotPublisher', () => {
       workerBaseUrl: new URL('https://relay.example.com'),
       authKey: 'publish-key',
       fetchImpl,
+      buildSnapshot: () => createMinimalSnapshot(),
       debounceMs: 1_000,
       retryBaseIntervalMs: 10,
       retryMaxIntervalMs: 10,
@@ -82,6 +185,7 @@ describe('SnapshotPublisher', () => {
       workerBaseUrl: new URL('https://relay.example.com'),
       authKey: 'publish-key',
       fetchImpl,
+      buildSnapshot: () => createMinimalSnapshot(),
       debounceMs: 10,
       retryBaseIntervalMs: 100,
       retryMaxIntervalMs: 100,
@@ -132,6 +236,7 @@ describe('SnapshotPublisher', () => {
       workerBaseUrl: new URL('https://relay.example.com'),
       authKey: 'publish-key',
       fetchImpl,
+      buildSnapshot: () => createMinimalSnapshot(),
       debounceMs: 10,
       retryBaseIntervalMs: 10,
       retryMaxIntervalMs: 10,
@@ -170,6 +275,7 @@ describe('SnapshotPublisher', () => {
       workerBaseUrl: new URL('https://relay.example.com'),
       authKey: 'publish-key',
       fetchImpl,
+      buildSnapshot: () => createMinimalSnapshot(),
       debounceMs: 1_000,
     });
 
@@ -190,6 +296,7 @@ describe('SnapshotPublisher', () => {
       workerBaseUrl: new URL('https://relay.example.com'),
       authKey: 'publish-key',
       fetchImpl,
+      buildSnapshot: () => createMinimalSnapshot(),
       debounceMs: 10,
       retryBaseIntervalMs: 10,
       retryMaxIntervalMs: 10,
@@ -217,6 +324,7 @@ describe('SnapshotPublisher', () => {
       workerBaseUrl: new URL('https://relay.example.com'),
       authKey: 'publish-key',
       fetchImpl,
+      buildSnapshot: () => createMinimalSnapshot(),
       debounceMs: 10,
       logger,
       now: () => 321,

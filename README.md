@@ -351,9 +351,7 @@ For dashboards or spectator clients running in the browser, use:
 - the published snapshot manifest URL (`VITE_SNAPSHOT_URL`) on R2/CDN for current-state polling
 - the Worker `/api/history` endpoint for timeline / detail overlays
 
-`GET /api/snapshot` is a backend/admin-side source endpoint used by the publisher layer, not the browser-facing contract for the spectator SPA. Per issue #60, the publisher path is event-driven snapshot/history publication to R2/CDN; browser clients poll the published manifest URL, resolve the current versioned snapshot object from that manifest, and use periodic refresh only as fallback/readiness behavior rather than the primary contract. The legacy `/ws` endpoint has been removed.
-
-That backend-side source is still useful for publisher workers, admin tooling, observers, and debugging utilities.
+World server pushes snapshots to the spectator relay Worker via `POST /api/publish-snapshot` whenever an event requires it; the Worker applies the body directly and republishes to R2/CDN. Browser clients poll only the manifest URL; there is no pull endpoint and the legacy `/ws` endpoint has been removed.
 
 The spectator SPA under `karakuri-world-ui/` has its own required Vite env for both `npm run dev` and `npm run build`:
 

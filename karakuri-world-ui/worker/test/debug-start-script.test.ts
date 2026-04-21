@@ -11,7 +11,7 @@ describe('debug-start script', () => {
   it('provisions the shared publish secret before deploying the debug worker', () => {
     const script = readFileSync(debugStartScriptPath, 'utf8');
 
-    expect(script).toContain('wrangler secret put KW_ADMIN_KEY');
+    expect(script).not.toContain('wrangler secret put KW_ADMIN_KEY');
     expect(script).toContain('wrangler secret put SNAPSHOT_PUBLISH_AUTH_KEY');
     expect(script).toContain('SNAPSHOT_PUBLISH_AUTH_KEY シークレットを設定してください:');
     expect(script).toContain('本体サーバー側の SNAPSHOT_PUBLISH_AUTH_KEY と同じ値を入力してください');

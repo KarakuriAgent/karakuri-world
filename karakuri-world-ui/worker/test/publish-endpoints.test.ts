@@ -74,6 +74,7 @@ function createWorldSnapshot(generatedAt = 1_750_000_000_000) {
     agents: [],
     conversations: [],
     server_events: [],
+    recent_server_events: [],
     generated_at: generatedAt,
   };
 }
@@ -151,19 +152,18 @@ describe('publish endpoints', () => {
     const bridge = new UIBridgeDurableObject(
       new FakeDurableObjectState(),
       {
-        KW_BASE_URL: 'http://127.0.0.1:3000',
-        KW_ADMIN_KEY: 'admin-key',
         SNAPSHOT_PUBLISH_AUTH_KEY: 'publish-key',
-      },
-      {
-        fetchImpl: vi.fn(async () => ({ status: 200, json: async () => createWorldSnapshot() })),
       },
     );
 
     const response = await relayWorker.fetch(
       new Request('https://relay.example.com/api/publish-snapshot', {
         method: 'POST',
-        headers: { Authorization: 'Bearer publish-key' },
+        headers: {
+          Authorization: 'Bearer publish-key',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(createWorldSnapshot()),
       }),
       {
         SNAPSHOT_PUBLISH_AUTH_KEY: 'publish-key',
@@ -175,7 +175,7 @@ describe('publish endpoints', () => {
     );
 
     expect(response.status).toBe(502);
-    await expect(response.json()).resolves.toEqual({ error: 'snapshot_refresh_failed' });
+    await expect(response.json()).resolves.toEqual({ error: 'publish_failed' });
   });
 
   it('publishes per-agent history and materializes conversation scope from the same append path', async () => {
@@ -183,13 +183,10 @@ describe('publish endpoints', () => {
     const bridge = new UIBridgeDurableObject(
       new FakeDurableObjectState(),
       {
-        KW_BASE_URL: 'http://127.0.0.1:3000',
-        KW_ADMIN_KEY: 'admin-key',
         SNAPSHOT_BUCKET: bucket,
         SNAPSHOT_PUBLISH_AUTH_KEY: 'publish-key',
       },
       {
-        fetchImpl: vi.fn(async () => ({ status: 200, json: async () => createWorldSnapshot() })),
         publishSnapshot: vi.fn(async () => undefined),
       },
     );
@@ -238,16 +235,7 @@ describe('publish endpoints', () => {
   });
 
   it('returns 404 for removed legacy /ws requests that reach the durable object fallback path', async () => {
-    const bridge = new UIBridgeDurableObject(
-      new FakeDurableObjectState(),
-      {
-        KW_BASE_URL: 'http://127.0.0.1:3000',
-        KW_ADMIN_KEY: 'admin-key',
-      },
-      {
-        fetchImpl: vi.fn(async () => ({ status: 200, json: async () => createWorldSnapshot() })),
-      },
-    );
+    const bridge = new UIBridgeDurableObject(new FakeDurableObjectState(), {});
 
     const response = await bridge.fetch(new Request('https://relay.example.com/ws'));
 

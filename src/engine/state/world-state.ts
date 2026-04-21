@@ -2,11 +2,13 @@ import type { AgentItem, AgentRegistration, AgentState, LoggedInAgent } from '..
 import type { NodeId } from '../../types/data-model.js';
 import { AgentStateStore, type LoginAgentParams } from './agent-state.js';
 import { ConversationStateStore } from './conversation-state.js';
+import { RecentServerEventsStore } from './recent-server-events-state.js';
 import { ServerEventStateStore } from './server-event-state.js';
 
 export class WorldState {
   readonly conversations = new ConversationStateStore();
   readonly serverEvents = new ServerEventStateStore();
+  readonly recentServerEvents = new RecentServerEventsStore();
   private readonly agents: AgentStateStore;
 
   constructor(initialRegistrations: AgentRegistration[] = []) {

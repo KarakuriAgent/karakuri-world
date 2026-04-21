@@ -91,6 +91,13 @@ export interface ServerEventSnapshot {
   pending_agent_ids: string[];
 }
 
+export interface RecentServerEventSnapshot {
+  server_event_id: string;
+  description: string;
+  occurred_at: number;
+  is_active: boolean;
+}
+
 export interface WorldSnapshot {
   world: WorldConfig;
   map: MapConfig;
@@ -100,6 +107,7 @@ export interface WorldSnapshot {
   agents: AgentSnapshot[];
   conversations: ConversationSnapshot[];
   server_events: ServerEventSnapshot[];
+  recent_server_events: RecentServerEventSnapshot[];
   generated_at: number;
   runtime?: {
     snapshot_publisher: SnapshotPublisherStats;

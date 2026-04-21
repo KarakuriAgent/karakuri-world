@@ -7,18 +7,6 @@ import { createTestWorld } from '../helpers/test-world.js';
 
 const ADMIN_KEY = 'admin';
 
-type FetchableApp = {
-  fetch: (request: Request) => Response | Promise<Response>;
-};
-
-async function requestJson(app: FetchableApp, path: string, init?: RequestInit): Promise<{ response: Response; data: any }> {
-  const response = await app.fetch(new Request(`http://localhost${path}`, init));
-  return {
-    response,
-    data: await response.json(),
-  };
-}
-
 function createActionOnPathMap(): MapConfig {
   const map = createTestMapConfig();
   return {
@@ -66,7 +54,7 @@ describe('movement integration', () => {
         map: createActionOnPathMap(),
       },
     });
-    const { app } = createApp(engine, {
+    createApp(engine, {
       adminKey: ADMIN_KEY,
       publicBaseUrl: 'http://localhost:3000',
     });
@@ -90,11 +78,8 @@ describe('movement integration', () => {
       }),
     ]);
 
-    const snapshot = await requestJson(app, '/api/snapshot', {
-      headers: { 'X-Admin-Key': ADMIN_KEY },
-    });
-    expect(snapshot.response.status).toBe(200);
-    expect(snapshot.data.agents).toEqual([
+    const snapshot = engine.getSnapshot();
+    expect(snapshot.agents).toEqual([
       expect.objectContaining({
         agent_id: alice.agent_id,
         node_id: '2-1',

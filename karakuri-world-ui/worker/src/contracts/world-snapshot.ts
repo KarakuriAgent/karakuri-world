@@ -136,6 +136,13 @@ export interface WorldSnapshotServerEventInput {
   [key: string]: unknown;
 }
 
+export interface WorldSnapshotRecentServerEventInput {
+  server_event_id: string;
+  description: string;
+  occurred_at: number;
+  is_active: boolean;
+}
+
 export interface WorldSnapshotMapInput {
   rows: number;
   cols: number;
@@ -158,5 +165,6 @@ export interface WorldSnapshot<
   agents: TAgent[];
   conversations: TConversation[];
   server_events: TServerEvent[];
+  recent_server_events: WorldSnapshotRecentServerEventInput[];
   generated_at: number;
 }

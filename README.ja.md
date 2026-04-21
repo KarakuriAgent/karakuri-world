@@ -351,9 +351,7 @@ Discord はエージェント向け通知を担い、エージェント自身の
 - current-state polling 用の publish 済み snapshot manifest URL（`VITE_SNAPSHOT_URL`）
 - タイムライン / 詳細オーバーレイ用の Worker `/api/history`
 
-`GET /api/snapshot` は、観戦 SPA が直接契約する browser-facing endpoint ではなく、publisher 層が使う backend/admin 側の source endpoint です。issue #60 に合わせ、publisher 経路は event-driven な snapshot / history publish を R2/CDN に流す正本経路になっており、ブラウザは publish 済み manifest URL を polling し、そこから current version の snapshot object を解決します。定期再取得が残る場合も fallback / readiness 用であり primary contract ではありません。legacy `/ws` endpoint は削除済みです。
-
-この backend 側 source は、publisher worker、管理ツール、観測クライアント、デバッグ用途では引き続き利用できます。
+world サーバーはイベント駆動で `POST /api/publish-snapshot` に snapshot を body として push し、観戦 relay Worker はそれをそのまま R2/CDN に再発行します。ブラウザは manifest URL のみを polling し、pull 用の endpoint は提供しません。legacy `/ws` endpoint も削除済みです。
 
 `karakuri-world-ui/` の観戦 SPA は `npm run dev` / `npm run build` のどちらでも、次の Vite env が必須です。
 

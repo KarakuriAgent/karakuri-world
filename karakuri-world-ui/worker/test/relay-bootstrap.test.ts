@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { SnapshotManifest } from '../src/contracts/snapshot-manifest.js';
 import relayWorker, { PRIMARY_BRIDGE_NAME, UIBridgeDurableObject } from '../src/index.js';
 import { decodeSpectatorSnapshot } from '../src/contracts/snapshot-serializer.js';
-import type { DurableObjectStateLike, RelayBindings, RelayFetchResponse } from '../src/relay/bridge.js';
+import type { DurableObjectStateLike } from '../src/relay/bridge.js';
 
 class FakeDurableObjectState implements DurableObjectStateLike {
   readonly alarmCalls: number[] = [];
@@ -108,36 +108,17 @@ function createWorldSnapshot(generatedAt = 1_750_000_000_000, overrides: Record<
       },
     ],
     server_events: [],
+    recent_server_events: [],
     generated_at: generatedAt,
     ...overrides,
   };
 }
 
-type FetchMockStep = RelayFetchResponse | (() => RelayFetchResponse | Promise<RelayFetchResponse>);
-
-function createJsonResponse(payload: unknown, status = 200): RelayFetchResponse {
-  return {
-    status,
-    json: async () => payload,
-  };
-}
-
-
-function createRelayFetchMock({
-  snapshotResponses = [createJsonResponse(createWorldSnapshot())],
-}: {
-  snapshotResponses?: FetchMockStep[];
-}) {
-  const snapshotQueue = [...snapshotResponses];
-
-  return vi.fn(async (_input: Request | string | URL) => {
-    const next = snapshotQueue.shift();
-
-    if (next === undefined) {
-      return createJsonResponse(createWorldSnapshot());
-    }
-
-    return typeof next === 'function' ? await next() : next;
+function publishSnapshotRequest(body: unknown): Request {
+  return new Request('https://relay.example.com/api/publish-snapshot', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   });
 }
 
@@ -190,15 +171,6 @@ function createObservabilitySpy() {
   };
 }
 
-function createDeferred<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  const promise = new Promise<T>((innerResolve) => {
-    resolve = innerResolve;
-  });
-
-  return { promise, resolve };
-}
-
 describe('relay bootstrap', () => {
   it('routes worker requests through the singleton durable object namespace', async () => {
     const forwardedResponse = new Response('ok');
@@ -239,45 +211,27 @@ describe('relay bootstrap', () => {
     expect(stub.fetch).not.toHaveBeenCalled();
   });
 
-  it('boots from /api/snapshot, publishes immediately, and arms the fallback resync alarm', async () => {
+  it('applies a pushed snapshot body and publishes immediately', async () => {
     const now = 1_750_000_050_000;
     const state = new FakeDurableObjectState();
     const publishSnapshot = vi.fn<(input: SnapshotPublishCall) => Promise<void>>(async () => undefined);
-    const fetchImpl = createRelayFetchMock({
-    });
     const bridge = new UIBridgeDurableObject(
       state,
+      {},
       {
-        KW_BASE_URL: 'http://127.0.0.1:3000',
-        KW_ADMIN_KEY: 'test-admin-key',
-      },
-      {
-        fetchImpl,
         now: () => now,
         publishSnapshot,
       },
     );
 
-    await bridge.whenBooted();
+    const response = await bridge.fetch(publishSnapshotRequest(createWorldSnapshot()));
 
-    expect(fetchImpl).toHaveBeenNthCalledWith(
-      1,
-      'http://127.0.0.1:3000/api/snapshot',
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          'X-Admin-Key': 'test-admin-key',
-        }),
-      }),
-    );
+    expect(response.status).toBe(204);
     expect(bridge.getDebugState()).toMatchObject({
-      recent_server_events: [],
-      last_refresh_at: now,
       last_publish_at: now,
-      fallback_refresh_alarm_at: now + 180_000,
+      last_published_generated_at: 1_750_000_000_000,
       publish_failure_streak: 0,
-      active_server_event_ids: [],
     });
-    expect(state.alarmCalls).toContain(now + 180_000);
     expect(publishedKeys(publishSnapshot)).toEqual([
       'snapshot/v/1750000000000.json',
       'snapshot/manifest.json',
@@ -289,110 +243,50 @@ describe('relay bootstrap', () => {
     });
   });
 
-  it('stays event-driven during quiet periods and only refreshes again on fallback resync', async () => {
-    let now = 1_750_000_050_000;
+  it('forwards recent_server_events from the pushed body to the published spectator snapshot', async () => {
+    const now = 1_750_000_050_000;
     const state = new FakeDurableObjectState();
     const publishSnapshot = vi.fn<(input: SnapshotPublishCall) => Promise<void>>(async () => undefined);
-    const fetchImpl = createRelayFetchMock({
-      snapshotResponses: [
-        createJsonResponse(createWorldSnapshot(1_750_000_000_000)),
-        createJsonResponse(createWorldSnapshot(1_750_000_005_000)),
-      ],
-    });
     const bridge = new UIBridgeDurableObject(
       state,
-      { KW_BASE_URL: 'http://127.0.0.1:3000', KW_ADMIN_KEY: 'test-admin-key' },
-      { fetchImpl, publishSnapshot, now: () => now },
+      {},
+      {
+        now: () => now,
+        publishSnapshot,
+      },
     );
 
-    await bridge.whenBooted();
-
-    now += 5_000;
-    await bridge.alarm();
-
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(publishedKeys(publishSnapshot)).toEqual([
-      'snapshot/v/1750000000000.json',
-      'snapshot/manifest.json',
-      'snapshot/latest.json',
-    ]);
-    expect(bridge.getDebugState()).toMatchObject({
-      last_refresh_at: 1_750_000_050_000,
-      last_publish_at: 1_750_000_050_000,
-      fallback_refresh_alarm_at: 1_750_000_230_000,
-      latest_snapshot: {
-        generated_at: 1_750_000_000_000,
-        published_at: 1_750_000_050_000,
-      },
-    });
-
-    now += 175_000;
-    await bridge.alarm();
-
-    expect(bridge.getDebugState()).toMatchObject({
-      last_refresh_at: now,
-      last_publish_at: now,
-      fallback_refresh_alarm_at: now + 180_000,
-      latest_snapshot: {
-        generated_at: 1_750_000_005_000,
-        published_at: now,
-      },
-    });
-    expect(publishedKeys(publishSnapshot)).toEqual([
-      'snapshot/v/1750000000000.json',
-      'snapshot/manifest.json',
-      'snapshot/latest.json',
-      'snapshot/v/1750000005000.json',
-      'snapshot/manifest.json',
-      'snapshot/latest.json',
-    ]);
-  });
-
-  it('builds recent_server_events from polling edges even without relay events', async () => {
-    let now = 1_750_000_050_000;
-    const state = new FakeDurableObjectState();
-    const publishSnapshot = vi.fn<(input: SnapshotPublishCall) => Promise<void>>(async () => undefined);
-    const fetchImpl = createRelayFetchMock({
-      snapshotResponses: [
-        createJsonResponse(createWorldSnapshot(1_750_000_000_000)),
-        createJsonResponse(
-          createWorldSnapshot(1_750_000_010_000, {
-            server_events: [
-              {
-                server_event_id: 'festival',
-                description: 'Harvest Festival',
-                delivered_agent_ids: ['alice'],
-                pending_agent_ids: [],
-              },
-            ],
-          }),
-        ),
-      ],
-    });
-    const bridge = new UIBridgeDurableObject(
-      state,
-      { KW_BASE_URL: 'http://127.0.0.1:3000', KW_ADMIN_KEY: 'test-admin-key' },
-      { fetchImpl, publishSnapshot, now: () => now },
+    const response = await bridge.fetch(
+      publishSnapshotRequest(
+        createWorldSnapshot(1_750_000_010_000, {
+          recent_server_events: [
+            {
+              server_event_id: 'festival',
+              description: 'Harvest Festival',
+              occurred_at: 1_750_000_005_000,
+              is_active: true,
+            },
+          ],
+        }),
+      ),
     );
 
-    await bridge.whenBooted();
-    now += 180_000;
-    await bridge.alarm();
-
-    expect(bridge.getDebugState()).toMatchObject({
-      active_server_event_ids: ['festival'],
+    expect(response.status).toBe(204);
+    const firstPayload = decodeSpectatorSnapshot(publishSnapshot.mock.calls[0]![0].body);
+    expect(firstPayload).toMatchObject({
+      generated_at: 1_750_000_010_000,
       recent_server_events: [
         {
           server_event_id: 'festival',
           description: 'Harvest Festival',
-          occurred_at: 1_750_000_010_000,
+          occurred_at: 1_750_000_005_000,
           is_active: true,
         },
       ],
     });
   });
 
-  it('does not let fallback refresh bypass an active publish backoff window', async () => {
+  it('retries a failed R2 publish via alarm-driven exponential backoff', async () => {
     let now = 1_750_000_050_000;
     const state = new FakeDurableObjectState();
     const publishSnapshot = vi
@@ -402,35 +296,25 @@ describe('relay bootstrap', () => {
       .mockResolvedValue(undefined);
     const bridge = new UIBridgeDurableObject(
       state,
-      { KW_BASE_URL: 'http://127.0.0.1:3000', KW_ADMIN_KEY: 'test-admin-key' },
+      {},
       {
-        fetchImpl: createRelayFetchMock({
-          snapshotResponses: [
-            createJsonResponse(createWorldSnapshot(now - 50_000)),
-            createJsonResponse(createWorldSnapshot(now - 45_000)),
-            createJsonResponse(createWorldSnapshot(now - 40_000)),
-            createJsonResponse(createWorldSnapshot(now - 35_000)),
-          ],
-        }),
         publishSnapshot,
         observability: createObservabilitySpy().observer,
         now: () => now,
       },
     );
 
-    await bridge.whenBooted();
+    await bridge.fetch(publishSnapshotRequest(createWorldSnapshot(1_750_000_000_000)));
     expect(publishedKeys(publishSnapshot)).toEqual(['snapshot/v/1750000000000.json']);
     expect(bridge.getDebugState()).toMatchObject({
       publish_failure_streak: 1,
       publish_alarm_at: now + 5_000,
-      fallback_refresh_alarm_at: now + 180_000,
       last_publish_error_at: now,
       last_publish_error_code: 'R2_PUBLISH_FAILED',
     });
 
     now += 5_000;
     await bridge.alarm();
-
     expect(publishedKeys(publishSnapshot)).toEqual([
       'snapshot/v/1750000000000.json',
       'snapshot/v/1750000000000.json',
@@ -438,25 +322,10 @@ describe('relay bootstrap', () => {
     expect(bridge.getDebugState()).toMatchObject({
       publish_failure_streak: 2,
       publish_alarm_at: now + 10_000,
-      fallback_refresh_alarm_at: 1_750_000_230_000,
     });
 
-    now += 5_000;
+    now += 10_000;
     await bridge.alarm();
-
-    expect(publishedKeys(publishSnapshot)).toEqual([
-      'snapshot/v/1750000000000.json',
-      'snapshot/v/1750000000000.json',
-    ]);
-    expect(bridge.getDebugState()).toMatchObject({
-      publish_failure_streak: 2,
-      publish_alarm_at: 1_750_000_065_000,
-      fallback_refresh_alarm_at: 1_750_000_230_000,
-    });
-
-    now += 5_000;
-    await bridge.alarm();
-
     expect(publishedKeys(publishSnapshot)).toEqual([
       'snapshot/v/1750000000000.json',
       'snapshot/v/1750000000000.json',
@@ -468,7 +337,6 @@ describe('relay bootstrap', () => {
       publish_failure_streak: 0,
       publish_alarm_at: undefined,
       last_publish_at: now,
-      fallback_refresh_alarm_at: 1_750_000_230_000,
       latest_snapshot: {
         generated_at: 1_750_000_000_000,
         published_at: now,
@@ -482,14 +350,8 @@ describe('relay bootstrap', () => {
     const publishSnapshot = vi.fn<(input: SnapshotPublishCall) => Promise<void>>().mockResolvedValue(undefined);
     const bridge = new UIBridgeDurableObject(
       state,
-      { KW_BASE_URL: 'http://127.0.0.1:3000', KW_ADMIN_KEY: 'test-admin-key' },
+      {},
       {
-        fetchImpl: createRelayFetchMock({
-          snapshotResponses: [
-            createJsonResponse(createWorldSnapshot(now - 50_000)),
-            createJsonResponse(createWorldSnapshot(now - 45_000)),
-          ],
-        }),
         publishSnapshot,
         observability: {
           counter() {},
@@ -502,7 +364,7 @@ describe('relay bootstrap', () => {
       },
     );
 
-    await bridge.whenBooted();
+    await bridge.fetch(publishSnapshotRequest(createWorldSnapshot(now - 50_000)));
 
     expect(bridge.getDebugState()).toMatchObject({
       publish_in_flight: false,
@@ -515,13 +377,13 @@ describe('relay bootstrap', () => {
     });
 
     now += 5_000;
-    await bridge.fetch(new Request('https://relay.example.com/api/publish-snapshot', { method: 'POST' }));
+    await bridge.fetch(publishSnapshotRequest(createWorldSnapshot(now)));
 
     expect(publishedKeys(publishSnapshot)).toEqual([
       'snapshot/v/1750000000000.json',
       'snapshot/manifest.json',
       'snapshot/latest.json',
-      'snapshot/v/1750000005000.json',
+      'snapshot/v/1750000055000.json',
       'snapshot/manifest.json',
       'snapshot/latest.json',
     ]);
@@ -530,7 +392,7 @@ describe('relay bootstrap', () => {
       publish_failure_streak: 0,
       last_publish_at: now,
       latest_snapshot: {
-        generated_at: 1_750_000_005_000,
+        generated_at: 1_750_000_055_000,
         published_at: now,
       },
     });
@@ -543,23 +405,17 @@ describe('relay bootstrap', () => {
     const publishSnapshot = vi.fn<(input: SnapshotPublishCall) => Promise<void>>(async () => undefined);
     const bridge = new UIBridgeDurableObject(
       state,
-      { KW_BASE_URL: 'http://127.0.0.1:3000', KW_ADMIN_KEY: 'test-admin-key' },
+      {},
       {
-        fetchImpl: createRelayFetchMock({
-          snapshotResponses: [
-            createJsonResponse(createWorldSnapshot(now - 20_000)),
-            createJsonResponse(createWorldSnapshot(1_750_000_046_000)),
-          ],
-        }),
         publishSnapshot,
         observability: observability.observer,
         now: () => now,
       },
     );
 
-    await bridge.whenBooted();
+    await bridge.fetch(publishSnapshotRequest(createWorldSnapshot(now - 20_000)));
     now += 6_000;
-    await bridge.fetch(new Request('https://relay.example.com/api/publish-snapshot', { method: 'POST' }));
+    await bridge.fetch(publishSnapshotRequest(createWorldSnapshot(now - 10_000)));
 
     expect(observability.metrics).toContainEqual({
       kind: 'gauge',
@@ -570,36 +426,6 @@ describe('relay bootstrap', () => {
       kind: 'gauge',
       name: 'ui.snapshot.published_age_ms',
       value: 0,
-    });
-  });
-
-  it('emits ui freshness metrics from the last known snapshot when a refresh fails', async () => {
-    let now = 1_750_000_050_000;
-    const state = new FakeDurableObjectState();
-    const observability = createObservabilitySpy();
-    const publishSnapshot = vi.fn<(input: SnapshotPublishCall) => Promise<void>>(async () => undefined);
-    const fetchImpl = createRelayFetchMock({
-      snapshotResponses: [createJsonResponse(createWorldSnapshot(now - 20_000)), { status: 500 }],
-    });
-    const bridge = new UIBridgeDurableObject(
-      state,
-      { KW_BASE_URL: 'http://127.0.0.1:3000', KW_ADMIN_KEY: 'test-admin-key' },
-      { fetchImpl, publishSnapshot, observability: observability.observer, now: () => now },
-    );
-
-    await bridge.whenBooted();
-    now += 180_000;
-    await bridge.alarm();
-
-    expect(observability.metrics).toContainEqual({
-      kind: 'gauge',
-      name: 'ui.snapshot.generated_age_ms',
-      value: 200_000,
-    });
-    expect(observability.metrics).toContainEqual({
-      kind: 'gauge',
-      name: 'ui.snapshot.published_age_ms',
-      value: 180_000,
     });
   });
 
@@ -615,23 +441,17 @@ describe('relay bootstrap', () => {
       .mockRejectedValueOnce(new Error('R2 unavailable'));
     const bridge = new UIBridgeDurableObject(
       state,
-      { KW_BASE_URL: 'http://127.0.0.1:3000', KW_ADMIN_KEY: 'test-admin-key' },
+      {},
       {
-        fetchImpl: createRelayFetchMock({
-          snapshotResponses: [
-            createJsonResponse(createWorldSnapshot(now - 20_000)),
-            createJsonResponse(createWorldSnapshot(1_750_000_046_000)),
-          ],
-        }),
         publishSnapshot,
         observability: observability.observer,
         now: () => now,
       },
     );
 
-    await bridge.whenBooted();
+    await bridge.fetch(publishSnapshotRequest(createWorldSnapshot(now - 20_000)));
     now += 6_000;
-    await bridge.fetch(new Request('https://relay.example.com/api/publish-snapshot', { method: 'POST' }));
+    await bridge.fetch(publishSnapshotRequest(createWorldSnapshot(now - 10_000)));
 
     expect(observability.metrics).toContainEqual({
       kind: 'gauge',
@@ -645,39 +465,7 @@ describe('relay bootstrap', () => {
     });
   });
 
-  it('records fallback refresh failures and keeps the resync alarm alive', async () => {
-    let now = 1_750_000_050_000;
-    const state = new FakeDurableObjectState();
-    const observability = createObservabilitySpy();
-    const publishSnapshot = vi.fn<(input: SnapshotPublishCall) => Promise<void>>(async () => undefined);
-    const fetchImpl = createRelayFetchMock({
-      snapshotResponses: [createJsonResponse(createWorldSnapshot()), { status: 500 }],
-    });
-    const bridge = new UIBridgeDurableObject(
-      state,
-      { KW_BASE_URL: 'http://127.0.0.1:3000', KW_ADMIN_KEY: 'test-admin-key' },
-      { fetchImpl, publishSnapshot, observability: observability.observer, now: () => now },
-    );
-
-    await bridge.whenBooted();
-    now += 180_000;
-    await bridge.alarm();
-
-    expect(observability.metrics).toContainEqual({
-      kind: 'counter',
-      name: 'ui.snapshot.refresh_failure_total',
-      value: 1,
-      tags: { reason: 'fallback-refresh' },
-    });
-    expect(bridge.getDebugState()).toMatchObject({
-      last_refresh_at: 1_750_000_050_000,
-      fallback_refresh_alarm_at: now + 180_000,
-      last_publish_error_at: now,
-      last_publish_error_code: 'SNAPSHOT_REFRESH_FAILED',
-    });
-  });
-
-  it('republishes stale manifest metadata when a fallback publish fails after an earlier successful publish', async () => {
+  it('republishes stale manifest metadata when a subsequent publish fails after an earlier success', async () => {
     let now = 1_750_000_050_000;
     const state = new FakeDurableObjectState();
     const publishSnapshot = vi
@@ -689,23 +477,17 @@ describe('relay bootstrap', () => {
       .mockResolvedValueOnce(undefined);
     const bridge = new UIBridgeDurableObject(
       state,
-      { KW_BASE_URL: 'http://127.0.0.1:3000', KW_ADMIN_KEY: 'test-admin-key' },
+      {},
       {
-        fetchImpl: createRelayFetchMock({
-          snapshotResponses: [
-            createJsonResponse(createWorldSnapshot(1_750_000_000_000)),
-            createJsonResponse(createWorldSnapshot(1_750_000_005_000)),
-          ],
-        }),
         publishSnapshot,
         now: () => now,
       },
     );
 
-    await bridge.whenBooted();
+    await bridge.fetch(publishSnapshotRequest(createWorldSnapshot(1_750_000_000_000)));
 
     now += 180_000;
-    await bridge.alarm();
+    await bridge.fetch(publishSnapshotRequest(createWorldSnapshot(1_750_000_005_000)));
 
     expect(publishedKeys(publishSnapshot)).toEqual([
       'snapshot/v/1750000000000.json',
@@ -730,18 +512,16 @@ describe('relay bootstrap', () => {
     });
   });
 
-  it('keeps fallback refresh rescheduling live when failure observability throws', async () => {
-    let now = 1_750_000_050_000;
+  it('keeps the alarm loop alive when failure observability throws during a publish', async () => {
+    const now = 1_750_000_050_000;
     const state = new FakeDurableObjectState();
-    const publishSnapshot = vi.fn<(input: SnapshotPublishCall) => Promise<void>>(async () => undefined);
-    const fetchImpl = createRelayFetchMock({
-      snapshotResponses: [createJsonResponse(createWorldSnapshot(now - 20_000)), { status: 500 }],
-    });
+    const publishSnapshot = vi
+      .fn<(input: SnapshotPublishCall) => Promise<void>>()
+      .mockRejectedValue(new Error('R2 unavailable'));
     const bridge = new UIBridgeDurableObject(
       state,
-      { KW_BASE_URL: 'http://127.0.0.1:3000', KW_ADMIN_KEY: 'test-admin-key' },
+      {},
       {
-        fetchImpl,
         publishSnapshot,
         observability: {
           counter() {
@@ -758,15 +538,13 @@ describe('relay bootstrap', () => {
       },
     );
 
-    await bridge.whenBooted();
-    now += 180_000;
+    const response = await bridge.fetch(publishSnapshotRequest(createWorldSnapshot(now - 50_000)));
 
-    await expect(bridge.alarm()).resolves.toBeUndefined();
+    expect(response.status).toBe(502);
     expect(bridge.getDebugState()).toMatchObject({
-      refresh_in_flight: false,
-      last_refresh_at: 1_750_000_050_000,
-      fallback_refresh_alarm_at: now + 180_000,
+      publish_in_flight: false,
+      publish_failure_streak: 1,
+      publish_alarm_at: now + 5_000,
     });
   });
-
 });

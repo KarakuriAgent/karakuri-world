@@ -21,7 +21,7 @@ VITE_PHASE3_EFFECT_ACTION_PARTICLES_ENABLED=false
 
 ### 必須項目
 
-- `VITE_SNAPSHOT_URL`: ブラウザから直接 fetch できるスナップショット manifest URL の絶対パス。ブラウザは公開 R2/CDN 上の `snapshot/manifest.json` をポーリングし、その manifest に入っている versioned key から `snapshot/v/{generated_at}.json` を取得する。ブラウザバンドルに同梱される値なので、`http` / `https` のみ、かつ認証情報・クエリ・フラグメントを含めてはならない。`/api/snapshot` を指してはならない。
+- `VITE_SNAPSHOT_URL`: ブラウザから直接 fetch できるスナップショット manifest URL の絶対パス。ブラウザは公開 R2/CDN 上の `snapshot/manifest.json` をポーリングし、その manifest に入っている versioned key から `snapshot/v/{generated_at}.json` を取得する。ブラウザバンドルに同梱される値なので、`http` / `https` のみ、かつ認証情報・クエリ・フラグメントを含めてはならない。
 - `VITE_AUTH_MODE`: `public` または `access` のいずれか。
 - `VITE_API_BASE_URL`: Worker history API の絶対 URL。必ず `/api/history` までを含む完全な URL とし、Worker オリジンだけ / 親パス `/api` だけでは不可。こちらもブラウザ公開値のため、認証情報・クエリ・フラグメントは禁止。
 - `VITE_PHASE3_EFFECTS_ENABLED`（任意）: `true` / `false`。既定値 `false`。意図的に Phase 3 エフェクトを検証するとき以外は OFF のままにする。
@@ -90,7 +90,7 @@ npm run test:phase1-acceptance
 2. `VITE_SNAPSHOT_URL` を直接ブラウザで叩く：
    - `AUTH_MODE=public`: Access ログイン無しで 200。
    - `AUTH_MODE=access`: Pages / R2 双方で Access セッションが確立されてからのみ 200。Pages ログイン済なのに R2 で Access challenge が残る場合はデプロイ未完了。
-3. 返答が `/api/snapshot` ではなく R2 カスタムドメインオブジェクトパスから来ていること。
+3. 返答が R2 カスタムドメインオブジェクトパスから来ていること（Worker には `/api/snapshot` pull endpoint が存在しない）。
 4. 同じリクエストを再実行し、`Cache Everything` + `Edge TTL = 5 seconds` により edge キャッシュ HIT（`CF-Cache-Status: HIT` 等）となること。
 5. `/api/history?agent_id=<known-agent>&limit=1` をデプロイ済 Worker に叩く：
    - `AUTH_MODE=public`: Access ログイン無しで成功。
@@ -144,7 +144,6 @@ npx wrangler r2 bucket create <real-snapshot-bucket-preview>
 その後、必要なシークレット（初回のみ）を設定してからデプロイ：
 
 ```bash
-npx wrangler secret put KW_ADMIN_KEY
 npx wrangler secret put SNAPSHOT_PUBLISH_AUTH_KEY
 npm run deploy:prod
 ```
@@ -157,7 +156,7 @@ npm run deploy:prod
 2. `npx wrangler deploy` でデプロイ。
 3. Worker URL に対して 1 回 `curl` を打ち、`UIBridgeDurableObject.boot()` を即時起動して静穏期 alarm 経路を立ち上げる。
 
-最低限、`KW_BASE_URL`、シークレット `KW_ADMIN_KEY`、およびバックエンドが `/api/publish-snapshot` / `/api/publish-agent-history` を叩くときに使う共有シークレット `SNAPSHOT_PUBLISH_AUTH_KEY` が必要。Pages と Worker `/api/history` がクロスオリジンなら `HISTORY_CORS_ALLOWED_ORIGINS` に Pages オリジンリストも設定する。
+最低限、バックエンドが `/api/publish-snapshot` / `/api/publish-agent-history` を叩くときに使う共有シークレット `SNAPSHOT_PUBLISH_AUTH_KEY` が必要。Pages と Worker `/api/history` がクロスオリジンなら `HISTORY_CORS_ALLOWED_ORIGINS` に Pages オリジンリストも設定する。
 
 共有 R2 バケットには、公開スナップショットに加えて `GET /api/history` が読む history オブジェクト（例: `history/agents/{agent_id}.json`、`history/conversations/{conversation_id}.json`）も保存される。
 

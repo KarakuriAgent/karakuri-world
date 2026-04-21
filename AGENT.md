@@ -4,7 +4,7 @@
 
 ## プロジェクト概要
 
-Karakuri World は、LLM エージェントがログインしてグリッドマップ上で移動・アクション・会話・サーバーイベント応答を行うマルチエージェント仮想世界サーバー。エージェント向け REST API に加えて、管理 API、管理用スナップショット API（`/api/snapshot`）、MCP、Discord 通知 / 管理スラッシュコマンドを備える。観戦 UI 向け publish は issue #60 に沿って event-driven snapshot / history 配信へ寄せており、legacy `/ws` endpoint は削除済み。
+Karakuri World は、LLM エージェントがログインしてグリッドマップ上で移動・アクション・会話・サーバーイベント応答を行うマルチエージェント仮想世界サーバー。エージェント向け REST API に加えて、管理 API、MCP、Discord 通知 / 管理スラッシュコマンドを備える。観戦 UI 向け publish は event-driven snapshot / history 配信（POST body push）へ統一しており、legacy `/ws` endpoint は削除済み。
 
 ## よく使うコマンド
 
@@ -75,8 +75,7 @@ src/
 - **ゲーム要素**: `ServerConfig.timezone` を正本として世界時刻を扱い、`weather` 設定 + `OPENWEATHERMAP_API_KEY` がある場合は天気を定期取得する。エージェントは `money` / `items` を永続化し、`cost_money` / `reward_money`、`required_items` / `reward_items`、`hours` を使ってゲーム要素付きアクションを定義できる。`cost_money` / `required_items` は開始時消費、`reward_money` / `reward_items` は完了時付与で、キャンセル時の返金・返却はない。不足時は `action_rejected` イベントが発火し、agent channel / `#world-log` / snapshot publisher 連携へ流れる。アイテムの汎用使用は `POST /api/agents/use-item` で行う。
 - **待機時間の制約**: `POST /api/agents/wait` はトップレベルの `duration` を受け付け、値は 10 分刻みを表す整数 `1`〜`6` のみ。
 - **管理 API**: `/api/admin/agents` でエージェント登録/一覧/削除、`POST /api/admin/server-events/fire` でサーバーイベント発火を提供する。Discord の `#world-admin` では `admin` ロール限定で `/agent-list`、`/agent-register`、`/agent-delete`、`/fire-event`、`/login-agent`、`/logout-agent` の 6 コマンドを提供する。`POST /api/admin/agents` の登録本文は `{ discord_bot_id }` のみで、Discord ユーザー（bot・人間問わず）を登録できる。`agent_id` は Discord bot ID をそのまま使用し、`agent_name` と `discord_bot_avatar_url` は Discord API から自動取得する。`#world-log` / 会話スレッドは Webhook で `agent_name` を投稿者名として使い、アバター未取得時は既定の Webhook アバターで継続する。
-- **管理 UI 補助**: `/api/snapshot` でワールドスナップショットを返し、`X-Admin-Key` が必要。
-- **管理/運用向け補助 API**: `/api/snapshot` は管理キー必須のスナップショット API、`/health` はヘルスチェック、`/mcp` は MCP エンドポイント。legacy `/ws` endpoint は存在しない。
+- **管理/運用向け補助 API**: `/health` はヘルスチェック、`/mcp` は MCP エンドポイント。観戦 UI へのスナップショット配信は event-driven に `SNAPSHOT_PUBLISH_BASE_URL` 宛ての `POST /api/publish-snapshot` body push で送る（pull 用 `/api/snapshot` endpoint は撤去済み）。legacy `/ws` endpoint も存在しない。
 
 #### MCP
 

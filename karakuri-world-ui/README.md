@@ -23,7 +23,7 @@ VITE_PHASE3_EFFECT_ACTION_PARTICLES_ENABLED=false
 
 Required values:
 
-- `VITE_SNAPSHOT_URL`: absolute browser-fetchable snapshot manifest URL. The browser polls the public R2/CDN `snapshot/manifest.json`, resolves the versioned snapshot key from that manifest, and then fetches the immutable `snapshot/v/{generated_at}.json` object. Because this value ships in the browser bundle, it must stay public-facing: use only `http` / `https`, and do not embed credentials, query params, or fragments. Do not point this at `/api/snapshot`.
+- `VITE_SNAPSHOT_URL`: absolute browser-fetchable snapshot manifest URL. The browser polls the public R2/CDN `snapshot/manifest.json`, resolves the versioned snapshot key from that manifest, and then fetches the immutable `snapshot/v/{generated_at}.json` object. Because this value ships in the browser bundle, it must stay public-facing: use only `http` / `https`, and do not embed credentials, query params, or fragments.
 - `VITE_AUTH_MODE`: `public` or `access`.
 - `VITE_API_BASE_URL`: absolute Worker history API endpoint. This must be the full `/api/history` URL, not just the Worker origin and not a parent path such as `/api`. Because this value is also browser-exposed, do not embed credentials, query params, or fragments.
 - `VITE_PHASE3_EFFECTS_ENABLED` (optional): `true` or `false`. Defaults to `false`; keep it off until Phase 3 effects are intentionally being exercised.
@@ -92,7 +92,7 @@ Run the following after each deployment or auth-mode change:
 2. Request `VITE_SNAPSHOT_URL` directly in the browser:
    - `AUTH_MODE=public`: expect HTTP 200 without Access login.
    - `AUTH_MODE=access`: expect HTTP 200 only after Pages and R2 Access sessions are both established; if R2 still challenges while Pages is already logged in, the deployment is not ready.
-3. Verify the snapshot response comes from the R2 custom domain object path, not `/api/snapshot`.
+3. Verify the snapshot response comes from the R2 custom domain object path (the Worker no longer exposes any `/api/snapshot` pull endpoint).
 4. Repeat the snapshot request and confirm edge caching (`CF-Cache-Status: HIT` or equivalent) with the `Cache Everything` + `Edge TTL = 5 seconds` rule in effect.
 5. Request `/api/history?agent_id=<known-agent>&limit=1` from the deployed Worker:
    - `AUTH_MODE=public`: expect success without Access login.
@@ -146,7 +146,6 @@ npx wrangler r2 bucket create <real-snapshot-bucket-preview>
 Then set required secrets (once) and deploy:
 
 ```bash
-npx wrangler secret put KW_ADMIN_KEY
 npx wrangler secret put SNAPSHOT_PUBLISH_AUTH_KEY
 npm run deploy:prod
 ```
@@ -159,7 +158,7 @@ For the interactive debug flow (`npm run debug:start`), the script now prompts f
 2. Run `npx wrangler deploy`.
 3. `curl` the Worker URL once so `UIBridgeDurableObject.boot()` runs immediately and starts the quiet-period alarm path.
 
-At minimum, deployment also requires `KW_BASE_URL`, the secret `KW_ADMIN_KEY`, and the shared publish secret `SNAPSHOT_PUBLISH_AUTH_KEY` used by the backend when calling `/api/publish-snapshot` and `/api/publish-agent-history`. When Pages and Worker `/api/history` are cross-origin, also set `HISTORY_CORS_ALLOWED_ORIGINS` to the exact Pages origin list.
+At minimum, deployment requires the shared publish secret `SNAPSHOT_PUBLISH_AUTH_KEY` used by the backend when calling `/api/publish-snapshot` and `/api/publish-agent-history`. When Pages and Worker `/api/history` are cross-origin, also set `HISTORY_CORS_ALLOWED_ORIGINS` to the exact Pages origin list.
 
 The shared R2 bucket now stores both the published snapshot objects and the history objects read by `GET /api/history` (for example `history/agents/{agent_id}.json` and `history/conversations/{conversation_id}.json`).
 

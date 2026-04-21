@@ -9,7 +9,7 @@ export function isRequestAllowedDuringShutdown(method: string, pathname: string)
     return false;
   }
 
-  return pathname === '/health' || pathname === '/api/snapshot';
+  return pathname === '/health';
 }
 
 export function getShutdownErrorResponse() {

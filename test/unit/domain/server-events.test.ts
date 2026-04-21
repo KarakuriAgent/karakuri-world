@@ -724,4 +724,47 @@ describe('server event domain', () => {
     expect(engine.state.getLoggedIn(bob.agent_id)?.state).toBe('in_conversation');
     expect(engine.state.getLoggedIn(charlie.agent_id)?.state).toBe('in_conversation');
   });
+
+  it('records fired events in recentServerEvents and flips is_active off once all agents have received the event', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+
+    const fired = engine.fireServerEvent('Dark clouds gather.');
+
+    expect(engine.state.recentServerEvents.list()).toEqual([
+      expect.objectContaining({
+        server_event_id: fired.server_event_id,
+        description: 'Dark clouds gather.',
+        is_active: false,
+      }),
+    ]);
+    expect(engine.getSnapshot().recent_server_events).toEqual([
+      expect.objectContaining({
+        server_event_id: fired.server_event_id,
+        is_active: false,
+      }),
+    ]);
+  });
+
+  it('keeps recent entries active while the event is still pending for moving agents and marks them inactive after cleanup', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
+
+    engine.move(alice.agent_id, { target_node_id: '3-4' });
+    const fired = engine.fireServerEvent('Dark clouds gather.');
+
+    expect(engine.state.recentServerEvents.list()).toEqual([
+      expect.objectContaining({ server_event_id: fired.server_event_id, is_active: true }),
+    ]);
+
+    vi.advanceTimersByTime(3000);
+
+    expect(engine.getSnapshot().server_events).toEqual([]);
+    expect(engine.state.recentServerEvents.list()).toEqual([
+      expect.objectContaining({ server_event_id: fired.server_event_id, is_active: false }),
+    ]);
+  });
 });

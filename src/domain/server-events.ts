@@ -22,6 +22,7 @@ function maybeCleanupServerEvent(engine: WorldEngine, serverEventId: string): bo
   }
 
   engine.state.serverEvents.delete(serverEventId);
+  engine.state.recentServerEvents.setActive(serverEventId, false);
   return true;
 }
 
@@ -46,6 +47,12 @@ export function fireServerEvent(engine: WorldEngine, description: string): FireS
   }
 
   engine.state.serverEvents.set(serverEvent);
+  engine.state.recentServerEvents.add({
+    server_event_id: serverEvent.server_event_id,
+    description: serverEvent.description,
+    occurred_at: serverEvent.fired_at,
+    is_active: true,
+  });
   engine.emitEvent({
     type: 'server_event_fired',
     server_event_id: serverEvent.server_event_id,
@@ -80,6 +87,17 @@ export function handlePendingServerEvents(engine: WorldEngine, agentId: string):
     }
     engine.state.setActiveServerEvent(agentId, serverEventId);
     deliveredServerEventIds.push(serverEventId);
+
+    if (engine.state.recentServerEvents.has(serverEventId)) {
+      engine.state.recentServerEvents.setActive(serverEventId, true);
+    } else {
+      engine.state.recentServerEvents.add({
+        server_event_id: serverEvent.server_event_id,
+        description: serverEvent.description,
+        occurred_at: serverEvent.fired_at,
+        is_active: true,
+      });
+    }
 
     engine.emitEvent({
       type: 'server_event_fired',

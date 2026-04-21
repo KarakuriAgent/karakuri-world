@@ -12,13 +12,6 @@ if [ ! -f "$DEBUG_STATE" ]; then
   echo "===== デバッグ環境の初期セットアップ (Step 1/2) ====="
   echo ""
 
-  read -rp "本体サーバーの URL (例: https://kw.example.com): " KW_BASE_URL
-  if [ -z "$KW_BASE_URL" ]; then
-    echo "Error: KW_BASE_URL は必須です"
-    exit 1
-  fi
-
-  echo ""
   echo "R2 バケットを作成中..."
   R2_OUTPUT=$(npx -y wrangler r2 bucket create "$R2_NAME" 2>&1) || true
   echo "$R2_OUTPUT"
@@ -34,7 +27,6 @@ if [ ! -f "$DEBUG_STATE" ]; then
   npx -y wrangler r2 bucket cors set "$R2_NAME" --file scripts/r2-cors-debug.json --force
 
   cat > "$DEBUG_STATE" <<STATE
-KW_BASE_URL=$KW_BASE_URL
 R2_NAME=$R2_NAME
 WORKER_NAME=$WORKER_NAME
 SETUP_PHASE=resources_created
@@ -106,7 +98,6 @@ main = "worker/src/index.ts"
 compatibility_date = "2025-04-14"
 
 [vars]
-KW_BASE_URL = "$KW_BASE_URL"
 AUTH_MODE = "public"
 HISTORY_CORS_ALLOWED_ORIGINS = "$CORS_ORIGINS"
 
@@ -124,9 +115,6 @@ bucket_name = "$R2_NAME"
 EOF2
 
 if ! grep -q "^SECRETS_SET=true$" "$DEBUG_STATE" 2>/dev/null; then
-  echo ""
-  echo "KW_ADMIN_KEY シークレットを設定してください:"
-  npx -y wrangler secret put KW_ADMIN_KEY -c "$DEBUG_WRANGLER"
   echo ""
   echo "SNAPSHOT_PUBLISH_AUTH_KEY シークレットを設定してください:"
   echo "  ※ 本体サーバー側の SNAPSHOT_PUBLISH_AUTH_KEY と同じ値を入力してください"

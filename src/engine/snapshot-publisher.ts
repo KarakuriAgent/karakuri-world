@@ -1,4 +1,5 @@
 import type { EventType } from '../types/event.js';
+import type { WorldSnapshot } from '../types/snapshot.js';
 
 export interface SnapshotPublisherLogger {
   error(message: string, context?: Record<string, unknown>): void;
@@ -7,6 +8,7 @@ export interface SnapshotPublisherLogger {
 export interface SnapshotPublisherConfig {
   workerBaseUrl: URL;
   authKey: string;
+  buildSnapshot?: () => WorldSnapshot;
   debounceMs?: number;
   retryMaxAttempts?: number;
   retryBaseIntervalMs?: number;
@@ -158,6 +160,7 @@ export class SnapshotPublisher {
   private gaveUp = false;
   private consecutiveFailures = 0;
   private lastPublishedAt?: number;
+  private buildSnapshotCallback: (() => WorldSnapshot) | null;
 
   constructor(config: SnapshotPublisherConfig) {
     this.publishUrl = new URL('/api/publish-snapshot', config.workerBaseUrl);
@@ -169,6 +172,7 @@ export class SnapshotPublisher {
     this.logger = config.logger ?? defaultLogger();
     this.fetchImpl = config.fetchImpl ?? fetch;
     this.now = config.now ?? (() => Date.now());
+    this.buildSnapshotCallback = config.buildSnapshot ?? null;
 
     if (!config.authKey.trim()) {
       throw new Error('SnapshotPublisher authKey is required');
@@ -178,6 +182,10 @@ export class SnapshotPublisher {
   }
 
   private readonly authKey: string;
+
+  setBuildSnapshot(buildSnapshot: () => WorldSnapshot): void {
+    this.buildSnapshotCallback = buildSnapshot;
+  }
 
   requestPublish(): void {
     if (this.disposed) {
@@ -342,11 +350,18 @@ export class SnapshotPublisher {
   }
 
   private async publishOnce(): Promise<void> {
+    if (!this.buildSnapshotCallback) {
+      throw new Error('SnapshotPublisher buildSnapshot callback is not configured');
+    }
+
+    const snapshot = this.buildSnapshotCallback();
     const response = await this.fetchImpl(this.publishUrl, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${this.authKey}`,
+        'Content-Type': 'application/json',
       },
+      body: JSON.stringify(snapshot),
       signal: AbortSignal.timeout(this.requestTimeoutMs),
     });
 

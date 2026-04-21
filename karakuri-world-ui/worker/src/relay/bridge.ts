@@ -25,16 +25,8 @@ export interface BridgeConversationState {
 export interface BridgeState {
   latest_snapshot?: SpectatorSnapshot;
   conversations: Record<string, BridgeConversationState>;
-  recent_server_events: SpectatorRecentServerEvent[];
-  active_server_event_ids: string[];
-  last_event_at?: number;
   last_publish_at?: number;
   last_published_generated_at?: number;
-  last_refresh_at?: number;
-  refresh_in_flight: boolean;
-  refresh_queued: boolean;
-  refresh_queued_reason?: SnapshotRefreshReason;
-  fallback_refresh_alarm_at?: number;
   publish_alarm_at?: number;
   publish_attempt?: number;
   last_publish_error_at?: number;
@@ -68,7 +60,6 @@ export const SNAPSHOT_REFRESH_REASONS = [
   'external-request',
 ] as const;
 
-type SnapshotRefreshReason = (typeof SNAPSHOT_REFRESH_REASONS)[number];
 type ConversationWorldEvent = Extract<WorldEvent, { conversation_id: string }>;
 
 export interface StagedConversationMirrorUpdate {
@@ -76,29 +67,6 @@ export interface StagedConversationMirrorUpdate {
   next_conversations: Record<string, BridgeConversationState>;
   resolved_conversation?: BridgeConversationState;
   resolved_agent_ids: string[];
-}
-
-function mergeQueuedRefreshReason(
-  currentReason: SnapshotRefreshReason | undefined,
-  nextReason: SnapshotRefreshReason,
-): SnapshotRefreshReason {
-  if (currentReason === 'world-event' || nextReason === 'world-event') {
-    return 'world-event';
-  }
-
-  if (currentReason === 'manual' || nextReason === 'manual') {
-    return 'manual';
-  }
-
-  if (currentReason === 'external-request' || nextReason === 'external-request') {
-    return 'external-request';
-  }
-
-  if (currentReason === 'fallback-refresh' || nextReason === 'fallback-refresh') {
-    return 'fallback-refresh';
-  }
-
-  return 'boot';
 }
 
 export interface DurableObjectStorageLike {
@@ -143,8 +111,6 @@ export interface R2BucketLike {
 }
 
 export interface RelayBindings extends Record<string, unknown> {
-  KW_BASE_URL: string;
-  KW_ADMIN_KEY: string;
   SNAPSHOT_PUBLISH_AUTH_KEY?: string;
   AUTH_MODE?: 'public' | 'access';
   HISTORY_CORS_ALLOWED_ORIGINS?: string;
@@ -225,7 +191,6 @@ const conversationHistoryDocumentSchema = z.object({
 
 const PUBLISH_BACKOFF_MAX_MS = 60_000;
 const PUBLISH_RETRY_BASE_MS = 5_000;
-const FALLBACK_REFRESH_INTERVAL_MS = 180_000;
 const SNAPSHOT_CONTENT_TYPE = 'application/json; charset=utf-8';
 const PERSISTED_RUNTIME_STATE_KEY = 'relay:runtime-state';
 
@@ -373,6 +338,14 @@ const worldSnapshotSchema = z.object({
       description: z.string(),
       delivered_agent_ids: z.array(z.string()),
       pending_agent_ids: z.array(z.string()),
+    }),
+  ),
+  recent_server_events: z.array(
+    z.object({
+      server_event_id: z.string(),
+      description: z.string(),
+      occurred_at: z.number().int().nonnegative(),
+      is_active: z.boolean(),
     }),
   ),
   generated_at: z.number().int().nonnegative(),
@@ -713,27 +686,6 @@ function readOptionalConversationClosureReason(
 }
 
 
-async function fetchWorldSnapshot(config: RelayConfig, fetchImpl: RelayFetch): Promise<WorldSnapshot> {
-  const response = await fetchImpl(config.snapshotUrl.toString(), {
-    headers: {
-      'X-Admin-Key': config.kwAdminKey,
-    },
-  });
-
-  if (response.status !== 200 || typeof response.json !== 'function') {
-    throw new Error(`Snapshot refresh failed with status ${response.status}`);
-  }
-
-  const payload = await response.json();
-  const snapshotResult = worldSnapshotSchema.safeParse(payload);
-
-  if (!snapshotResult.success) {
-    throw new Error('Snapshot refresh returned an invalid payload');
-  }
-
-  return snapshotResult.data as WorldSnapshot;
-}
-
 function calculateBackoff(baseIntervalMs: number, streak: number, maxIntervalMs: number): number {
   return Math.min(baseIntervalMs * 2 ** Math.max(streak - 1, 0), maxIntervalMs);
 }
@@ -744,8 +696,6 @@ interface PersistedRuntimeState {
   latest_snapshot: SpectatorSnapshot;
   last_publish_at?: number;
   last_published_generated_at?: number;
-  last_refresh_at?: number;
-  fallback_refresh_alarm_at?: number;
   publish_alarm_at?: number;
   publish_attempt?: number;
   last_publish_error_at?: number;
@@ -766,10 +716,6 @@ function createRuntimeSnapshotPublisher(snapshotBucket?: R2BucketLike): (input: 
 export function createBridgeState(): BridgeState {
   return {
     conversations: {},
-    recent_server_events: [],
-    active_server_event_ids: [],
-    refresh_in_flight: false,
-    refresh_queued: false,
     publish_in_flight: false,
     publish_queued: false,
     publish_failure_streak: 0,
@@ -1090,70 +1036,6 @@ export function stageConversationMirrorUpdate(
   };
 }
 
-function mergeRecentServerEvent(
-  recentServerEvents: SpectatorRecentServerEvent[],
-  worldEvent: Extract<WorldEvent, { type: 'server_event_fired' }>,
-): SpectatorRecentServerEvent[] {
-  if (recentServerEvents.some((event) => event.server_event_id === worldEvent.server_event_id)) {
-    return recentServerEvents.map((event) =>
-      event.server_event_id === worldEvent.server_event_id ? { ...event, is_active: true } : event,
-    );
-  }
-
-  return [
-    {
-      server_event_id: worldEvent.server_event_id,
-      description: worldEvent.description,
-      occurred_at: worldEvent.occurred_at,
-      is_active: true,
-    },
-    ...recentServerEvents,
-  ]
-    .sort((left, right) => right.occurred_at - left.occurred_at || right.server_event_id.localeCompare(left.server_event_id))
-    .slice(0, 3);
-}
-
-function mergeRecentServerEventsFromSnapshot(
-  recentServerEvents: SpectatorRecentServerEvent[],
-  previousActiveServerEventIds: readonly string[],
-  serverEvents: WorldSnapshot['server_events'],
-  generatedAt: number,
-): SpectatorRecentServerEvent[] {
-  const previousActiveSet = new Set(previousActiveServerEventIds);
-  const byId = new Map(
-    recentServerEvents.map((event) => [
-      event.server_event_id,
-      {
-        ...event,
-        is_active: false,
-      },
-    ]),
-  );
-
-  for (const serverEvent of serverEvents) {
-    const existing = byId.get(serverEvent.server_event_id);
-
-    if (existing) {
-      existing.description = serverEvent.description;
-      existing.is_active = true;
-      continue;
-    }
-
-    if (!previousActiveSet.has(serverEvent.server_event_id)) {
-      byId.set(serverEvent.server_event_id, {
-        server_event_id: serverEvent.server_event_id,
-        description: serverEvent.description,
-        occurred_at: generatedAt,
-        is_active: true,
-      });
-    }
-  }
-
-  return [...byId.values()]
-    .sort((left, right) => right.occurred_at - left.occurred_at || right.server_event_id.localeCompare(left.server_event_id))
-    .slice(0, 3);
-}
-
 export class UIBridgeDurableObject {
   private readonly config: RelayConfig;
   private readonly bridgeState = createBridgeState();
@@ -1187,20 +1069,52 @@ export class UIBridgeDurableObject {
     const url = new URL(request.url);
 
     if (url.pathname === '/api/publish-snapshot' && request.method === 'POST') {
+      let payload: unknown;
       try {
-        await this.refreshSnapshot('external-request');
-        return new Response(null, { status: 204 });
+        payload = await request.json();
       } catch (error) {
         this.runObservabilitySafely(() => {
-          this.dependencies.observability.log('error', 'relay external snapshot refresh failed', {
+          this.dependencies.observability.log('warn', 'relay publish-snapshot body parse failed', {
             error: describeError(error),
           });
         });
-        return new Response(JSON.stringify({ error: 'snapshot_refresh_failed' }), {
+        return new Response(JSON.stringify({ error: 'invalid_json' }), {
+          status: 400,
+          headers: { 'content-type': SNAPSHOT_CONTENT_TYPE },
+        });
+      }
+
+      const parseResult = worldSnapshotSchema.safeParse(payload);
+      if (!parseResult.success) {
+        this.runObservabilitySafely(() => {
+          this.dependencies.observability.log('warn', 'relay publish-snapshot schema mismatch', {
+            issues: parseResult.error.issues,
+          });
+        });
+        return new Response(JSON.stringify({ error: 'invalid_snapshot' }), {
+          status: 400,
+          headers: { 'content-type': SNAPSHOT_CONTENT_TYPE },
+        });
+      }
+
+      const worldSnapshot = parseResult.data as WorldSnapshot;
+
+      try {
+        await this.enqueueSerializedOperation(async () => {
+          await this.applySnapshot(worldSnapshot);
+        });
+        this.emitSnapshotFreshnessMetricsSafely();
+        await this.publishLatestSnapshot({ failClosed: true });
+        return new Response(null, { status: 204 });
+      } catch (error) {
+        this.runObservabilitySafely(() => {
+          this.dependencies.observability.log('error', 'relay publish-snapshot failed', {
+            error: describeError(error),
+          });
+        });
+        return new Response(JSON.stringify({ error: 'publish_failed' }), {
           status: 502,
-          headers: {
-            'content-type': SNAPSHOT_CONTENT_TYPE,
-          },
+          headers: { 'content-type': SNAPSHOT_CONTENT_TYPE },
         });
       }
     }
@@ -1216,17 +1130,6 @@ export class UIBridgeDurableObject {
 
   async alarm(): Promise<void> {
     await this.ensureBooted();
-    const now = this.dependencies.now();
-
-    if (
-      this.bridgeState.fallback_refresh_alarm_at !== undefined &&
-      this.bridgeState.fallback_refresh_alarm_at <= now
-    ) {
-      this.bridgeState.fallback_refresh_alarm_at = now + FALLBACK_REFRESH_INTERVAL_MS;
-      try {
-        await this.refreshSnapshot('fallback-refresh');
-      } catch {}
-    }
 
     if (this.bridgeState.publish_alarm_at !== undefined && this.bridgeState.publish_alarm_at <= this.dependencies.now()) {
       this.bridgeState.publish_alarm_at = undefined;
@@ -1243,7 +1146,6 @@ export class UIBridgeDurableObject {
   getDebugState(): BridgeState {
     return {
       ...this.bridgeState,
-      recent_server_events: this.bridgeState.recent_server_events.map((event) => ({ ...event })),
       conversations: Object.fromEntries(
         Object.entries(this.bridgeState.conversations).map(([conversationId, conversation]) => [
           conversationId,
@@ -1265,31 +1167,25 @@ export class UIBridgeDurableObject {
   }
 
   private async restorePersistedRuntimeState(): Promise<void> {
-    const persistedState = await this.state.storage.get?.<PersistedRuntimeState>(PERSISTED_RUNTIME_STATE_KEY);
+    const persistedState = await this.state.storage.get?.<Partial<PersistedRuntimeState>>(PERSISTED_RUNTIME_STATE_KEY);
 
-    if (!persistedState) {
+    if (!persistedState?.latest_snapshot) {
       return;
     }
 
     this.bridgeState.latest_snapshot = {
       ...persistedState.latest_snapshot,
-      recent_server_events: persistedState.latest_snapshot.recent_server_events.map((event) => ({ ...event })),
+      recent_server_events: (persistedState.latest_snapshot.recent_server_events ?? []).map((event) => ({ ...event })),
     };
-    this.bridgeState.recent_server_events = this.bridgeState.latest_snapshot.recent_server_events.map((event) => ({ ...event }));
-    this.bridgeState.active_server_event_ids = this.bridgeState.latest_snapshot.server_events.map(
-      (event) => event.server_event_id,
-    );
     this.bridgeState.last_publish_at = persistedState.last_publish_at;
     this.bridgeState.last_published_generated_at =
       persistedState.last_published_generated_at ??
       (persistedState.last_publish_at !== undefined ? persistedState.latest_snapshot.generated_at : undefined);
-    this.bridgeState.last_refresh_at = persistedState.last_refresh_at;
-    this.bridgeState.fallback_refresh_alarm_at = persistedState.fallback_refresh_alarm_at;
     this.bridgeState.publish_alarm_at = persistedState.publish_alarm_at;
     this.bridgeState.publish_attempt = persistedState.publish_attempt;
     this.bridgeState.last_publish_error_at = persistedState.last_publish_error_at;
     this.bridgeState.last_publish_error_code = persistedState.last_publish_error_code;
-    this.bridgeState.publish_failure_streak = persistedState.publish_failure_streak;
+    this.bridgeState.publish_failure_streak = persistedState.publish_failure_streak ?? 0;
   }
 
   private async persistRuntimeState(): Promise<void> {
@@ -1307,10 +1203,6 @@ export class UIBridgeDurableObject {
       ...(this.bridgeState.last_published_generated_at !== undefined
         ? { last_published_generated_at: this.bridgeState.last_published_generated_at }
         : {}),
-      ...(this.bridgeState.last_refresh_at !== undefined ? { last_refresh_at: this.bridgeState.last_refresh_at } : {}),
-      ...(this.bridgeState.fallback_refresh_alarm_at !== undefined
-        ? { fallback_refresh_alarm_at: this.bridgeState.fallback_refresh_alarm_at }
-        : {}),
       ...(this.bridgeState.publish_alarm_at !== undefined ? { publish_alarm_at: this.bridgeState.publish_alarm_at } : {}),
       ...(this.bridgeState.publish_attempt !== undefined ? { publish_attempt: this.bridgeState.publish_attempt } : {}),
       ...(this.bridgeState.last_publish_error_at !== undefined
@@ -1324,13 +1216,6 @@ export class UIBridgeDurableObject {
 
   private async boot(): Promise<void> {
     await this.restorePersistedRuntimeState();
-
-    if (!this.bridgeState.latest_snapshot) {
-      await this.refreshSnapshot('boot');
-    }
-
-    this.bridgeState.fallback_refresh_alarm_at ??= this.dependencies.now() + FALLBACK_REFRESH_INTERVAL_MS;
-
     await this.rescheduleAlarm();
   }
 
@@ -1397,86 +1282,23 @@ export class UIBridgeDurableObject {
     }
 
     const now = this.dependencies.now();
-    const activeServerEventIds = worldSnapshot.server_events.map((event) => event.server_event_id);
-    const activeServerEventIdSet = new Set(activeServerEventIds);
 
     this.actionEmojiIndex = buildActionEmojiIndex(worldSnapshot);
     this.bridgeState.conversations = rebuildConversationMirror(worldSnapshot, now);
-    this.bridgeState.recent_server_events = mergeRecentServerEventsFromSnapshot(
-      this.bridgeState.recent_server_events,
-      this.bridgeState.active_server_event_ids,
-      worldSnapshot.server_events,
-      worldSnapshot.generated_at,
-    ).map((event) => ({
-      ...event,
-      is_active: activeServerEventIdSet.has(event.server_event_id),
+    const recentServerEvents: SpectatorRecentServerEvent[] = worldSnapshot.recent_server_events.map((event) => ({
+      server_event_id: event.server_event_id,
+      description: event.description,
+      occurred_at: event.occurred_at,
+      is_active: event.is_active,
     }));
-    this.bridgeState.active_server_event_ids = activeServerEventIds;
     this.bridgeState.latest_snapshot = buildSpectatorSnapshot({
       world_snapshot: worldSnapshot,
-      recent_server_events: this.bridgeState.recent_server_events,
+      recent_server_events: recentServerEvents,
       published_at: this.bridgeState.last_publish_at ?? 0,
       last_publish_error_at: this.bridgeState.last_publish_error_at,
     });
-    this.bridgeState.last_refresh_at = now;
     await this.persistRuntimeState();
     return true;
-  }
-
-  private async refreshSnapshot(reason: SnapshotRefreshReason): Promise<void> {
-    if (this.bridgeState.refresh_in_flight) {
-      this.bridgeState.refresh_queued = true;
-      this.bridgeState.refresh_queued_reason = mergeQueuedRefreshReason(
-        this.bridgeState.refresh_queued_reason,
-        reason,
-      );
-      return;
-    }
-
-    this.bridgeState.refresh_in_flight = true;
-    let refreshSucceeded = false;
-    let refreshError: unknown;
-
-    try {
-      const worldSnapshot = await fetchWorldSnapshot(this.config, this.dependencies.fetchImpl);
-      await this.enqueueSerializedOperation(async () => {
-        await this.applySnapshot(worldSnapshot);
-      });
-      this.emitSnapshotFreshnessMetricsSafely();
-      await this.publishLatestSnapshot({ failClosed: reason === 'external-request' });
-      refreshSucceeded = true;
-    } catch (error) {
-      refreshError = error;
-      this.bridgeState.last_publish_error_at = this.dependencies.now();
-      this.bridgeState.last_publish_error_code = 'SNAPSHOT_REFRESH_FAILED';
-      await this.publishStaleSnapshotManifest('relay snapshot manifest refresh failed', { reason });
-      this.runObservabilitySafely(() => {
-        this.dependencies.observability.counter('ui.snapshot.refresh_failure_total', { reason });
-      });
-      this.emitSnapshotFreshnessMetricsSafely();
-      this.runObservabilitySafely(() => {
-        this.dependencies.observability.log('error', 'relay snapshot refresh failed', {
-          reason,
-          error: describeError(error),
-        });
-      });
-    } finally {
-      this.bridgeState.refresh_in_flight = false;
-
-      if (this.bridgeState.refresh_queued) {
-        const queuedReason = this.bridgeState.refresh_queued_reason ?? 'world-event';
-        this.bridgeState.refresh_queued = false;
-        this.bridgeState.refresh_queued_reason = undefined;
-
-        if (!(refreshSucceeded && queuedReason === 'fallback-refresh')) {
-          await this.refreshSnapshot(queuedReason);
-        }
-      }
-    }
-
-    if (!refreshSucceeded) {
-      throw refreshError instanceof Error ? refreshError : new Error(describeError(refreshError));
-    }
   }
 
   private isPublishBackoffActive(now = this.dependencies.now()): boolean {
@@ -1843,16 +1665,7 @@ export class UIBridgeDurableObject {
 
 
   private async rescheduleAlarm(): Promise<void> {
-    const nextAlarmAt = [
-      this.bridgeState.fallback_refresh_alarm_at,
-      this.bridgeState.publish_alarm_at,
-    ].reduce<number | undefined>((earliest, candidate) => {
-      if (candidate === undefined) {
-        return earliest;
-      }
-
-      return earliest === undefined ? candidate : Math.min(earliest, candidate);
-    }, undefined);
+    const nextAlarmAt = this.bridgeState.publish_alarm_at;
 
     if (nextAlarmAt === undefined) {
       return;

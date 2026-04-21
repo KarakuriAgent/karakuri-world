@@ -130,6 +130,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
       snapshotPublisher,
       agentHistoryManager,
     });
+    snapshotPublisher.setBuildSnapshot(() => engine.getSnapshot());
     const adminRoleId = discordBot.getAdminRoleId();
     const worldAdminChannelId = discordBot.getWorldAdminChannelId();
     adminCommandHandler = new AdminCommandHandler(engine, options.publicBaseUrl, adminRoleId, worldAdminChannelId);
