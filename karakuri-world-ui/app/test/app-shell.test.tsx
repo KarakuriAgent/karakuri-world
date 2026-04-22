@@ -1327,9 +1327,7 @@ describe('App shell bootstrap', () => {
     expect(store.getState().snapshot_status).toBe('incompatible');
 
     expect(screen.getByTestId('snapshot-loading-screen')).toBeInTheDocument();
-    expect(screen.getByText('観戦 UI の更新が必要です。再読み込みしてください。')).toBeInTheDocument();
-    expect(screen.queryByText('観戦ビューを準備しています…')).not.toBeInTheDocument();
-    expect(screen.queryByText('最新スナップショットの再取得を待っています…')).not.toBeInTheDocument();
+    expect(screen.getByText('ワールド読み込み中...')).toBeInTheDocument();
   });
 
   it('keeps the last good snapshot visible and shows reload guidance after incompatibility retries', async () => {

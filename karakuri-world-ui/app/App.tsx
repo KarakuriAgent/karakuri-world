@@ -44,24 +44,14 @@ function SnapshotStatusBanner({
   );
 }
 
-function FullscreenLoading({ snapshotStatus }: { snapshotStatus: SnapshotStatus }) {
-  const eyebrow = snapshotStatus === 'incompatible' ? '観戦 UI の更新が必要' : '観戦ビュー読み込み中';
-  const message =
-    snapshotStatus === 'incompatible'
-      ? '観戦 UI の更新が必要です。再読み込みしてください。'
-      : snapshotStatus === 'error'
-        ? '最新スナップショットの再取得を待っています…'
-        : '観戦ビューを準備しています…';
-
+function FullscreenLoading() {
   return (
     <main
       className="flex min-h-screen items-center justify-center bg-slate-950 px-6 text-slate-100"
       data-testid="snapshot-loading-screen"
     >
       <div className="max-w-md rounded-3xl border border-slate-800 bg-slate-900/70 p-8 text-center shadow-2xl">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300">{eyebrow}</p>
-        <h1 className="mt-3 text-2xl font-semibold text-white">Karakuri World</h1>
-        <p className="mt-3 text-sm text-slate-300">{message}</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300">ワールド読み込み中...</p>
       </div>
     </main>
   );
@@ -131,7 +121,7 @@ export function App({ env, store, autoStartPolling = true }: AppProps) {
   }, [fetchHistory, selectedAgentId, selectionRevision, snapshotStore]);
 
   if (!snapshot) {
-    return <FullscreenLoading snapshotStatus={snapshotStatus} />;
+    return <FullscreenLoading />;
   }
 
   return (
