@@ -2,13 +2,13 @@
 
 ## 1. 目的
 
-本書は UI システム向けに公開する `SpectatorSnapshot` と、それを生成するために Karakuri World 本体へ追加する型・変換ルールを定義する。方針は「ブラウザに出してよい情報だけを、UI がそのまま描画できる形で渡す」である。`GET /api/snapshot` は引き続き内部 / 管理向け `WorldSnapshot` を返す正本 API であり、issue #60 の primary path では event-driven publisher がこれを再取得して `SpectatorSnapshot` へ変換する。fixed-cadence refresh を残す場合も fallback/readiness 用に留める。
+本書は UI システム向けに公開する `SpectatorSnapshot` と、それを生成するために Karakuri World 本体へ追加する型・変換ルールを定義する。方針は「ブラウザに出してよい情報だけを、UI がそのまま描画できる形で渡す」である。`WorldEngine.getSnapshot()` が返す内部 `WorldSnapshot` を正本とし、issue #60 の primary path では event-driven publisher がこれを `SpectatorSnapshot` へ変換して `POST /api/publish-snapshot` で relay Worker に body push する。pull 用 `GET /api/snapshot` HTTP endpoint はどのレイヤーにも提供しない（push が唯一の配信経路）。
 
 ## 2. 本体側の追加データ
 
 ### 2.1 `WorldSnapshot` の追加項目
 
-snapshot publisher が `/api/snapshot` を正本の世界状態として再利用できるよう、`WorldSnapshot` に以下を追加する。固定表示する直近サーバーイベント履歴は 5.1 のとおり publisher-side cache から合成する。
+snapshot publisher が `WorldEngine.getSnapshot()` を正本の世界状態として再利用できるよう、`WorldSnapshot` に以下を追加する。固定表示する直近サーバーイベント履歴は 5.1 のとおり publisher-side cache から合成する。
 
 ```typescript
 interface WorldCalendarSnapshot {

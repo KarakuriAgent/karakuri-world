@@ -161,7 +161,7 @@ steps_completed = floor(elapsed / MovementConfig.duration_ms)
 ### 4.2 影響範囲
 
 - `get_perception` / `get_world_agents` / `get_available_actions` は移動中でもセクション4.1に基づく現在位置で情報取得を受け付け、詳細結果は Discord 通知で返す
-- スナップショット（`GET /api/snapshot`）も同様にセクション4.1に基づく現在位置を返す
+- snapshot publisher が生成する `WorldSnapshot` / `SpectatorSnapshot` も同様にセクション4.1に基づく現在位置を採用する
 - サーバーイベントは移動完了後に遅延通知される（03-world-engine.md セクション3.4参照）
 
 ## 5. 移動中のログアウト処理

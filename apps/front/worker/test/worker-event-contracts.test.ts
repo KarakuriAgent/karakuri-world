@@ -1,12 +1,12 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 
-import type { EventType as BackendEventType } from '../../src/types/event.js';
-import { PERSISTED_SPECTATOR_EVENT_TYPES, type PersistedSpectatorEventType } from '../../karakuri-world-ui/worker/src/contracts/persisted-spectator-event.js';
-import type { EventType as WorkerEventType } from '../../karakuri-world-ui/worker/src/contracts/world-event.js';
+import type { EventType as BackendEventType } from '../../../server/src/types/event.js';
+import { PERSISTED_SPECTATOR_EVENT_TYPES, type PersistedSpectatorEventType } from '../src/contracts/persisted-spectator-event.js';
+import type { EventType as WorkerEventType } from '../src/contracts/world-event.js';
 import {
   KNOWN_WORLD_EVENT_TYPES,
   NON_PERSISTED_WORLD_EVENT_TYPES,
-} from '../../karakuri-world-ui/worker/src/relay/bridge.js';
+} from '../src/relay/bridge.js';
 
 const BACKEND_NON_PERSISTED_EVENT_TYPES = [
   'idle_reminder_fired',

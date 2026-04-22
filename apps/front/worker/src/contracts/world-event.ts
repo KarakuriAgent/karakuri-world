@@ -1,5 +1,5 @@
 import type { AgentState, NodeId } from './world-snapshot.js';
-import type { EventType as BackendEventType } from '../../../../src/types/event.js';
+import type { EventType as BackendEventType } from '../../../../server/src/types/event.js';
 
 export type ItemType = 'general' | 'food' | 'drink' | 'venue';
 export type ConversationRejectionReason = 'rejected' | 'timeout' | 'target_logged_out' | 'server_event';

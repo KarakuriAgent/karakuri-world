@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { EventType as BackendEventType } from '../../../../src/types/event.js';
+import type { EventType as BackendEventType } from '../../../../server/src/types/event.js';
 import type { PersistedSpectatorEventType } from '../contracts/persisted-spectator-event.js';
 import { encodeSnapshotManifest, type SnapshotManifest } from '../contracts/snapshot-manifest.js';
 import { encodeSpectatorSnapshot } from '../contracts/snapshot-serializer.js';

@@ -72,7 +72,7 @@ pull / refresh 用のフィールドは持たない。`recent_server_events` は
 4. `snapshot/v/{generated_at}.json` と `snapshot/manifest.json`（互換用に `snapshot/latest.json` も）へ publish する
 5. publish 失敗時は `publish_failure_streak` を進め、5s → 10s → 20s ... の backoff で retry する
 
-backend の shutdown drain 中は mutating / publish HTTP request を 503 で拒否する。最終 publish は `WorldEngine.dispose()` がタイマー消去前の `WorldSnapshot` を固定化してから送出するため、moving / in_action の agent でも shutdown publish から `movement` / `current_activity` が欠落しない。DO は pull 経路を持たないため `GET /api/snapshot` は提供しない。
+backend の shutdown drain 中は mutating / publish HTTP request を 503 で拒否する。最終 publish は `WorldEngine.dispose()` がタイマー消去前の `WorldSnapshot` を固定化してから送出するため、moving / in_action の agent でも shutdown publish から `movement` / `current_activity` が欠落しない。DO も backend も pull 経路を持たず、`GET /api/snapshot` endpoint はどのレイヤーにも存在しない（push が唯一の配信経路）。
 
 ### 4.2 freshness / stale
 

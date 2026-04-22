@@ -286,12 +286,12 @@ sequenceDiagram
 ```mermaid
 graph LR
     WE["World Engine<br/>状態変化イベント発行"] --> DC["Discord通知<br/>（エージェント向け）"]
-    WE --> SNAP["/api/snapshot + publisher<br/>R2/CDN配信（UI primary）"]
+    WE --> SNAP["snapshot publisher<br/>R2/CDN配信（UI primary）"]
     WE --> LOG["ログ記録"]
 ```
 
-UI の主経路は `/api/snapshot` を正本にした event-driven snapshot / history publish を R2/CDN に反映し、ブラウザが公開 snapshot object を polling する方式とする。定期 refresh を使う場合も fallback/readiness 用であり primary ではない。
-ブラウザ向け current-state 配信は `/api/snapshot` を正本にした publish 経路へ集約し、backend-side legacy `/ws` endpoint は削除済みとする。
+UI の主経路は `WorldEngine.getSnapshot()` が返す内部 `WorldSnapshot` を正本とし、event-driven snapshot / history publisher が `SpectatorSnapshot` へ変換して relay Worker に `POST /api/publish-snapshot` / `POST /api/publish-agent-history` で body push、Worker が R2/CDN に反映し、ブラウザが公開 snapshot object を polling する方式とする。定期 refresh を使う場合も fallback/readiness 用であり primary ではない。
+ブラウザ向け current-state 配信は push 経路へ集約し、pull 用 `GET /api/snapshot` および legacy `/ws` endpoint は削除済みとする。
 
 ## 11. サーバー管理者の設定項目
 

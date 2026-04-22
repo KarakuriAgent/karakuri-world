@@ -69,6 +69,13 @@ export function resolveHistorySpeaker(
 
   const agent = snapshot?.agents.find((candidate) => candidate.agent_id === speakerId);
   const knownAgent = snapshot?.known_agents?.find((candidate) => candidate.agent_id === speakerId);
+  if (!agent && !knownAgent) {
+    console.warn('resolveHistorySpeaker: speaker not found in snapshot.agents or known_agents', {
+      speaker_id: speakerId,
+      event_id: entry.event_id,
+      event_type: entry.type,
+    });
+  }
   const displayName = agent?.agent_name ?? knownAgent?.agent_name ?? speakerId;
   const avatarUrl = agent?.discord_bot_avatar_url ?? knownAgent?.discord_bot_avatar_url;
 

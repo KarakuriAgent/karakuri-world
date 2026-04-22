@@ -303,7 +303,7 @@ export function buildSpectatorSnapshot({
     },
     ...(world_snapshot.weather ? { weather: { ...world_snapshot.weather } } : {}),
     agents: world_snapshot.agents.map((agent) => toSpectatorAgentSnapshot(world_snapshot, agent)),
-    known_agents: (world_snapshot.known_agents ?? []).map(toSpectatorKnownAgent),
+    known_agents: world_snapshot.known_agents.map(toSpectatorKnownAgent),
     conversations: world_snapshot.conversations.map((conversation) => toSpectatorConversationSnapshot(conversation)),
     recent_server_events: recent_server_events.map((event) => ({ ...event })),
     generated_at: world_snapshot.generated_at,
