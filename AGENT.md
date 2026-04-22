@@ -6,30 +6,47 @@
 
 Karakuri World は、LLM エージェントがログインしてグリッドマップ上で移動・アクション・会話・サーバーイベント応答を行うマルチエージェント仮想世界サーバー。エージェント向け REST API に加えて、管理 API、MCP、Discord 通知 / 管理スラッシュコマンドを備える。観戦 UI 向け publish は event-driven snapshot / history 配信（POST body push）へ統一しており、legacy `/ws` endpoint は削除済み。
 
+## リポジトリ構成
+
+npm workspaces による monorepo で、`apps/` 配下に 2 つのパッケージを持つ。
+
+```
+./
+├── apps/
+│   ├── server/      # @karakuri-world/server  ワールドサーバー本体（REST / MCP / Discord Bot）
+│   └── front/       # @karakuri-world/front   観戦 SPA + Cloudflare Worker relay
+├── docs/
+├── skills/
+└── package.json     # workspaces 定義 + パッケージ横断スクリプト
+```
+
 ## よく使うコマンド
 
+ルートから workspace パススルースクリプトで叩くのが基本。
+
 ```bash
-npm run dev          # 開発サーバー起動（tsx watch、.env 自動読み込み）
-npm run build        # TypeScript コンパイル → dist/
-npm start            # ビルド済み dist/src/index.js を実行
-npm run typecheck    # 型チェックのみ（出力なし）
-npm test             # テスト実行（vitest run）
-npm run test:watch   # テスト watch モード
+npm install                    # ルートで一度叩けば全 workspace の依存が入る
+npm run dev:server             # ワールドサーバー起動（tsx watch、apps/server/.env 自動読み込み）
+npm run dev:front              # 観戦 SPA 起動（Vite）
+npm run build                  # 両パッケージを順に build
+npm run build:server           # サーバーだけ build（apps/server/dist/）
+npm run build:front            # フロントだけ build
+npm start                      # @karakuri-world/server の dist/src/index.js を起動
+npm run typecheck              # 両パッケージの型チェック
+npm test                       # 両パッケージの vitest run を順に実行
+npm run docker:up              # apps/server で docker compose up --build -d
+npm run docker:down            # apps/server で docker compose down
+npm run docker:logs            # apps/server で docker compose logs -f
 ```
+
+各パッケージ内で直接叩きたい場合は `cd apps/server && npm run dev`、`cd apps/front && npm run dev`。
 
 ### 単一テストの実行
 
 ```bash
-npx vitest run test/unit/domain/movement.test.ts
-npx vitest run -t "テスト名の一部"
-```
-
-### Docker
-
-```bash
-npm run docker:up                              # ビルド＆起動（内部で docker:prepare を実行）
-npm run docker:down                            # 停止
-npm run docker:logs                            # ログ表示
+npm test -w @karakuri-world/server -- test/unit/domain/movement.test.ts
+npm test -w @karakuri-world/server -- -t "テスト名の一部"
+npm test -w @karakuri-world/front  -- app/test/app-shell.test.tsx
 ```
 
 ## 技術スタック
@@ -41,13 +58,15 @@ npm run docker:logs                            # ログ表示
 - **バリデーション**: Zod
 - **設定**: YAML（`js-yaml`）
 - **テスト**: Vitest（`clearMocks` / `restoreMocks` 有効。テストコードでは `vitest` から明示 import）
+- **フロント**: React 19 + Vite 7 + Pixi.js v8（`@pixi/react`）+ Tailwind CSS + Zustand
+- **Worker relay**: Cloudflare Workers（Hono + Durable Object + R2）
 
 ## アーキテクチャ
 
-### レイヤー構成
+### レイヤー構成（`apps/server/src/`）
 
 ```
-src/
+apps/server/src/
 ├── api/          # Hono ルーティング・ミドルウェア・管理/エージェント/UI API
 ├── engine/       # WorldEngine（状態管理・タイマー・EventBus）
 ├── domain/       # WorldEngine を受けて状態更新・タイマー登録・イベント発火まで行うワールド操作ロジック
@@ -58,10 +77,18 @@ src/
 └── types/        # 型定義（api, agent, event, data-model, conversation, server-event, timer, snapshot）
 ```
 
+### フロント構成（`apps/front/`）
+
+```
+apps/front/
+├── app/          # React SPA（Vite）。components/ layout/ map/ overlay/ common/、store/、lib/、test/
+└── worker/       # Cloudflare Worker relay（Hono + Durable Object）。contracts/、history/、relay/
+```
+
 ### 重要な設計パターン
 
-- **Engine-Domain 分離**: `engine/world-engine.ts` が全体の状態コンテナや基盤機能を持ち、`domain/` は `WorldEngine` を通して状態更新・タイマー操作・イベント発火を伴う各ユースケース（移動、会話、行動、待機、サーバーイベント処理など）を実装する。
-- **イベント駆動**: グローバル tick ループなし。タイマーベースで移動完了・アクション完了・会話ターンなどを処理。`engine/event-bus.ts` で型付きイベントを発行し、Discord や event-driven snapshot / history publisher 連携に伝播する。
+- **Engine-Domain 分離**: `apps/server/src/engine/world-engine.ts` が全体の状態コンテナや基盤機能を持ち、`apps/server/src/domain/` は `WorldEngine` を通して状態更新・タイマー操作・イベント発火を伴う各ユースケース（移動、会話、行動、待機、サーバーイベント処理など）を実装する。
+- **イベント駆動**: グローバル tick ループなし。タイマーベースで移動完了・アクション完了・会話ターンなどを処理。`apps/server/src/engine/event-bus.ts` で型付きイベントを発行し、Discord や event-driven snapshot / history publisher 連携に伝播する。
 - **エージェント状態マシン**: `idle` → `moving` / `in_action` / `in_conversation`。状態によって受け付ける API が変わる。
 - **認証の二重構造**: 管理系は `X-Admin-Key` ヘッダー、エージェント系は `Authorization: Bearer {api_key}`。
 
@@ -86,17 +113,23 @@ src/
 
 ### テスト構成
 
-- `test/helpers/test-world.ts`: `createTestWorld()` でモック Discord + テスト用設定のエンジンを生成
-- `test/helpers/test-map.ts`: テスト用マップ設定
-- `test/helpers/mock-discord.ts`: Discord Bot のモック
-- `test/unit/`: ドメインロジック、engine、admin、MCP、設定、Discord、ストレージなどのユニットテスト
-- `test/integration/`: API エンドポイント・ライフサイクル・会話フローの結合テスト
+サーバー側テストは `apps/server/test/` 配下。
+
+- `apps/server/test/helpers/test-world.ts`: `createTestWorld()` でモック Discord + テスト用設定のエンジンを生成
+- `apps/server/test/helpers/test-map.ts`: テスト用マップ設定
+- `apps/server/test/helpers/mock-discord.ts`: Discord Bot のモック
+- `apps/server/test/unit/`: ドメインロジック、engine、admin、MCP、設定、Discord、ストレージなどのユニットテスト
+- `apps/server/test/integration/`: API エンドポイント・ライフサイクル・会話フローの結合テスト
+
+フロント / relay worker のテストは `apps/front/app/test/` と `apps/front/worker/test/` にある。
 
 ### 設定ファイル
 
-ワールド定義は `config/example.yaml`（マップ・NPC・建物・サーバーイベント・タイミング設定）。`CONFIG_PATH` 環境変数で差し替え可能。
+ワールド定義は `apps/server/config/example.yaml`（マップ・NPC・建物・サーバーイベント・タイミング設定）。`CONFIG_PATH` 環境変数で差し替え可能（既定値は `apps/server/` から見た `./config/example.yaml`）。
 
 ### 環境変数（主要）
+
+サーバー本体（`apps/server/.env`）:
 
 - `ADMIN_KEY`: 管理 API 認証キー
 - `DISCORD_TOKEN`: Discord Bot トークン
@@ -106,7 +139,14 @@ src/
 - `PUBLIC_BASE_URL`: 管理 API がエージェント登録時に返す `api_base_url` / `mcp_endpoint` のベース URL（未指定時は `http://127.0.0.1:${PORT}`）
 - `SNAPSHOT_PUBLISH_BASE_URL`: `/api/publish-snapshot` / `/api/publish-agent-history` を受け付ける spectator relay Worker のベース URL
 - `SNAPSHOT_PUBLISH_AUTH_KEY`: spectator relay Worker への snapshot/history publish に使う共有 Bearer トークン
-- `DATA_DIR`: 永続化データ置き場。`${DATA_DIR}/agents.json` にはエージェント登録情報に加えて `discord_bot_avatar_url`、`discord_channel_id`、`last_node_id`、`money`、`items` も保存され、後続の login で再利用可能なら引き継がれる（未指定時は `./data`）
+- `DATA_DIR`: 永続化データ置き場。`${DATA_DIR}/agents.json` にはエージェント登録情報に加えて `discord_bot_avatar_url`、`discord_channel_id`、`last_node_id`、`money`、`items` も保存され、後続の login で再利用可能なら引き継がれる（未指定時は `apps/server/` から見た `./data`）
+
+フロント側（`apps/front/.env.local` / Vite env）:
+
+- `VITE_SNAPSHOT_URL`: ブラウザが直接 fetch する snapshot manifest の絶対 URL
+- `VITE_AUTH_MODE`: `public` または `access`
+- `VITE_API_BASE_URL`: Worker history endpoint の絶対 URL（末尾まで `/api/history` まで含める）
+- Phase 3 エフェクト系 rollout フラグ（`VITE_PHASE3_EFFECTS_ENABLED` ほか）は `apps/front/README.md` を参照
 
 ### import パス
 

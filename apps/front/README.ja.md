@@ -1,10 +1,12 @@
-# karakuri-world-ui
+# @karakuri-world/front
+
+このパッケージは観戦 SPA（`app/`）と Cloudflare Worker relay（`worker/`）を含む。Karakuri World モノレポの `apps/front/` workspace にあたる。以下のコマンドは `apps/front/` 内で実行するか、リポジトリルートから `npm run dev:front` / `npm run build:front` / `npm test -w @karakuri-world/front` で叩く。
 
 ## 観戦 UI の開発・ビルド環境
 
 この Vite アプリは fail-fast 方針で、必要なブラウザ側の環境変数が揃っていない場合は `npm run dev` / `npm run build` が即座に停止する。
 
-`karakuri-world-ui/.env.local`（または他の Vite env ファイル）を作成する：
+`apps/front/.env.local`（または他の Vite env ファイル）を作成する：
 
 ```bash
 VITE_SNAPSHOT_URL=https://snapshots.example.com/snapshot/manifest.json
@@ -31,7 +33,7 @@ VITE_PHASE3_EFFECT_ACTION_PARTICLES_ENABLED=false
 ### ローカル検証
 
 ```bash
-cd karakuri-world-ui
+cd apps/front
 npm run dev
 npm run build
 npm run test:phase1-acceptance
@@ -122,7 +124,7 @@ npm run test:phase1-acceptance
 `wrangler.toml` は git-ignore 済み。トラック済テンプレ `wrangler.toml.example` からローカル生成する：
 
 ```bash
-cd karakuri-world-ui
+cd apps/front
 cp wrangler.toml.example wrangler.toml
 ```
 
@@ -136,7 +138,7 @@ cp wrangler.toml.example wrangler.toml
 例：
 
 ```bash
-cd karakuri-world-ui
+cd apps/front
 npx wrangler r2 bucket create <real-snapshot-bucket>
 npx wrangler r2 bucket create <real-snapshot-bucket-preview>
 ```
@@ -174,7 +176,7 @@ Unit 32 で relay `/ws` は primary path から外れ、バックエンドの le
 検証コマンド：
 
 ```bash
-cd karakuri-world-ui
+cd apps/front
 npm run relay:readiness
 npm run relay:readiness -- --target=production --manifest worker/ops/relay-production-readiness.example.json --wrangler worker/test/fixtures/wrangler.production.example.toml
 ```

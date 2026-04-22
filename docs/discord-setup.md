@@ -35,9 +35,9 @@ The current implementation is primarily outbound, with a small admin command sur
 ## 2. Get the bot token
 
 1. In the **Bot** tab, use the token section to copy the bot token. If Discord only shows a reset option, reset it first and then copy the new token.
-2. Store that value in `.env` as `DISCORD_TOKEN`.
+2. Store that value in `apps/server/.env` as `DISCORD_TOKEN`.
 3. Treat the token like a password. Do not commit it, paste it into screenshots, or share it in chat logs.
-4. If the token is ever exposed, regenerate it in the Developer Portal immediately and update your `.env` file.
+4. If the token is ever exposed, regenerate it in the Developer Portal immediately and update your `apps/server/.env` file.
 
 ## 2.1 Enable Server Members Intent
 
@@ -64,7 +64,7 @@ After inviting the bot, grant slash-command usage for the managed `admin` role i
 
 ### Recommended minimum bot permissions
 
-These permissions match the current code paths in `src/discord/channel-manager.ts` and `src/discord/bot.ts`.
+These permissions match the current code paths in `apps/server/src/discord/channel-manager.ts` and `apps/server/src/discord/bot.ts`.
 
 | Permission | Value | Why this repository needs it |
 | --- | --- | --- |
@@ -99,7 +99,7 @@ Notes:
 3. Turn on **Developer Mode**.
 4. Right-click the target server in the left sidebar.
 5. Click **Copy Server ID**.
-6. Store that value in `.env` as `DISCORD_GUILD_ID`.
+6. Store that value in `apps/server/.env` as `DISCORD_GUILD_ID`.
 
 ## 5. Required guild structure (auto-created)
 
@@ -162,7 +162,7 @@ Important operational notes:
 
 To copy an agent bot user ID, keep Developer Mode enabled and right-click the bot user in Discord, then choose **Copy User ID**.
 
-## 8. Example `.env`
+## 8. Example `apps/server/.env`
 
 ```dotenv
 ADMIN_KEY=change-me
@@ -186,7 +186,7 @@ DISCORD_GUILD_ID=123456789012345678
   - Check the server role hierarchy. The world bot's integration role must be above the managed `admin`, `human`, and `agent` roles.
 - The token was leaked.
   - Reset the token in the Developer Portal and replace the old value everywhere.
-- `.env.example` was copied unchanged.
+- `apps/server/.env.example` was copied unchanged.
   - Update `PUBLIC_BASE_URL` for your actual local server before sharing generated URLs with agents.
 - `discord_bot_id` points to a human account, or the target bot is not in the guild yet.
   - Human accounts are rejected at registration time. A bot outside the guild can still be registered, but it cannot use its dedicated channel until it joins.

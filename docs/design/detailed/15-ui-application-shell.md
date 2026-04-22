@@ -17,19 +17,19 @@ overview で確定した UI 側の実装基盤は以下のとおりとする。
 
 Pixi 領域以外の UI パーツは React + Tailwind で実装し、ブラウザ向け画面で別スタックを追加しない。
 
-### 1.2 UI リポジトリ構成
+### 1.2 UI パッケージ構成
 
-UI システムは overview どおり別リポジトリ `karakuri-world-ui/` で管理し、少なくとも以下の構成を前提とする。
+UI システムは monorepo 内の `apps/front/` workspace（`@karakuri-world/front`）で管理し、少なくとも以下の構成を前提とする。サーバー本体（`apps/server/`、`@karakuri-world/server`）とは同一リポジトリでも別パッケージとして切り離し、デプロイ単位とビルドパイプラインを独立させる。
 
 ```txt
-karakuri-world-ui/
+apps/front/
 ├── app/            # React SPA (Vite)
 ├── worker/         # Hono API + Durable Object
 ├── wrangler.toml
 └── vite.config.ts
 ```
 
-`app/` は Pages 配備対象、`worker/` は Workers 配備対象とし、本体リポジトリへ UI 実装物を混在させない。詳細なレイヤー分割は 13-ui-relay-backend.md と 16-ui-map-view.md に従う。
+`app/` は Pages 配備対象、`worker/` は Workers 配備対象とし、サーバー本体の `apps/server/` へ UI 実装物を混在させない。詳細なレイヤー分割は 13-ui-relay-backend.md と 16-ui-map-view.md に従う。
 
 ### 1.3 画面責務
 

@@ -1,5 +1,7 @@
 {
-  "name": "karakuri-world-ui",
+  "name": "@karakuri-world/front",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "author": "株式会社0235",
   "private": true,
   "type": "module",
   "scripts": {

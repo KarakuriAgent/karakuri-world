@@ -11,7 +11,6 @@ export function TopBadge({ snapshot }: TopBadgeProps) {
       data-testid="mobile-top-badge"
     >
       <div>
-        <p className="text-xs uppercase tracking-[0.24em] text-cyan-300">観戦ビュー</p>
         <p className="text-sm font-medium text-white">{snapshot?.calendar.display_label ?? '読み込み待ち'}</p>
       </div>
       <p className="text-sm text-slate-300">

@@ -1,12 +1,14 @@
-# karakuri-world-ui
+# @karakuri-world/front
 
 > 日本語版は [README.ja.md](./README.ja.md) を参照。
+
+This package contains the spectator SPA (`app/`) and the Cloudflare Worker relay (`worker/`). It is the `apps/front/` workspace of the Karakuri World monorepo. Run all commands below from inside `apps/front/`, or invoke them from the repo root with `npm run dev:front` / `npm run build:front` / `npm test -w @karakuri-world/front`.
 
 ## Spectator UI dev/build environment
 
 The Vite app is fail-fast by design: both `npm run dev` and `npm run build` stop immediately unless all required browser-side variables are present.
 
-Create `karakuri-world-ui/.env.local` (or another Vite env file) with:
+Create `apps/front/.env.local` (or another Vite env file) with:
 
 ```bash
 VITE_SNAPSHOT_URL=https://snapshots.example.com/snapshot/manifest.json
@@ -33,7 +35,7 @@ Required values:
 For local verification:
 
 ```bash
-cd karakuri-world-ui
+cd apps/front
 npm run dev
 npm run build
 npm run test:phase1-acceptance
@@ -124,7 +126,7 @@ The following checks still need staging/preview infrastructure and cannot be ful
 `wrangler.toml` is git-ignored and must be generated locally from the tracked template `wrangler.toml.example`:
 
 ```bash
-cd karakuri-world-ui
+cd apps/front
 cp wrangler.toml.example wrangler.toml
 ```
 
@@ -138,7 +140,7 @@ Before any real deploy, create or identify the bucket that will hold both snapsh
 Example:
 
 ```bash
-cd karakuri-world-ui
+cd apps/front
 npx wrangler r2 bucket create <real-snapshot-bucket>
 npx wrangler r2 bucket create <real-snapshot-bucket-preview>
 ```
@@ -176,7 +178,7 @@ Authoritative repo-owned artifacts:
 Validation commands:
 
 ```bash
-cd karakuri-world-ui
+cd apps/front
 npm run relay:readiness
 npm run relay:readiness -- --target=production --manifest worker/ops/relay-production-readiness.example.json --wrangler worker/test/fixtures/wrangler.production.example.toml
 ```
