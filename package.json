@@ -1,39 +1,30 @@
 {
-  "name": "karakuri-world",
+  "name": "karakuri-world-monorepo",
   "version": "0.1.0",
   "license": "PolyForm-Noncommercial-1.0.0",
   "author": "株式会社0235",
   "private": true,
-  "type": "module",
+  "workspaces": [
+    "apps/*"
+  ],
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "dev": "tsx watch --env-file=.env src/index.ts",
-    "build": "tsc -p tsconfig.json",
-    "start": "node --env-file=.env dist/src/index.js",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "docker:prepare": "node scripts/prepare-docker-build.mjs",
-    "docker:up": "npm run docker:prepare && docker compose up --build -d",
-    "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f"
-  },
-  "dependencies": {
-    "@hono/node-server": "^1.13.8",
-    "@modelcontextprotocol/sdk": "^1.17.5",
-    "@resvg/resvg-js": "^2.6.2",
-    "discord.js": "^14.18.0",
-    "hono": "^4.7.2",
-    "js-yaml": "^4.1.0",
-    "zod": "^3.24.2"
-  },
-  "devDependencies": {
-    "@types/js-yaml": "^4.0.9",
-    "@types/node": "^22.13.10",
-    "tsx": "^4.19.3",
-    "typescript": "^5.8.2",
-    "vitest": "^3.0.8"
+    "dev:server": "npm run dev -w @karakuri-world/server",
+    "dev:front": "npm run dev -w @karakuri-world/front",
+    "build:server": "npm run build -w @karakuri-world/server",
+    "build:front": "npm run build -w @karakuri-world/front",
+    "build": "npm run build:server && npm run build:front",
+    "start": "npm start -w @karakuri-world/server",
+    "typecheck:server": "npm run typecheck -w @karakuri-world/server",
+    "typecheck:front": "npm run typecheck -w @karakuri-world/front",
+    "typecheck": "npm run typecheck:server && npm run typecheck:front",
+    "test:server": "npm test -w @karakuri-world/server",
+    "test:front": "npm test -w @karakuri-world/front",
+    "test": "npm run test:server && npm run test:front",
+    "docker:up": "npm run docker:up -w @karakuri-world/server",
+    "docker:down": "npm run docker:down -w @karakuri-world/server",
+    "docker:logs": "npm run docker:logs -w @karakuri-world/server"
   }
 }

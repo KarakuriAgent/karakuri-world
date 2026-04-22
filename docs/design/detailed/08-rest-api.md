@@ -533,25 +533,16 @@ interface FireServerEventResponse {
 
 ## 7. 公開スナップショット配信のバックエンドソース
 
-ブラウザ / UI の current-state 配信の primary path は、issue #60 に従って event-driven publisher が `GET /api/snapshot` を再取得して `SpectatorSnapshot` へ変換し、R2/CDN へ公開した JSON をクライアントが polling する方式とする。`GET /api/snapshot` はその publisher や管理者デバッグ用に残すバックエンド側ソースであり、ブラウザの直接 bootstrap / 汎用同期エンドポイントとしては扱わない。固定間隔 refresh を残す場合も fallback/readiness 用であり、詳細は 12-spectator-snapshot.md と 17-ui-rollout.md を参照。
+ブラウザ / UI の current-state 配信の primary path は、issue #60 に従って event-driven publisher が `WorldEngine.getSnapshot()` で生成した内部 `WorldSnapshot` を `SpectatorSnapshot` へ変換し、`POST /api/publish-snapshot` で relay Worker（`apps/front/worker/`）へ body push、Worker が R2/CDN へ公開した JSON をクライアントが polling する方式とする。pull 用 `GET /api/snapshot` HTTP endpoint はどのレイヤーにも提供しない（push が唯一の配信経路）。詳細は 12-spectator-snapshot.md と 17-ui-rollout.md を参照。
 
-### 7.1 スナップショット取得
+### 7.1 内部 snapshot の生成
 
-```
-GET /api/snapshot
-```
+snapshot は HTTP endpoint ではなく、`WorldEngine.getSnapshot()` が in-process で返す `WorldSnapshot` を正本とする。publisher はこの関数を呼び出して `SpectatorSnapshot` に変換し、relay Worker へ push する。
 
-認証: Admin（1.2）。
-
-世界の現在状態を内部 / 管理向け `WorldSnapshot` として返す。primary path では event-driven publisher がこれを再取得し、公開用 `SpectatorSnapshot` を生成して R2/CDN へ反映する。管理者による調査にも利用できるが、ブラウザが直接 current-state bootstrap に使う前提ではない。
-
-レスポンス (200 OK): `WorldSnapshot` 型（03-world-engine.md セクション 7.1、12-spectator-snapshot.md セクション 2.1/2.2 参照）。
-
-- `weather`, `calendar`, `map_render_theme` を含む
-- `agents` は `discord_bot_avatar_url?`, `status_emoji`, `current_conversation_id?` を含む
-- `GET /api/snapshot` は内部 / 管理向け `WorldSnapshot` 契約であり、`discord_channel_id`, `money`, `items` のような内部管理項目を含みうる
-- ブラウザ公開用の除外・整形は `12-spectator-snapshot.md` で定義する公開変換境界（event-driven snapshot / history publisher。必要なら fallback refresh を含む）で行う
-- ブラウザ / UI は本エンドポイントを直接 polling せず、publisher が公開した R2/CDN 上の `SpectatorSnapshot` を取得する
+- `WorldSnapshot` には `weather`、`calendar`、`map_render_theme` に加えて `discord_channel_id`、`money`、`items` のような内部管理項目も含まれる
+- `agents` は `discord_bot_avatar_url?`、`status_emoji`、`current_conversation_id?` を含む
+- ブラウザ公開用の除外・整形は `12-spectator-snapshot.md` で定義する公開変換境界（event-driven snapshot / history publisher）で行う
+- ブラウザ / UI は backend を直接 polling せず、publisher が公開した R2/CDN 上の `SpectatorSnapshot` を取得する
 
 ## 8. バリデーション
 
@@ -609,4 +600,3 @@ GET /api/snapshot
 | GET | /api/agents/perception | Agent | ✅ | 知覚情報取得 |
 | GET | /api/agents/map | Agent | ✅ | マップ全体取得 |
 | GET | /api/agents/world-agents | Agent | ✅ | ログイン中エージェント一覧 |
-| GET | /api/snapshot | Admin | - | publisher / デバッグ向け内部 `WorldSnapshot` 取得 |

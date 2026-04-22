@@ -1,0 +1,9 @@
+node_modules/
+coverage/
+dist/
+.debug-state
+wrangler.toml
+wrangler.debug.toml
+.env
+.env.local
+.vite/

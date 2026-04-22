@@ -2,7 +2,7 @@
 
 ## 1. 描画方針
 
-マップ描画は `map` と `map_render_theme` を正本にし、Discord の `src/discord/map-renderer.ts` と同じ色・ラベル規則をブラウザで再現する。ここで使う `map` は 12-spectator-snapshot.md で定義した `SpectatorMapSnapshot` であり、`BuildingConfig.actions` / `NpcConfig.actions` のような内部アクション設定は含まない。
+マップ描画は `map` と `map_render_theme` を正本にし、Discord の `apps/server/src/discord/map-renderer.ts` と同じ色・ラベル規則をブラウザで再現する。ここで使う `map` は 12-spectator-snapshot.md で定義した `SpectatorMapSnapshot` であり、`BuildingConfig.actions` / `NpcConfig.actions` のような内部アクション設定は含まない。
 
 ## 2. Pixi レイヤー構成
 

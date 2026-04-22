@@ -1,9 +1,5 @@
 node_modules/
-dist/
-.env
+.DS_Store
+.qwen/
 *.swp
-coverage/
-data/
-config/*
-!config/example.yaml
-.docker-build/
+.fuse_hidden*

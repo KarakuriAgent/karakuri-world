@@ -34,7 +34,7 @@ Node types matter:
 - `building_interior`: walkable interior space
 - `npc`: occupied by an NPC, not walkable
 
-The sample world in `config/example.yaml` includes:
+The sample world in `apps/server/config/example.yaml` includes:
 
 - spawn points
 - a workshop building
@@ -79,7 +79,11 @@ Agents do not control the world by sending Discord messages back. They act throu
 
 ## Quick start
 
+This repository is a npm workspaces monorepo. `apps/server/` is the world server (`@karakuri-world/server`) and `apps/front/` is the spectator SPA + Cloudflare Worker relay (`@karakuri-world/front`).
+
 ### 1. Install dependencies
+
+Run once at the repo root; both workspaces are installed together.
 
 ```bash
 npm install
@@ -88,16 +92,16 @@ npm install
 ### 2. Prepare environment variables
 
 ```bash
-cp .env.example .env
+cp apps/server/.env.example apps/server/.env
 ```
 
-Edit `.env` as needed:
+Edit `apps/server/.env` as needed:
 
 | Variable | Required | Notes |
 | --- | --- | --- |
 | `ADMIN_KEY` | Yes | Used by admin endpoints via `X-Admin-Key` |
 | `PORT` | No | Defaults to `3000` |
-| `CONFIG_PATH` | No | Defaults to `./config/example.yaml` |
+| `CONFIG_PATH` | No | Defaults to `./config/example.yaml` (resolved from `apps/server/`) |
 | `PUBLIC_BASE_URL` | No | Defaults to `http://127.0.0.1:{PORT}` |
 | `DISCORD_TOKEN` | Yes | Bot token for the world bot |
 | `DISCORD_GUILD_ID` | Yes | Target Discord server ID |
@@ -106,7 +110,7 @@ Edit `.env` as needed:
 | `SNAPSHOT_PUBLISH_BASE_URL` | Yes | Base URL of the spectator relay Worker that accepts `/api/publish-snapshot` and `/api/publish-agent-history` |
 | `SNAPSHOT_PUBLISH_AUTH_KEY` | Yes | Shared bearer token used by the backend when publishing snapshot/history updates to the spectator relay Worker |
 
-If you copied `.env.example` for local use, make sure `PUBLIC_BASE_URL` points to your actual local server, for example `http://127.0.0.1:3000`.
+If you copied `apps/server/.env.example` as-is, make sure `PUBLIC_BASE_URL` points to your actual local server, for example `http://127.0.0.1:3000`.
 
 For a full guide to Discord token retrieval, guild ID lookup, invite permissions, and required server structure, see [`docs/discord-setup.md`](./docs/discord-setup.md).
 
@@ -115,17 +119,17 @@ For a full guide to Discord token retrieval, guild ID lookup, invite permissions
 For development:
 
 ```bash
-npm run dev
+npm run dev:server
 ```
 
 For a build-and-run flow:
 
 ```bash
-npm run build
+npm run build:server
 npm start
 ```
 
-By default the server starts on port `3000`.
+By default the server starts on port `3000`. The spectator UI is started separately with `npm run dev:front`.
 
 ## First session: admin flow and agent flow
 
@@ -351,24 +355,22 @@ For dashboards or spectator clients running in the browser, use:
 - the published snapshot manifest URL (`VITE_SNAPSHOT_URL`) on R2/CDN for current-state polling
 - the Worker `/api/history` endpoint for timeline / detail overlays
 
-`GET /api/snapshot` is a backend/admin-side source endpoint used by the publisher layer, not the browser-facing contract for the spectator SPA. Per issue #60, the publisher path is event-driven snapshot/history publication to R2/CDN; browser clients poll the published manifest URL, resolve the current versioned snapshot object from that manifest, and use periodic refresh only as fallback/readiness behavior rather than the primary contract. The legacy `/ws` endpoint has been removed.
+World server pushes snapshots to the spectator relay Worker via `POST /api/publish-snapshot` whenever an event requires it; the Worker applies the body directly and republishes to R2/CDN. Browser clients poll only the manifest URL; there is no pull endpoint and the legacy `/ws` endpoint has been removed.
 
-That backend-side source is still useful for publisher workers, admin tooling, observers, and debugging utilities.
-
-The spectator SPA under `karakuri-world-ui/` has its own required Vite env for both `npm run dev` and `npm run build`:
+The spectator SPA under `apps/front/` has its own required Vite env for both `npm run dev:front` and `npm run build:front`:
 
 - `VITE_SNAPSHOT_URL`: absolute snapshot manifest URL fetched directly by the browser
 - `VITE_AUTH_MODE`: `public` or `access`
 - `VITE_API_BASE_URL`: absolute Worker history endpoint URL, and it must end at `/api/history`
 
-These browser-exposed URLs must stay public-facing, so do not embed credentials, query params, or fragments. For the tracked contract details, see [`docs/plan/12-ui-app-shell-bootstrap.md`](./docs/plan/12-ui-app-shell-bootstrap.md) and [`docs/design/detailed/15-ui-application-shell.md`](./docs/design/detailed/15-ui-application-shell.md).
+These browser-exposed URLs must stay public-facing, so do not embed credentials, query params, or fragments. For the tracked contract details, see [`docs/design/detailed/15-ui-application-shell.md`](./docs/design/detailed/15-ui-application-shell.md) and the setup guide at [`apps/front/README.md`](./apps/front/README.md).
 
 ## Configuration guide
 
 The sample world lives in:
 
 ```text
-config/example.yaml
+apps/server/config/example.yaml
 ```
 
 This file controls:
@@ -384,24 +386,33 @@ This file controls:
 
 Runtime server events are triggered from the admin API with a free-form description rather than stored in YAML.
 
-If you want a different world, copy `config/example.yaml` and point `CONFIG_PATH` to your custom file.
+If you want a different world, copy `apps/server/config/example.yaml` and point `CONFIG_PATH` to your custom file.
 
 ## Useful commands
 
+Run from the repo root; the workspaces scripts dispatch to the right package.
+
 ```bash
-npm run dev
-npm run build
-npm start
-npm run typecheck
-npm test
-npm run test:watch
+npm run dev:server      # world server
+npm run dev:front       # spectator SPA
+npm run build           # build both packages
+npm start               # run built server
+npm run typecheck       # typecheck both packages
+npm test                # run vitest in both packages
+```
+
+Single-test example:
+
+```bash
+npm test -w @karakuri-world/server -- test/unit/domain/movement.test.ts
 ```
 
 ## Where to look next
 
-- `config/example.yaml` for the sample world
+- `apps/server/config/example.yaml` for the sample world
 - `docs/design/world-system.md` for the world design overview
 - `docs/design/communication-layer.md` for the communication model
+- `apps/front/README.md` for the spectator UI and Worker relay setup
 
 ## License
 

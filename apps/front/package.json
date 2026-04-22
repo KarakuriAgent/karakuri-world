@@ -1,0 +1,43 @@
+{
+  "name": "@karakuri-world/front",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "author": "株式会社0235",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:plan25": "vitest run app/test/env.test.ts app/test/app-phase3-forwarding.test.tsx app/test/map-canvas-host.test.tsx app/test/effect-layer.test.tsx app/test/map-pixi-canvas.test.tsx",
+    "test:phase1-acceptance": "vitest run app/test/phase1-acceptance.test.tsx worker/test/relay-bootstrap.test.ts -t \"Phase 1 acceptance\"",
+    "relay:readiness": "node worker/scripts/relay-readiness.mjs",
+    "debug:start": "bash scripts/debug-start.sh",
+    "debug:stop": "bash scripts/debug-stop.sh",
+    "deploy:prod": "bash scripts/deploy-prod.sh"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^24.5.2",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^5.2.0",
+    "jsdom": "^29.0.2",
+    "tailwindcss": "^4.2.2",
+    "typescript": "^5.9.2",
+    "vite": "^7.3.2",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "@pixi/react": "^8.0.5",
+    "pixi-viewport": "^6.0.3",
+    "pixi.js": "^8.18.1",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "zod": "^3.25.76",
+    "zustand": "^5.0.12"
+  }
+}
