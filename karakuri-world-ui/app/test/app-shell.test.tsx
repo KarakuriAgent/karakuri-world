@@ -1220,14 +1220,6 @@ describe('App shell bootstrap', () => {
       authMode: env.authMode,
       initialSnapshot: createReadySnapshot({
         recent_server_events: [],
-        server_events: [
-          {
-            server_event_id: 'event-active',
-            description: 'Active event',
-            delivered_agent_ids: ['alice'],
-            pending_agent_ids: [],
-          },
-        ],
       }),
     });
 
@@ -1300,7 +1292,6 @@ describe('App shell bootstrap', () => {
       authMode: env.authMode,
       initialSnapshot: createReadySnapshot({
         agents: [],
-        server_events: [],
         recent_server_events: [],
       }),
       initialStatus: 'error',

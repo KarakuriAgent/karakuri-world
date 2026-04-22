@@ -1,13 +1,16 @@
 import type { HistoryEntry } from '../../worker/src/history/api.js';
 import type {
   SpectatorAgentSnapshot,
+  SpectatorKnownAgent,
   SpectatorSnapshot,
 } from '../../worker/src/contracts/spectator-snapshot.js';
 
 export interface HistorySpeakerResolution {
   speaker_agent_id: string;
   agent?: SpectatorAgentSnapshot;
+  known_agent?: SpectatorKnownAgent;
   display_name: string;
+  discord_bot_avatar_url?: string;
 }
 
 const SPEAKING_EVENT_TYPES = new Set<HistoryEntry['type']>([
@@ -53,7 +56,7 @@ function getSpeakerIdFromDetail(entry: HistoryEntry): string | undefined {
 
 export function resolveHistorySpeaker(
   entry: HistoryEntry,
-  snapshot: Pick<SpectatorSnapshot, 'agents'> | undefined,
+  snapshot: Pick<SpectatorSnapshot, 'agents' | 'known_agents'> | undefined,
 ): HistorySpeakerResolution | undefined {
   if (!isSpeakingHistoryEntry(entry)) {
     return undefined;
@@ -65,11 +68,16 @@ export function resolveHistorySpeaker(
   }
 
   const agent = snapshot?.agents.find((candidate) => candidate.agent_id === speakerId);
+  const knownAgent = snapshot?.known_agents?.find((candidate) => candidate.agent_id === speakerId);
+  const displayName = agent?.agent_name ?? knownAgent?.agent_name ?? speakerId;
+  const avatarUrl = agent?.discord_bot_avatar_url ?? knownAgent?.discord_bot_avatar_url;
 
   return {
     speaker_agent_id: speakerId,
-    agent,
-    display_name: agent?.agent_name ?? speakerId,
+    ...(agent ? { agent } : {}),
+    ...(knownAgent ? { known_agent: knownAgent } : {}),
+    display_name: displayName,
+    ...(avatarUrl ? { discord_bot_avatar_url: avatarUrl } : {}),
   };
 }
 

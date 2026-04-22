@@ -46,7 +46,7 @@ function SnapshotStatusBanner({
 }
 
 function FullscreenLoading({ snapshotStatus }: { snapshotStatus: SnapshotStatus }) {
-  const eyebrow = snapshotStatus === 'incompatible' ? 'Spectator update required' : 'Spectator loading';
+  const eyebrow = snapshotStatus === 'incompatible' ? '観戦 UI の更新が必要' : '観戦ビュー読み込み中';
   const message =
     snapshotStatus === 'incompatible'
       ? '観戦 UI の更新が必要です。再読み込みしてください。'

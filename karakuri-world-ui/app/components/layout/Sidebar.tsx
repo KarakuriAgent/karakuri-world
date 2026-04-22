@@ -3,7 +3,9 @@ import type {
   SpectatorSnapshot,
 } from '../../../worker/src/contracts/spectator-snapshot.js';
 
+import { AgentAvatar } from '../common/AgentAvatar.js';
 import { getAgentStateLabel } from '../../lib/agent-state-label.js';
+import { formatNodeLabel } from '../../lib/node-label.js';
 import { getSidebarServerEvents } from '../../lib/recent-server-events.js';
 import { formatHistoryTimestamp } from '../../lib/timestamp.js';
 
@@ -25,7 +27,7 @@ export function Sidebar({ snapshot, agents, selectedAgentId, onSelectAgent }: Si
     >
       <header className="space-y-2 border-b border-slate-800 pb-4">
         <p className="text-sm font-medium text-slate-300">{snapshot?.world.name ?? 'Karakuri World'}</p>
-        <h1 className="text-2xl font-semibold text-white">{snapshot?.calendar.display_label ?? 'snapshot loading...'}</h1>
+        <h1 className="text-2xl font-semibold text-white">{snapshot?.calendar.display_label ?? '読み込み中…'}</h1>
         <p className="text-sm text-slate-400" data-testid="desktop-sidebar-weather">
           {snapshot?.weather
             ? `${snapshot.weather.condition} ${snapshot.weather.temperature_celsius}℃`
@@ -60,7 +62,7 @@ export function Sidebar({ snapshot, agents, selectedAgentId, onSelectAgent }: Si
       <section className="min-h-0 flex-1 pt-4">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-white">エージェント一覧</h2>
-          <span className="text-xs text-slate-400">{agents.length} agents</span>
+          <span className="text-xs text-slate-400">{agents.length} 人</span>
         </div>
         <ul className="space-y-2 overflow-y-auto pr-1" data-testid="sidebar-agent-list">
           {agents.length > 0 ? (
@@ -78,11 +80,19 @@ export function Sidebar({ snapshot, agents, selectedAgentId, onSelectAgent }: Si
                   onClick={() => onSelectAgent?.(agent.agent_id)}
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-medium text-slate-100">{agent.agent_name}</p>
-                      <p className="text-xs text-slate-400">{agent.node_id}</p>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <AgentAvatar
+                        agent={agent}
+                        size="sm"
+                        testId={`sidebar-agent-avatar-${agent.agent_id}`}
+                        fallbackTestId={`sidebar-agent-avatar-fallback-${agent.agent_id}`}
+                      />
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-slate-100">{agent.agent_name}</p>
+                        <p className="text-xs text-slate-400">{formatNodeLabel(agent.node_id, snapshot?.map)}</p>
+                      </div>
                     </div>
-                    <div className="text-right">
+                    <div className="shrink-0 text-right">
                       <p className="text-lg leading-none">{agent.status_emoji}</p>
                       <p className="mt-1 text-xs text-slate-400">{getAgentStateLabel(agent.state)}</p>
                     </div>

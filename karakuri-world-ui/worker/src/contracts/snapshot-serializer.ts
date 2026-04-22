@@ -152,14 +152,12 @@ const spectatorConversationSnapshotSchema = z.object({
   status: z.enum(['pending', 'active', 'closing']),
   participant_agent_ids: z.array(z.string()),
   current_speaker_agent_id: z.string(),
-  current_turn: z.number().int().nonnegative(),
 });
 
-const spectatorServerEventSnapshotSchema = z.object({
-  server_event_id: z.string(),
-  description: z.string(),
-  delivered_agent_ids: z.array(z.string()),
-  pending_agent_ids: z.array(z.string()),
+const spectatorKnownAgentSchema = z.object({
+  agent_id: z.string(),
+  agent_name: z.string(),
+  discord_bot_avatar_url: z.string().optional(),
 });
 
 export const spectatorSnapshotSchema = z
@@ -175,8 +173,8 @@ export const spectatorSnapshotSchema = z
     map_render_theme: mapRenderThemeSchema,
     weather: snapshotWeatherSchema.optional(),
     agents: z.array(spectatorAgentSnapshotSchema),
+    known_agents: z.array(spectatorKnownAgentSchema),
     conversations: z.array(spectatorConversationSnapshotSchema),
-    server_events: z.array(spectatorServerEventSnapshotSchema),
     recent_server_events: z.array(spectatorRecentServerEventSchema),
     generated_at: z.number().int().nonnegative(),
     published_at: z.number().int().nonnegative(),

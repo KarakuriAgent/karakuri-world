@@ -8,7 +8,6 @@ import type {
   WorldSnapshotAgentInput,
   WorldSnapshotConversationInput,
   WorldSnapshotMapInput,
-  WorldSnapshotServerEventInput,
   WorldSnapshotWorldConfigInput,
 } from './world-snapshot.js';
 import type { NodeId, NodeType } from './world-snapshot.js';
@@ -102,14 +101,12 @@ export interface SpectatorConversationSnapshot {
   status: 'pending' | 'active' | 'closing';
   participant_agent_ids: string[];
   current_speaker_agent_id: string;
-  current_turn: number;
 }
 
-export interface SpectatorServerEventSnapshot {
-  server_event_id: string;
-  description: string;
-  delivered_agent_ids: string[];
-  pending_agent_ids: string[];
+export interface SpectatorKnownAgent {
+  agent_id: string;
+  agent_name: string;
+  discord_bot_avatar_url?: string;
 }
 
 export interface SpectatorSnapshot {
@@ -121,8 +118,8 @@ export interface SpectatorSnapshot {
   map_render_theme: MapRenderTheme;
   weather?: SnapshotWeather;
   agents: SpectatorAgentSnapshot[];
+  known_agents: SpectatorKnownAgent[];
   conversations: SpectatorConversationSnapshot[];
-  server_events: SpectatorServerEventSnapshot[];
   recent_server_events: SpectatorRecentServerEvent[];
   generated_at: number;
   published_at: number;
@@ -130,7 +127,7 @@ export interface SpectatorSnapshot {
 }
 
 export interface BuildSpectatorSnapshotInput {
-  world_snapshot: WorldSnapshot<WorldSnapshotAgentInput, WorldSnapshotConversationInput, WorldSnapshotServerEventInput>;
+  world_snapshot: WorldSnapshot<WorldSnapshotAgentInput, WorldSnapshotConversationInput>;
   recent_server_events: SpectatorRecentServerEvent[];
   published_at: number;
   last_publish_error_at?: number;
@@ -277,18 +274,14 @@ function toSpectatorConversationSnapshot(
     status: conversation.status,
     participant_agent_ids: [...conversation.participant_agent_ids],
     current_speaker_agent_id: conversation.current_speaker_agent_id,
-    current_turn: conversation.current_turn,
   };
 }
 
-function toSpectatorServerEventSnapshot(
-  serverEvent: WorldSnapshotServerEventInput,
-): SpectatorServerEventSnapshot {
+function toSpectatorKnownAgent(agent: { agent_id: string; agent_name: string; discord_bot_avatar_url?: string }): SpectatorKnownAgent {
   return {
-    server_event_id: serverEvent.server_event_id,
-    description: serverEvent.description,
-    delivered_agent_ids: [...serverEvent.delivered_agent_ids],
-    pending_agent_ids: [...serverEvent.pending_agent_ids],
+    agent_id: agent.agent_id,
+    agent_name: agent.agent_name,
+    ...(agent.discord_bot_avatar_url ? { discord_bot_avatar_url: agent.discord_bot_avatar_url } : {}),
   };
 }
 
@@ -310,8 +303,8 @@ export function buildSpectatorSnapshot({
     },
     ...(world_snapshot.weather ? { weather: { ...world_snapshot.weather } } : {}),
     agents: world_snapshot.agents.map((agent) => toSpectatorAgentSnapshot(world_snapshot, agent)),
+    known_agents: (world_snapshot.known_agents ?? []).map(toSpectatorKnownAgent),
     conversations: world_snapshot.conversations.map((conversation) => toSpectatorConversationSnapshot(conversation)),
-    server_events: world_snapshot.server_events.map((serverEvent) => toSpectatorServerEventSnapshot(serverEvent)),
     recent_server_events: recent_server_events.map((event) => ({ ...event })),
     generated_at: world_snapshot.generated_at,
     published_at,

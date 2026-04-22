@@ -704,7 +704,7 @@ interface WorldSnapshot {
   weather?: SnapshotWeather;
   agents: AgentSnapshot[];
   conversations: ConversationSnapshot[];
-  server_events: ServerEventSnapshot[];  // pending_agent_ids が残っているイベントのみ
+  recent_server_events: RecentServerEventSnapshot[];  // 直近のサーバーイベント（最大10件の FIFO リングバッファ）
   generated_at: number; // スナップショット生成時刻（Unix timestamp ms）
   calendar: WorldCalendarSnapshot;
   map_render_theme: MapRenderTheme;
@@ -763,11 +763,11 @@ interface ConversationSnapshot {
   closing_reason?: ConversationClosureReason; // closing状態の終了理由
 }
 
-interface ServerEventSnapshot {
+interface RecentServerEventSnapshot {
   server_event_id: string;
   description: string;
-  delivered_agent_ids: string[];  // 現在応答待ち中で、すでに通知済みのエージェントID一覧
-  pending_agent_ids: string[];   // 現在応答待ち中で、遅延通知待ちのエージェントID一覧
+  occurred_at: number;
+  is_active: boolean;  // まだ応答待ち中のエージェントが残っている間は true、全配信完了または cleanup 後は false
 }
 ```
 

@@ -69,12 +69,6 @@ describe('AgentHistoryManager', () => {
     expect(history.recent_conversations.map((entry) => entry.event_id)).toEqual(['evt-3']);
     expect(history.recent_actions[0]?.detail).toEqual({
       type: 'action_started',
-      agent_id: 'alice',
-      agent_name: 'Alice',
-      action_id: 'craft',
-      action_name: 'Craft',
-      duration_ms: 60_000,
-      completes_at: 60_100,
     });
 
     await vi.runAllTimersAsync();

@@ -85,21 +85,23 @@ export function createFixtureSnapshot(): SpectatorSnapshot {
         status_emoji: '💤',
       },
     ],
+    known_agents: [
+      {
+        agent_id: 'alice',
+        agent_name: 'Alice',
+        discord_bot_avatar_url: 'https://example.com/alice.png',
+      },
+      {
+        agent_id: 'bob',
+        agent_name: 'Bob',
+      },
+    ],
     conversations: [
       {
         conversation_id: 'conv-1',
         status: 'active',
         participant_agent_ids: ['alice', 'bob'],
         current_speaker_agent_id: 'alice',
-        current_turn: 3,
-      },
-    ],
-    server_events: [
-      {
-        server_event_id: 'event-1',
-        description: 'Harvest Festival',
-        delivered_agent_ids: ['alice'],
-        pending_agent_ids: ['bob'],
       },
     ],
     recent_server_events: [

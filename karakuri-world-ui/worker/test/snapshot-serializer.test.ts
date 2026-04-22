@@ -59,8 +59,13 @@ const worldSnapshot: WorldSnapshot = {
       },
     },
   ],
+  known_agents: [
+    {
+      agent_id: 'alice',
+      agent_name: 'Alice',
+    },
+  ],
   conversations: [],
-  server_events: [],
   recent_server_events: [],
   generated_at: 1_750_000_000_000,
 };

@@ -1,5 +1,3 @@
-import { useEffect, useState } from 'react';
-
 import type { FetchHistoryOptions, HistoryCacheEntry, SnapshotStoreState } from '../../store/snapshot-store.js';
 import { getHistoryRetryOptions, shouldFetchHistory, toHistoryScopeKey } from '../../store/snapshot-store.js';
 import type {
@@ -7,8 +5,9 @@ import type {
   SpectatorConversationSnapshot,
   SpectatorSnapshot,
 } from '../../../worker/src/contracts/spectator-snapshot.js';
-import { getAgentAvatarFallbackLabel } from '../../lib/agent-avatar.js';
+import { AgentAvatar } from '../common/AgentAvatar.js';
 import { collapseConversationHistoryForAgentTimeline, resolveHistorySpeaker } from '../../lib/history-speaker.js';
+import { formatNodeLabel } from '../../lib/node-label.js';
 import { formatHistoryTimestamp } from '../../lib/timestamp.js';
 
 export interface AgentOverlayProps {
@@ -20,60 +19,13 @@ export interface AgentOverlayProps {
   fetchHistory?: SnapshotStoreState['fetchHistory'];
   onClose?: () => void;
   onToggleConversationExpanded?: (conversationId: string, expanded?: boolean) => void;
-  snapshot?: Pick<SpectatorSnapshot, 'agents' | 'conversations' | 'timezone'>;
-}
-
-type AgentAvatarSize = 'sm' | 'md' | 'lg';
-
-const AGENT_AVATAR_SIZE_CLASSES: Record<AgentAvatarSize, string> = {
-  sm: 'h-8 w-8 text-sm',
-  md: 'h-14 w-14 text-xl',
-  lg: 'h-16 w-16 text-2xl',
-};
-
-function AgentAvatar({
-  agent,
-  size = 'lg',
-  testId,
-  fallbackTestId,
-}: {
-  agent: Pick<SpectatorAgentSnapshot, 'agent_id' | 'agent_name' | 'discord_bot_avatar_url'>;
-  size?: AgentAvatarSize;
-  testId?: string;
-  fallbackTestId?: string;
-}) {
-  const [hasImageError, setHasImageError] = useState(false);
-  const sizeClassName = AGENT_AVATAR_SIZE_CLASSES[size];
-  const fallbackLabel = getAgentAvatarFallbackLabel(agent.agent_name);
-  const shouldRenderImage = Boolean(agent.discord_bot_avatar_url) && !hasImageError;
-
-  useEffect(() => {
-    setHasImageError(false);
-  }, [agent.agent_id, agent.discord_bot_avatar_url]);
-
-  return (
-    <div
-      className={`${sizeClassName} flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-700 bg-slate-800 font-semibold text-white`}
-      data-testid={testId}
-    >
-      {shouldRenderImage ? (
-        <img
-          src={agent.discord_bot_avatar_url}
-          alt={`${agent.agent_name} avatar`}
-          className="h-full w-full object-cover"
-          onError={() => setHasImageError(true)}
-        />
-      ) : (
-        <span data-testid={fallbackTestId}>{fallbackLabel}</span>
-      )}
-    </div>
-  );
+  snapshot?: Pick<SpectatorSnapshot, 'agents' | 'known_agents' | 'conversations' | 'timezone' | 'map'>;
 }
 
 function getConversationLabel(
   agent: SpectatorAgentSnapshot,
   conversation: SpectatorConversationSnapshot | undefined,
-  snapshot: Pick<SpectatorSnapshot, 'agents' | 'conversations' | 'timezone'> | undefined,
+  snapshot: Pick<SpectatorSnapshot, 'agents' | 'known_agents' | 'conversations' | 'timezone' | 'map'> | undefined,
 ): string {
   if (!conversation) {
     return '会話中';
@@ -81,10 +33,14 @@ function getConversationLabel(
 
   const participantNames = conversation.participant_agent_ids
     .filter((participantAgentId) => participantAgentId !== agent.agent_id)
-    .map(
-      (participantAgentId) =>
-        snapshot?.agents.find((participant) => participant.agent_id === participantAgentId)?.agent_name ?? participantAgentId,
-    );
+    .map((participantAgentId) => {
+      const loggedInParticipant = snapshot?.agents.find((participant) => participant.agent_id === participantAgentId);
+      if (loggedInParticipant) {
+        return loggedInParticipant.agent_name;
+      }
+      const knownParticipant = snapshot?.known_agents?.find((participant) => participant.agent_id === participantAgentId);
+      return knownParticipant?.agent_name ?? participantAgentId;
+    });
   const participantLabel = participantNames.length > 0 ? `（${participantNames.join('・')}）` : '';
   const speakerLabel = conversation.current_speaker_agent_id === agent.agent_id ? ' / 発話中' : '';
 
@@ -93,7 +49,7 @@ function getConversationLabel(
 
 function getCurrentActivitySummary(
   agent: SpectatorAgentSnapshot,
-  snapshot: Pick<SpectatorSnapshot, 'agents' | 'conversations' | 'timezone'> | undefined,
+  snapshot: Pick<SpectatorSnapshot, 'agents' | 'known_agents' | 'conversations' | 'timezone' | 'map'> | undefined,
 ): string {
   if (agent.current_activity?.label) {
     return agent.current_activity.label;
@@ -101,7 +57,9 @@ function getCurrentActivitySummary(
 
   switch (agent.state) {
     case 'moving':
-      return agent.movement ? `移動中 ${agent.movement.from_node_id} → ${agent.movement.to_node_id}` : '移動中';
+      return agent.movement
+        ? `移動中 ${formatNodeLabel(agent.movement.from_node_id, snapshot?.map)} → ${formatNodeLabel(agent.movement.to_node_id, snapshot?.map)}`
+        : '移動中';
     case 'in_conversation':
       return getConversationLabel(
         agent,
@@ -167,7 +125,8 @@ interface HistoryTimelineProps {
   allowConversationExpansion?: boolean;
   collapseConversationsToHeadUtterance?: boolean;
   reverseItemOrder?: boolean;
-  snapshot?: Pick<SpectatorSnapshot, 'agents'>;
+  hideFirstEntry?: boolean;
+  snapshot?: Pick<SpectatorSnapshot, 'agents' | 'known_agents'>;
 }
 
 function HistoryTimeline({
@@ -184,6 +143,7 @@ function HistoryTimeline({
   allowConversationExpansion = false,
   collapseConversationsToHeadUtterance = false,
   reverseItemOrder = false,
+  hideFirstEntry = false,
   snapshot,
 }: HistoryTimelineProps) {
   const handleFetch = (options?: FetchHistoryOptions) => {
@@ -232,7 +192,8 @@ function HistoryTimeline({
   const collapsedItems = collapseConversationsToHeadUtterance
     ? collapseConversationHistoryForAgentTimeline(rawItems)
     : rawItems;
-  const items = reverseItemOrder ? [...collapsedItems].reverse() : collapsedItems;
+  const orderedItems = reverseItemOrder ? [...collapsedItems].reverse() : collapsedItems;
+  const items = hideFirstEntry ? orderedItems.slice(1) : orderedItems;
   const isReplaceLoading = history.status === 'loading' && history.request.merge === 'replace';
   const isReplaceError = history.status === 'error' && Boolean(history.response) && history.request.merge === 'replace';
   const isAppendLoading = history.status === 'loading' && history.request.merge === 'append';
@@ -317,13 +278,11 @@ function HistoryTimeline({
                   {speaker ? (
                     <div className="flex items-start gap-2">
                       <AgentAvatar
-                        agent={
-                          speaker.agent ?? {
-                            agent_id: speaker.speaker_agent_id,
-                            agent_name: speaker.display_name,
-                            discord_bot_avatar_url: undefined,
-                          }
-                        }
+                        agent={{
+                          agent_id: speaker.speaker_agent_id,
+                          agent_name: speaker.display_name,
+                          discord_bot_avatar_url: speaker.discord_bot_avatar_url,
+                        }}
                         size="sm"
                         testId={`${baseTestId}-item-speaker-avatar-${item.event_id}`}
                         fallbackTestId={`${baseTestId}-item-speaker-avatar-fallback-${item.event_id}`}
@@ -388,6 +347,7 @@ function HistoryTimeline({
                             baseTestId={`${prefix}-conversation-history-${conversationId}`}
                             timeZone={timeZone}
                             reverseItemOrder
+                            hideFirstEntry
                             snapshot={snapshot}
                           />
                         </div>
@@ -461,7 +421,7 @@ export function AgentOverlay({
             <p className="mt-1 text-sm text-slate-400">
               現在地:{' '}
               <span className="text-slate-200" data-testid={`${prefix}-agent-location`}>
-                {agent.node_id}
+                {formatNodeLabel(agent.node_id, snapshot?.map)}
               </span>
             </p>
           </div>

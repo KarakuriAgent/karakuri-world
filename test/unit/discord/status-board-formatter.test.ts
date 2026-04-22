@@ -81,6 +81,7 @@ function createSnapshot(): WorldSnapshot {
         },
       }),
     ],
+    known_agents: [],
     conversations: [
       {
         conversation_id: 'conversation-1',
@@ -92,14 +93,6 @@ function createSnapshot(): WorldSnapshot {
         max_participants: 5,
         current_speaker_agent_id: 'agent-1',
         actionable_speaker_agent_id: 'agent-1',
-      },
-    ],
-    server_events: [
-      {
-        server_event_id: 'server-event-1',
-        description: '空が暗くなり雨が降り出した',
-        delivered_agent_ids: ['agent-1'],
-        pending_agent_ids: ['agent-2', 'agent-3'],
       },
     ],
     recent_server_events: [],
@@ -126,7 +119,6 @@ describe('formatStatusBoard', () => {
     const snapshot = createSnapshot();
     snapshot.agents = [];
     snapshot.conversations = [];
-    snapshot.server_events = [];
 
     const [message] = formatStatusBoard(snapshot, 'Asia/Tokyo');
 

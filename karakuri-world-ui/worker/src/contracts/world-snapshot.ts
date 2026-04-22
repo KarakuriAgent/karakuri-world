@@ -119,20 +119,18 @@ export interface WorldSnapshotAgentInput {
   [key: string]: unknown;
 }
 
+export interface WorldSnapshotKnownAgentInput {
+  agent_id: string;
+  agent_name: string;
+  discord_bot_avatar_url?: string;
+  [key: string]: unknown;
+}
+
 export interface WorldSnapshotConversationInput {
   conversation_id: string;
   status: 'pending' | 'active' | 'closing';
   participant_agent_ids: string[];
   current_speaker_agent_id: string;
-  current_turn: number;
-  [key: string]: unknown;
-}
-
-export interface WorldSnapshotServerEventInput {
-  server_event_id: string;
-  description: string;
-  delivered_agent_ids: string[];
-  pending_agent_ids: string[];
   [key: string]: unknown;
 }
 
@@ -154,7 +152,6 @@ export interface WorldSnapshotMapInput {
 export interface WorldSnapshot<
   TAgent = WorldSnapshotAgentInput,
   TConversation = WorldSnapshotConversationInput,
-  TServerEvent = WorldSnapshotServerEventInput,
 > {
   world: WorldSnapshotWorldConfigInput;
   timezone?: string;
@@ -163,8 +160,8 @@ export interface WorldSnapshot<
   map_render_theme: MapRenderTheme;
   weather?: SnapshotWeather;
   agents: TAgent[];
+  known_agents: WorldSnapshotKnownAgentInput[];
   conversations: TConversation[];
-  server_events: TServerEvent[];
   recent_server_events: WorldSnapshotRecentServerEventInput[];
   generated_at: number;
 }

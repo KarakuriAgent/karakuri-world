@@ -54,7 +54,7 @@ describe('server events integration', () => {
     const fired = engine.fireServerEvent('It started raining.');
 
     const snapshot = engine.getSnapshot();
-    expect(snapshot.server_events).toEqual([]);
+    expect(engine.state.serverEvents.list()).toEqual([]);
     expect(snapshot.recent_server_events).toEqual([
       expect.objectContaining({
         server_event_id: fired.server_event_id,

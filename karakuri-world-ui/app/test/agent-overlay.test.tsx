@@ -87,7 +87,7 @@ describe('AgentOverlay', () => {
 
     renderOverlay(agent, snapshot);
 
-    expect(screen.getByText('移動中 2-1 → 1-1')).toBeInTheDocument();
+    expect(screen.getByText('移動中 2-1 → 1-1 (Square)')).toBeInTheDocument();
   });
 
   it('derives conversation activity text from conversation context when current_activity is absent', () => {
@@ -457,13 +457,13 @@ describe('AgentOverlay', () => {
 
     const conversationPanel = screen.getByTestId('desktop-conversation-history-panel-conv-1');
     const conversationItems = within(conversationPanel).getAllByTestId('desktop-conversation-history-conv-1-item');
-    expect(conversationItems).toHaveLength(2);
+    expect(conversationItems).toHaveLength(1);
     expect(
       within(conversationPanel).getByTestId('desktop-conversation-history-conv-1-item-speaker-avatar-event-speak'),
     ).toBeInTheDocument();
     expect(
-      within(conversationPanel).getByTestId('desktop-conversation-history-conv-1-item-speaker-avatar-event-requested'),
-    ).toBeInTheDocument();
+      within(conversationPanel).queryByTestId('desktop-conversation-history-conv-1-item-speaker-avatar-event-requested'),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText(/conversation:\s*conv-1/i)).not.toBeInTheDocument();
   });
 

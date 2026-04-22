@@ -321,23 +321,21 @@ const worldSnapshotSchema = z.object({
         .optional(),
     }),
   ),
+  known_agents: z.array(
+    z.object({
+      agent_id: z.string(),
+      agent_name: z.string(),
+      discord_bot_avatar_url: z.string().optional(),
+    }),
+  ),
   conversations: z.array(
     z.object({
       conversation_id: z.string(),
       status: z.enum(['pending', 'active', 'closing']),
       participant_agent_ids: z.array(z.string()),
       current_speaker_agent_id: z.string(),
-      current_turn: z.number().int().nonnegative(),
       initiator_agent_id: z.string().optional(),
       closing_reason: z.string().optional(),
-    }),
-  ),
-  server_events: z.array(
-    z.object({
-      server_event_id: z.string(),
-      description: z.string(),
-      delivered_agent_ids: z.array(z.string()),
-      pending_agent_ids: z.array(z.string()),
     }),
   ),
   recent_server_events: z.array(

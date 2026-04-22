@@ -72,8 +72,8 @@ function createWorldSnapshot(generatedAt = 1_750_000_000_000) {
       default_text_color: '#0f172a',
     },
     agents: [],
+    known_agents: [],
     conversations: [],
-    server_events: [],
     recent_server_events: [],
     generated_at: generatedAt,
   };

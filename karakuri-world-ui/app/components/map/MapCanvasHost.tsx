@@ -185,7 +185,7 @@ export function MapCanvasHost({
 
   return (
     <section
-      aria-label="World map"
+      aria-label="ワールドマップ"
       className="relative min-h-screen min-w-0 overflow-hidden bg-slate-900"
       data-testid="map-canvas-host"
       style={viewportBackgroundStyle}
@@ -197,7 +197,7 @@ export function MapCanvasHost({
               className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-400"
               data-testid="map-pixi-loading"
             >
-              viewport bridge を読み込んでいます…
+              マップを読み込んでいます…
             </div>
           }
         >
@@ -219,7 +219,7 @@ export function MapCanvasHost({
           className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-400"
           data-testid="map-pixi-fallback"
         >
-          ブラウザ runtime では viewport spike を描画します。test 環境では selection bridge の DOM fallback を使います。
+          ブラウザ上ではマップを描画します。テスト環境では DOM フォールバック表示になります。
         </div>
       )}
       {snapshot ? (

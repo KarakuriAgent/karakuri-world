@@ -35,8 +35,8 @@ function createMinimalSnapshot(generatedAt = 1_000): WorldSnapshot {
       default_text_color: '#000',
     },
     agents: [],
+    known_agents: [],
     conversations: [],
-    server_events: [],
     recent_server_events: [],
     generated_at: generatedAt,
   };

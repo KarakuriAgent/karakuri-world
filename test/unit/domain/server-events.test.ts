@@ -28,7 +28,7 @@ describe('server event domain', () => {
     const fired = engine.fireServerEvent('Dark clouds gather.');
 
     expect(fired.server_event_id).toMatch(/^server-event-/);
-    expect(engine.getSnapshot().server_events).toEqual([]);
+    expect(engine.state.serverEvents.list()).toEqual([]);
     expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBe(fired.server_event_id);
   });
 
@@ -45,7 +45,7 @@ describe('server event domain', () => {
     engine.move(alice.agent_id, { target_node_id: '3-4' });
     const fired = engine.fireServerEvent('Dark clouds gather.');
 
-    expect(engine.getSnapshot().server_events).toEqual([
+    expect(engine.state.serverEvents.list()).toEqual([
       expect.objectContaining({
         server_event_id: fired.server_event_id,
         description: 'Dark clouds gather.',
@@ -59,7 +59,7 @@ describe('server event domain', () => {
 
     expect(engine.state.getLoggedIn(alice.agent_id)?.pending_server_event_ids).toEqual([]);
     expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBe(fired.server_event_id);
-    expect(engine.getSnapshot().server_events).toEqual([]);
+    expect(engine.state.serverEvents.list()).toEqual([]);
     expect(eventTypes.slice(-2)).toEqual(['server_event_fired', 'movement_completed']);
 
     unsubscribe();
@@ -762,7 +762,7 @@ describe('server event domain', () => {
 
     vi.advanceTimersByTime(3000);
 
-    expect(engine.getSnapshot().server_events).toEqual([]);
+    expect(engine.state.serverEvents.list()).toEqual([]);
     expect(engine.state.recentServerEvents.list()).toEqual([
       expect.objectContaining({ server_event_id: fired.server_event_id, is_active: false }),
     ]);

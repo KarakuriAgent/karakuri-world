@@ -115,14 +115,11 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
       workerBaseUrl: new URL(options.snapshotPublishBaseUrl),
       authKey: options.snapshotPublishAuthKey,
     });
-    let engine!: WorldEngine;
     const agentHistoryManager = new AgentHistoryManager({
       workerBaseUrl: new URL(options.snapshotPublishBaseUrl),
       authKey: options.snapshotPublishAuthKey,
-      resolveConversationParticipantAgentIds: (conversationId): string[] =>
-        engine.state.conversations.get(conversationId)?.participant_agent_ids ?? [],
     });
-    engine = new WorldEngine(config, discordBot, {
+    const engine = new WorldEngine(config, discordBot, {
       initialRegistrations,
       onRegistrationChanged: (agents) => saveAgents(agentsFilePath, agents),
       weatherService: weatherService ?? undefined,

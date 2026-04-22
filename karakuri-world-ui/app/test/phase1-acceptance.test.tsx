@@ -68,7 +68,6 @@ function create100AgentSnapshot(overrides: Partial<SpectatorSnapshot> = {}): Spe
     map,
     agents,
     conversations: [],
-    server_events: [],
     recent_server_events: [],
     generated_at: 1_780_000_000_000,
     published_at: 1_780_000_005_000,
@@ -250,9 +249,8 @@ describe('Phase 1 acceptance', () => {
     const conversationItems = within(screen.getByTestId('desktop-conversation-history-conv-1-list')).getAllByTestId(
       'desktop-conversation-history-conv-1-item',
     );
-    expect(conversationItems).toHaveLength(2);
-    expect(conversationItems[0]).toHaveTextContent('Alice spoke');
-    expect(conversationItems[1]).toHaveTextContent('Bob replied');
+    expect(conversationItems).toHaveLength(1);
+    expect(conversationItems[0]).toHaveTextContent('Bob replied');
   });
 
   it('keeps healthy quiet periods fresh and leaves the stale banner hidden until publish health degrades', async () => {

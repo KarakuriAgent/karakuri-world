@@ -620,6 +620,13 @@ export class WorldEngine {
             : {}),
         };
       }),
+      known_agents: this.state.list().map((registration) => ({
+        agent_id: registration.agent_id,
+        agent_name: registration.agent_name,
+        ...(registration.discord_bot_avatar_url
+          ? { discord_bot_avatar_url: registration.discord_bot_avatar_url }
+          : {}),
+      })),
       conversations: this.state.conversations.list().map((conversation) => ({
         conversation_id: conversation.conversation_id,
         status: conversation.status,
@@ -631,12 +638,6 @@ export class WorldEngine {
         current_speaker_agent_id: conversation.current_speaker_agent_id,
         actionable_speaker_agent_id: getConversationActionableSpeaker(conversation) ?? conversation.current_speaker_agent_id,
         closing_reason: conversation.closing_reason,
-      })),
-      server_events: this.state.serverEvents.list().map((serverEvent) => ({
-        server_event_id: serverEvent.server_event_id,
-        description: serverEvent.description,
-        delivered_agent_ids: serverEvent.delivered_agent_ids,
-        pending_agent_ids: serverEvent.pending_agent_ids,
       })),
       recent_server_events: this.state.recentServerEvents.list(),
       generated_at: now,

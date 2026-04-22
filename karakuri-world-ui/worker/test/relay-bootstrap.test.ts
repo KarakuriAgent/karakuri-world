@@ -97,17 +97,21 @@ function createWorldSnapshot(generatedAt = 1_750_000_000_000, overrides: Record<
         status_emoji: '🙂',
       },
     ],
+    known_agents: [
+      {
+        agent_id: 'alice',
+        agent_name: 'Alice',
+      },
+    ],
     conversations: [
       {
         conversation_id: 'conv-1',
         status: 'active' as const,
         participant_agent_ids: ['alice', 'bob'],
         current_speaker_agent_id: 'alice',
-        current_turn: 2,
         initiator_agent_id: 'alice',
       },
     ],
-    server_events: [],
     recent_server_events: [],
     generated_at: generatedAt,
     ...overrides,

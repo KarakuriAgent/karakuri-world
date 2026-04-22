@@ -84,18 +84,17 @@ export interface ConversationSnapshot {
   closing_reason?: ConversationClosureReason;
 }
 
-export interface ServerEventSnapshot {
-  server_event_id: string;
-  description: string;
-  delivered_agent_ids: string[];
-  pending_agent_ids: string[];
-}
-
 export interface RecentServerEventSnapshot {
   server_event_id: string;
   description: string;
   occurred_at: number;
   is_active: boolean;
+}
+
+export interface KnownAgentSnapshot {
+  agent_id: string;
+  agent_name: string;
+  discord_bot_avatar_url?: string;
 }
 
 export interface WorldSnapshot {
@@ -105,8 +104,8 @@ export interface WorldSnapshot {
   map_render_theme: MapRenderTheme;
   weather?: SnapshotWeather;
   agents: AgentSnapshot[];
+  known_agents: KnownAgentSnapshot[];
   conversations: ConversationSnapshot[];
-  server_events: ServerEventSnapshot[];
   recent_server_events: RecentServerEventSnapshot[];
   generated_at: number;
   runtime?: {

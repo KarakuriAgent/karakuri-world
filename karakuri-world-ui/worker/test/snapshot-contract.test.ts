@@ -41,15 +41,7 @@ function createWorldSnapshot(): WorldSnapshot<
     status: 'active';
     participant_agent_ids: string[];
     current_speaker_agent_id: string;
-    current_turn: number;
     initiator_agent_id: string;
-  },
-  {
-    server_event_id: string;
-    description: string;
-    delivered_agent_ids: string[];
-    pending_agent_ids: string[];
-    admin_secret: string;
   }
 > {
   return {
@@ -139,23 +131,19 @@ function createWorldSnapshot(): WorldSnapshot<
         },
       },
       ],
+    known_agents: [
+      {
+        agent_id: 'alice',
+        agent_name: 'Alice',
+      },
+    ],
     conversations: [
       {
         conversation_id: 'conv-1',
         status: 'active',
         participant_agent_ids: ['alice', 'bob'],
         current_speaker_agent_id: 'alice',
-        current_turn: 2,
         initiator_agent_id: 'alice',
-      },
-    ],
-    server_events: [
-      {
-        server_event_id: 'event-1',
-        description: 'Harvest Festival',
-        delivered_agent_ids: ['alice'],
-        pending_agent_ids: ['bob'],
-        admin_secret: 'drop-me',
       },
     ],
     recent_server_events: [],
@@ -262,15 +250,6 @@ describe('spectator snapshot contract helpers', () => {
           status: 'active',
           participant_agent_ids: ['alice', 'bob'],
           current_speaker_agent_id: 'alice',
-          current_turn: 2,
-        },
-      ],
-      server_events: [
-        {
-          server_event_id: 'event-1',
-          description: 'Harvest Festival',
-          delivered_agent_ids: ['alice'],
-          pending_agent_ids: ['bob'],
         },
       ],
       generated_at: 1_750_000_000_000,
@@ -293,7 +272,7 @@ describe('spectator snapshot contract helpers', () => {
     expect(spectatorSnapshot.agents[0]).not.toHaveProperty('money');
     expect(spectatorSnapshot.agents[0]).not.toHaveProperty('items');
     expect(spectatorSnapshot.conversations[0]).not.toHaveProperty('initiator_agent_id');
-    expect(spectatorSnapshot.server_events[0]).not.toHaveProperty('admin_secret');
+    expect(spectatorSnapshot.conversations[0]).not.toHaveProperty('current_turn');
   });
 
   it('derives current_activity labels for wait and item_use activities', () => {
