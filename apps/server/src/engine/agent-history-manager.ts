@@ -58,6 +58,9 @@ export interface AgentHistoryManagerConfig {
   maxEntriesPerBucket?: number;
   maxBufferedEntriesPerAgent?: number;
   requestTimeoutMs?: number;
+  retryBaseIntervalMs?: number;
+  retryMaxIntervalMs?: number;
+  retryMaxAttempts?: number;
 }
 
 type NonSupportedHistoryEventType =
@@ -83,6 +86,13 @@ void (true as _SupportedHistoryCoverage);
 const DEFAULT_MAX_ENTRIES_PER_BUCKET = 100;
 const DEFAULT_MAX_BUFFERED_ENTRIES_PER_AGENT = 100;
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+const DEFAULT_RETRY_BASE_INTERVAL_MS = 5_000;
+const DEFAULT_RETRY_MAX_INTERVAL_MS = 60_000;
+const DEFAULT_RETRY_MAX_ATTEMPTS = 10;
+
+function calculateBackoff(baseIntervalMs: number, attempt: number, maxIntervalMs: number): number {
+  return Math.min(baseIntervalMs * 2 ** Math.max(attempt - 1, 0), maxIntervalMs);
+}
 
 function defaultLogger(): AgentHistoryManagerLogger {
   return {
@@ -295,11 +305,16 @@ export class AgentHistoryManager {
   private readonly maxEntriesPerBucket: number;
   private readonly maxBufferedEntriesPerAgent: number;
   private readonly requestTimeoutMs: number;
+  private readonly retryBaseIntervalMs: number;
+  private readonly retryMaxIntervalMs: number;
+  private readonly retryMaxAttempts: number;
   private readonly histories = new Map<string, AgentHistoryDocument>();
   private readonly pending = new Map<string, PersistedHistoryEntry[]>();
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private flushPromise: Promise<void> | null = null;
   private pendingVersion = 0;
+  private consecutiveFailures = 0;
+  private gaveUp = false;
   private disposed = false;
 
   constructor(private readonly config: AgentHistoryManagerConfig) {
@@ -313,6 +328,9 @@ export class AgentHistoryManager {
     this.maxEntriesPerBucket = config.maxEntriesPerBucket ?? DEFAULT_MAX_ENTRIES_PER_BUCKET;
     this.maxBufferedEntriesPerAgent = config.maxBufferedEntriesPerAgent ?? DEFAULT_MAX_BUFFERED_ENTRIES_PER_AGENT;
     this.requestTimeoutMs = config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.retryBaseIntervalMs = config.retryBaseIntervalMs ?? DEFAULT_RETRY_BASE_INTERVAL_MS;
+    this.retryMaxIntervalMs = config.retryMaxIntervalMs ?? DEFAULT_RETRY_MAX_INTERVAL_MS;
+    this.retryMaxAttempts = config.retryMaxAttempts ?? DEFAULT_RETRY_MAX_ATTEMPTS;
   }
 
   recordEvent(event: WorldEvent): void {
@@ -323,6 +341,12 @@ export class AgentHistoryManager {
     const entry = toPersistedHistoryEntry(event);
     if (!entry) {
       return;
+    }
+
+    // A fresh event resets the give-up state so the next publish attempt can run.
+    if (this.gaveUp) {
+      this.gaveUp = false;
+      this.consecutiveFailures = 0;
     }
 
     for (const agentId of entry.agent_ids) {
@@ -399,7 +423,7 @@ export class AgentHistoryManager {
     }
   }
 
-  private scheduleFlush(): void {
+  private scheduleFlush(delayMs = 0): void {
     if (this.disposed) {
       return;
     }
@@ -418,11 +442,12 @@ export class AgentHistoryManager {
       void this.flushPromise.catch((error) => {
         this.logger.error('AGENT_HISTORY_FLUSH_UNCAUGHT', { error: describeError(error) });
       });
-    }, 0);
+    }, Math.max(0, delayMs));
   }
 
   private async flushPending(): Promise<void> {
     const flushStartVersion = this.pendingVersion;
+    let hadFailure = false;
 
     try {
       for (const [agentId, entries] of [...this.pending.entries()]) {
@@ -458,6 +483,7 @@ export class AgentHistoryManager {
             this.pending.set(agentId, remaining);
           }
         } catch (error) {
+          hadFailure = true;
           this.logger.error('AGENT_HISTORY_PUBLISH_FAILED', {
             agent_id: agentId,
             error: describeError(error),
@@ -467,8 +493,25 @@ export class AgentHistoryManager {
     } finally {
       this.flushPromise = null;
 
-      if (!this.disposed && this.pending.size > 0 && this.pendingVersion > flushStartVersion) {
-        this.scheduleFlush();
+      if (hadFailure) {
+        this.consecutiveFailures += 1;
+        if (this.consecutiveFailures >= this.retryMaxAttempts) {
+          this.gaveUp = true;
+          this.logger.error('AGENT_HISTORY_PUBLISH_EXHAUSTED', {
+            attempts: this.consecutiveFailures,
+          });
+        }
+      } else {
+        this.consecutiveFailures = 0;
+      }
+
+      if (!this.disposed && this.pending.size > 0 && !this.gaveUp) {
+        const hasNewEvents = this.pendingVersion > flushStartVersion;
+        if (hadFailure) {
+          this.scheduleFlush(calculateBackoff(this.retryBaseIntervalMs, this.consecutiveFailures, this.retryMaxIntervalMs));
+        } else if (hasNewEvents) {
+          this.scheduleFlush();
+        }
       }
     }
   }

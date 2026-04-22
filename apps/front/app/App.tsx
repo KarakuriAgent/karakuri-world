@@ -6,8 +6,6 @@ import { AppShell } from './components/layout/AppShell.js';
 import { SnapshotStatusBadges } from './components/layout/SnapshotStatusBadges.js';
 import {
   createSnapshotStore,
-  getHistoryRetryOptions,
-  shouldFetchHistory,
   toHistoryScopeKey,
   type SnapshotStatus,
   type SnapshotStoreApi,
@@ -64,7 +62,6 @@ export function App({ env, store, autoStartPolling = true }: AppProps) {
     localStoreRef.current = createSnapshotStore({
       snapshotUrl: env.snapshotUrl,
       authMode: env.authMode,
-      historyApiUrl: env.apiBaseUrl,
     });
   }
 
@@ -85,16 +82,6 @@ export function App({ env, store, autoStartPolling = true }: AppProps) {
   const isStale = useStore(snapshotStore, (state) => state.is_stale);
 
   useEffect(() => {
-    if (snapshotStore.getState().history_api_url === env.apiBaseUrl) {
-      return;
-    }
-
-    snapshotStore.setState(() => ({
-      history_api_url: env.apiBaseUrl,
-    }));
-  }, [env.apiBaseUrl, snapshotStore]);
-
-  useEffect(() => {
     if (!autoStartPolling) {
       return;
     }
@@ -111,14 +98,8 @@ export function App({ env, store, autoStartPolling = true }: AppProps) {
       return;
     }
 
-    const cacheEntry = snapshotStore.getState().history_cache[toHistoryScopeKey({ agent_id: selectedAgentId })];
-
-    if (cacheEntry?.status !== 'loading' && !shouldFetchHistory(cacheEntry)) {
-      return;
-    }
-
-    void fetchHistory({ agent_id: selectedAgentId }, getHistoryRetryOptions(cacheEntry));
-  }, [fetchHistory, selectedAgentId, selectionRevision, snapshotStore]);
+    void fetchHistory({ agent_id: selectedAgentId });
+  }, [fetchHistory, selectedAgentId, selectionRevision]);
 
   if (!snapshot) {
     return <FullscreenLoading />;

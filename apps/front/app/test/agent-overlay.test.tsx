@@ -11,10 +11,6 @@ import type { SpectatorAgentSnapshot, SpectatorSnapshot } from '../../worker/src
 function createReadyHistory(): HistoryCacheEntry {
   return {
     status: 'ready',
-    request: {
-      limit: 20,
-      merge: 'replace',
-    },
     last_fetched_at: 1_780_000_010_000,
     response: {
       items: [
@@ -175,16 +171,12 @@ describe('AgentOverlay', () => {
     expect(screen.queryByText('履歴タイムラインと会話展開は後続 Unit で接続します。')).not.toBeInTheDocument();
   });
 
-  it('keeps replace-failure retry affordances visible when preserved empty agent history is shown', () => {
+  it('keeps refresh-failure retry affordances visible when preserved empty agent history is shown', () => {
     const snapshot = createFixtureSnapshot();
     const agent = snapshot.agents[0]!;
     const fetchHistory = vi.fn();
     const history: HistoryCacheEntry = {
       status: 'error',
-      request: {
-        limit: 20,
-        merge: 'replace',
-      },
       response: {
         items: [],
       },
@@ -201,7 +193,7 @@ describe('AgentOverlay', () => {
 
     fireEvent.click(screen.getByTestId('desktop-agent-history-warning-retry'));
 
-    expect(fetchHistory).toHaveBeenCalledWith({ agent_id: 'alice' }, { limit: 20, merge: 'replace' });
+    expect(fetchHistory).toHaveBeenCalledWith({ agent_id: 'alice' });
   });
 
   it('expands conversation history lazily and retries nested history loads from the separate conversation cache', async () => {
@@ -209,10 +201,6 @@ describe('AgentOverlay', () => {
     const agent = snapshot.agents[0]!;
     const history: HistoryCacheEntry = {
       status: 'ready',
-      request: {
-        limit: 20,
-        merge: 'replace',
-      },
       last_fetched_at: 1_780_000_010_000,
       response: {
         items: [
@@ -254,7 +242,7 @@ describe('AgentOverlay', () => {
     fireEvent.click(screen.getByTestId('desktop-conversation-toggle-conv-1'));
 
     expect(onToggleConversationExpanded).toHaveBeenCalledWith('conv-1', true);
-    expect(fetchHistory).toHaveBeenCalledWith({ conversation_id: 'conv-1' }, undefined);
+    expect(fetchHistory).toHaveBeenCalledWith({ conversation_id: 'conv-1' });
 
     rerender(
       <AgentOverlay
@@ -264,10 +252,6 @@ describe('AgentOverlay', () => {
         historyCache={{
           'conversation:conv-1': {
             status: 'error',
-            request: {
-              limit: 50,
-              merge: 'replace',
-            },
             error_at: 1_780_000_030_000,
           },
         }}
@@ -281,60 +265,7 @@ describe('AgentOverlay', () => {
 
     fireEvent.click(screen.getByTestId('desktop-conversation-history-conv-1-retry'));
 
-    expect(fetchHistory).toHaveBeenLastCalledWith({ conversation_id: 'conv-1' }, { limit: 50, merge: 'replace' });
-
-    fetchHistory.mockClear();
-    onToggleConversationExpanded.mockClear();
-
-    rerender(
-      <AgentOverlay
-        agent={agent}
-        snapshot={snapshot}
-        history={history}
-        historyCache={{
-          'conversation:conv-1': {
-            status: 'error',
-            request: {
-              cursor: 'cursor-2',
-              limit: 50,
-              merge: 'append',
-            },
-            response: {
-              items: [
-                {
-                  event_id: 'event-conv',
-                  type: 'conversation_message',
-                  occurred_at: 1_780_000_020_000,
-                  agent_ids: ['alice', 'bob'],
-                  conversation_id: 'conv-1',
-                  summary: {
-                    emoji: '💬',
-                    title: 'Conversation',
-                    text: 'Alice talked with Bob.',
-                  },
-                  detail: {},
-                },
-              ],
-              next_cursor: 'cursor-2',
-            },
-            last_fetched_at: 1_780_000_010_000,
-            error_at: 1_780_000_040_000,
-          },
-        }}
-        expandedConversationIds={{}}
-        fetchHistory={fetchHistory}
-        onToggleConversationExpanded={onToggleConversationExpanded}
-      />,
-    );
-
-    fireEvent.click(screen.getByTestId('desktop-conversation-toggle-conv-1'));
-
-    expect(onToggleConversationExpanded).toHaveBeenCalledWith('conv-1', true);
-    expect(fetchHistory).toHaveBeenCalledWith({ conversation_id: 'conv-1' }, {
-      cursor: 'cursor-2',
-      limit: 50,
-      merge: 'append',
-    });
+    expect(fetchHistory).toHaveBeenLastCalledWith({ conversation_id: 'conv-1' });
   });
 
   it('collapses each conversation to its head utterance in the agent timeline and shows the full log with speaker bubbles when expanded', () => {
@@ -342,7 +273,6 @@ describe('AgentOverlay', () => {
     const agent = snapshot.agents[0]!;
     const agentHistory: HistoryCacheEntry = {
       status: 'ready',
-      request: { limit: 20, merge: 'replace' },
       last_fetched_at: 1_780_000_010_000,
       response: {
         items: [
@@ -394,7 +324,6 @@ describe('AgentOverlay', () => {
     };
     const conversationHistory: HistoryCacheEntry = {
       status: 'ready',
-      request: { limit: 50, merge: 'replace' },
       last_fetched_at: 1_780_000_040_000,
       response: {
         items: [
@@ -476,15 +405,11 @@ describe('AgentOverlay', () => {
     expect(screen.queryByTestId('desktop-agent-history-item-speaker-avatar-event-new')).not.toBeInTheDocument();
   });
 
-  it('keeps replace-failure retry affordances visible for empty nested conversation history', () => {
+  it('keeps refresh-failure retry affordances visible for empty nested conversation history', () => {
     const snapshot = createFixtureSnapshot();
     const agent = snapshot.agents[0]!;
     const history: HistoryCacheEntry = {
       status: 'ready',
-      request: {
-        limit: 20,
-        merge: 'replace',
-      },
       last_fetched_at: 1_780_000_010_000,
       response: {
         items: [
@@ -518,10 +443,6 @@ describe('AgentOverlay', () => {
         historyCache={{
           'conversation:conv-1': {
             status: 'error',
-            request: {
-              limit: 50,
-              merge: 'replace',
-            },
             response: {
               items: [],
             },
@@ -540,6 +461,6 @@ describe('AgentOverlay', () => {
 
     fireEvent.click(screen.getByTestId('desktop-conversation-history-conv-1-warning-retry'));
 
-    expect(fetchHistory).toHaveBeenCalledWith({ conversation_id: 'conv-1' }, { limit: 50, merge: 'replace' });
+    expect(fetchHistory).toHaveBeenCalledWith({ conversation_id: 'conv-1' });
   });
 });

@@ -1,8 +1,19 @@
 import { z } from 'zod';
 
 import type { EventType as BackendEventType } from '../../../../server/src/types/event.js';
+import {
+  agentHistoryDocumentSchema,
+  coerceAgentHistoryDocument,
+  coerceConversationHistoryDocument,
+  conversationHistoryDocumentSchema,
+  historyAgentObjectKey,
+  historyConversationObjectKey,
+  historyEntrySchema,
+  type AgentHistoryDocument,
+  type ConversationHistoryDocument,
+  type HistoryEntry,
+} from '../contracts/history-document.js';
 import type { PersistedSpectatorEventType } from '../contracts/persisted-spectator-event.js';
-import { encodeSnapshotManifest, type SnapshotManifest } from '../contracts/snapshot-manifest.js';
 import { encodeSpectatorSnapshot } from '../contracts/snapshot-serializer.js';
 import { buildSpectatorSnapshot, type SpectatorRecentServerEvent, type SpectatorSnapshot } from '../contracts/spectator-snapshot.js';
 import type { ConversationClosureReason, EventType, WorldEvent } from '../contracts/world-event.js';
@@ -26,7 +37,6 @@ export interface BridgeState {
   latest_snapshot?: SpectatorSnapshot;
   conversations: Record<string, BridgeConversationState>;
   last_publish_at?: number;
-  last_published_generated_at?: number;
   publish_alarm_at?: number;
   publish_attempt?: number;
   last_publish_error_at?: number;
@@ -35,7 +45,6 @@ export interface BridgeState {
   publish_queued: boolean;
   publish_failure_streak: number;
 }
-
 
 export interface RelayFetchResponse {
   status: number;
@@ -113,7 +122,6 @@ export interface R2BucketLike {
 export interface RelayBindings extends Record<string, unknown> {
   SNAPSHOT_PUBLISH_AUTH_KEY?: string;
   AUTH_MODE?: 'public' | 'access';
-  HISTORY_CORS_ALLOWED_ORIGINS?: string;
   SNAPSHOT_BUCKET?: R2BucketLike;
   UI_BRIDGE?: DurableObjectNamespaceLike;
 }
@@ -121,79 +129,21 @@ function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-
 interface SnapshotPublishInput {
   key: string;
   body: string;
   options: R2PutOptions;
 }
 
-interface PublishedHistoryEntry {
-  event_id: string;
-  type: string;
-  occurred_at: number;
-  agent_ids: string[];
-  conversation_id?: string;
-  summary: {
-    emoji: string;
-    title: string;
-    text: string;
-  };
-  detail: Record<string, unknown>;
-}
-
-interface AgentHistoryDocument {
-  agent_id: string;
-  updated_at: number;
-  items: PublishedHistoryEntry[];
-  recent_actions: PublishedHistoryEntry[];
-  recent_conversations: PublishedHistoryEntry[];
-}
-
-interface ConversationHistoryDocument {
-  conversation_id: string;
-  updated_at: number;
-  items: PublishedHistoryEntry[];
-}
-
-const publishedHistoryEntrySchema = z.object({
-  event_id: z.string().min(1),
-  type: z.string().min(1),
-  occurred_at: z.number().int().nonnegative(),
-  agent_ids: z.array(z.string().min(1)),
-  conversation_id: z.string().min(1).optional(),
-  summary: z.object({
-    emoji: z.string(),
-    title: z.string(),
-    text: z.string(),
-  }),
-  detail: z.record(z.string(), z.unknown()),
-});
-
 const publishAgentHistoryRequestSchema = z.object({
   agent_id: z.string().min(1),
-  events: z.array(publishedHistoryEntrySchema),
-});
-
-const agentHistoryDocumentSchema = z.object({
-  agent_id: z.string().min(1).optional(),
-  updated_at: z.number().int().nonnegative().optional(),
-  items: z.array(publishedHistoryEntrySchema).optional(),
-  recent_actions: z.array(publishedHistoryEntrySchema).optional(),
-  recent_conversations: z.array(publishedHistoryEntrySchema).optional(),
-});
-
-const conversationHistoryDocumentSchema = z.object({
-  conversation_id: z.string().min(1).optional(),
-  updated_at: z.number().int().nonnegative().optional(),
-  items: z.array(publishedHistoryEntrySchema).optional(),
+  events: z.array(historyEntrySchema),
 });
 
 const PUBLISH_BACKOFF_MAX_MS = 60_000;
 const PUBLISH_RETRY_BASE_MS = 5_000;
 const SNAPSHOT_CONTENT_TYPE = 'application/json; charset=utf-8';
 const PERSISTED_RUNTIME_STATE_KEY = 'relay:runtime-state';
-
 
 const worldCalendarSnapshotSchema = z.object({
   timezone: z.string(),
@@ -637,28 +587,6 @@ function defaultFetchImpl(input: string | URL | Request, init?: RequestInit): Pr
   return fetch(input, init) as Promise<RelayFetchResponse>;
 }
 
-function buildActionEmojiIndex(worldSnapshot: WorldSnapshot): Map<string, string> {
-  const actionEmojiIndex = new Map<string, string>();
-
-  for (const building of worldSnapshot.map.buildings) {
-    for (const action of building.actions) {
-      if (action.emoji) {
-        actionEmojiIndex.set(action.action_id, action.emoji);
-      }
-    }
-  }
-
-  for (const npc of worldSnapshot.map.npcs) {
-    for (const action of npc.actions) {
-      if (!actionEmojiIndex.has(action.action_id) && action.emoji) {
-        actionEmojiIndex.set(action.action_id, action.emoji);
-      }
-    }
-  }
-
-  return actionEmojiIndex;
-}
-
 function readOptionalString(record: Record<string, unknown>, key: string): string | undefined {
   const value = record[key];
   return typeof value === 'string' ? value : undefined;
@@ -683,17 +611,13 @@ function readOptionalConversationClosureReason(
   return undefined;
 }
 
-
 function calculateBackoff(baseIntervalMs: number, streak: number, maxIntervalMs: number): number {
   return Math.min(baseIntervalMs * 2 ** Math.max(streak - 1, 0), maxIntervalMs);
 }
 
-
-
 interface PersistedRuntimeState {
   latest_snapshot: SpectatorSnapshot;
   last_publish_at?: number;
-  last_published_generated_at?: number;
   publish_alarm_at?: number;
   publish_attempt?: number;
   last_publish_error_at?: number;
@@ -720,48 +644,20 @@ export function createBridgeState(): BridgeState {
   };
 }
 
-function sortHistoryEntries(entries: PublishedHistoryEntry[]): PublishedHistoryEntry[] {
-  return [...entries].sort((left, right) => right.occurred_at - left.occurred_at || right.event_id.localeCompare(left.event_id));
-}
-
 function mergeHistoryEntryList(
-  existingEntries: PublishedHistoryEntry[],
-  nextEntries: PublishedHistoryEntry[],
+  existingEntries: HistoryEntry[],
+  nextEntries: HistoryEntry[],
   limit: number,
-): PublishedHistoryEntry[] {
+): HistoryEntry[] {
   const byId = new Map(existingEntries.map((entry) => [entry.event_id, entry]));
 
   for (const entry of nextEntries) {
     byId.set(entry.event_id, entry);
   }
 
-  return sortHistoryEntries([...byId.values()]).slice(0, limit);
-}
-
-function historyAgentObjectKey(agentId: string): string {
-  return `history/agents/${encodeURIComponent(agentId)}.json`;
-}
-
-function historyConversationObjectKey(conversationId: string): string {
-  return `history/conversations/${encodeURIComponent(conversationId)}.json`;
-}
-
-function deriveSnapshotManifestObjectKey(snapshotObjectKey: string): string {
-  const slashIndex = snapshotObjectKey.lastIndexOf('/');
-  if (slashIndex < 0) {
-    return 'manifest.json';
-  }
-
-  return `${snapshotObjectKey.slice(0, slashIndex)}/manifest.json`;
-}
-
-function deriveVersionedSnapshotObjectKey(snapshotObjectKey: string, generatedAt: number): string {
-  const slashIndex = snapshotObjectKey.lastIndexOf('/');
-  if (slashIndex < 0) {
-    return `v/${generatedAt}.json`;
-  }
-
-  return `${snapshotObjectKey.slice(0, slashIndex)}/v/${generatedAt}.json`;
+  return [...byId.values()]
+    .sort((left, right) => right.occurred_at - left.occurred_at || right.event_id.localeCompare(left.event_id))
+    .slice(0, limit);
 }
 
 function isActionEventType(type: string): boolean {
@@ -1038,7 +934,6 @@ export class UIBridgeDurableObject {
   private readonly config: RelayConfig;
   private readonly bridgeState = createBridgeState();
   private readonly dependencies: BridgeDependencies;
-  private actionEmojiIndex = new Map<string, string>();
   private bootPromise?: Promise<void>;
   private readonly serializedOperations: Array<() => Promise<void>> = [];
   private drainingSerializedOperations = false;
@@ -1215,9 +1110,6 @@ export class UIBridgeDurableObject {
       recent_server_events: (persistedState.latest_snapshot.recent_server_events ?? []).map((event) => ({ ...event })),
     };
     this.bridgeState.last_publish_at = persistedState.last_publish_at;
-    this.bridgeState.last_published_generated_at =
-      persistedState.last_published_generated_at ??
-      (persistedState.last_publish_at !== undefined ? persistedState.latest_snapshot.generated_at : undefined);
     this.bridgeState.publish_alarm_at = persistedState.publish_alarm_at;
     this.bridgeState.publish_attempt = persistedState.publish_attempt;
     this.bridgeState.last_publish_error_at = persistedState.last_publish_error_at;
@@ -1237,9 +1129,6 @@ export class UIBridgeDurableObject {
       },
       publish_failure_streak: this.bridgeState.publish_failure_streak,
       ...(this.bridgeState.last_publish_at !== undefined ? { last_publish_at: this.bridgeState.last_publish_at } : {}),
-      ...(this.bridgeState.last_published_generated_at !== undefined
-        ? { last_published_generated_at: this.bridgeState.last_published_generated_at }
-        : {}),
       ...(this.bridgeState.publish_alarm_at !== undefined ? { publish_alarm_at: this.bridgeState.publish_alarm_at } : {}),
       ...(this.bridgeState.publish_attempt !== undefined ? { publish_attempt: this.bridgeState.publish_attempt } : {}),
       ...(this.bridgeState.last_publish_error_at !== undefined
@@ -1320,7 +1209,6 @@ export class UIBridgeDurableObject {
 
     const now = this.dependencies.now();
 
-    this.actionEmojiIndex = buildActionEmojiIndex(worldSnapshot);
     this.bridgeState.conversations = rebuildConversationMirror(worldSnapshot, now);
     const recentServerEvents: SpectatorRecentServerEvent[] = worldSnapshot.recent_server_events.map((event) => ({
       server_event_id: event.server_event_id,
@@ -1388,9 +1276,8 @@ export class UIBridgeDurableObject {
     let publishError: unknown;
 
     try {
-      const versionedKey = deriveVersionedSnapshotObjectKey(this.config.snapshotObjectKey, snapshotToPublish.generated_at);
       await this.dependencies.publishSnapshot({
-        key: versionedKey,
+        key: this.config.snapshotObjectKey,
         body: encodeSpectatorSnapshot(snapshotToPublish),
         options: {
           httpMetadata: {
@@ -1402,45 +1289,8 @@ export class UIBridgeDurableObject {
           },
         },
       });
-      const manifest = this.createSnapshotManifest(snapshotToPublish, versionedKey);
-      await this.dependencies.publishSnapshot({
-        key: deriveSnapshotManifestObjectKey(this.config.snapshotObjectKey),
-        body: encodeSnapshotManifest(manifest),
-        options: {
-          httpMetadata: {
-            contentType: SNAPSHOT_CONTENT_TYPE,
-            cacheControl: 'no-store',
-          },
-          customMetadata: {
-            'schema-version': '1',
-          },
-        },
-      });
-      try {
-        await this.dependencies.publishSnapshot({
-          key: this.config.snapshotObjectKey,
-          body: encodeSpectatorSnapshot(snapshotToPublish),
-          options: {
-            httpMetadata: {
-              contentType: SNAPSHOT_CONTENT_TYPE,
-              cacheControl: `public, max-age=${this.config.snapshotCacheMaxAgeSec}`,
-            },
-            customMetadata: {
-              'schema-version': '1',
-            },
-          },
-        });
-      } catch (aliasError) {
-        this.runObservabilitySafely(() => {
-          this.dependencies.observability.log('warn', 'relay snapshot alias publish failed', {
-            error: describeError(aliasError),
-            key: this.config.snapshotObjectKey,
-          });
-        });
-      }
       this.bridgeState.latest_snapshot = snapshotToPublish;
       this.bridgeState.last_publish_at = publishedAt;
-      this.bridgeState.last_published_generated_at = snapshotToPublish.generated_at;
       this.bridgeState.last_publish_error_at = undefined;
       this.bridgeState.last_publish_error_code = undefined;
       this.bridgeState.publish_alarm_at = undefined;
@@ -1468,9 +1318,6 @@ export class UIBridgeDurableObject {
       });
       this.runObservabilitySafely(() => {
         this.dependencies.observability.gauge('ui.r2.publish_failure_streak', this.bridgeState.publish_failure_streak);
-      });
-      await this.publishStaleSnapshotManifest('relay stale snapshot manifest publish failed', {
-        publish_failure_streak: this.bridgeState.publish_failure_streak,
       });
       this.emitSnapshotFreshnessMetricsSafely();
       this.runObservabilitySafely(() => {
@@ -1500,79 +1347,6 @@ export class UIBridgeDurableObject {
     }
   }
 
-  private createSnapshotManifest(snapshot: SpectatorSnapshot, latestSnapshotKey: string): SnapshotManifest {
-    return {
-      schema_version: 1,
-      latest_snapshot_key: latestSnapshotKey,
-      generated_at: snapshot.generated_at,
-      published_at: snapshot.published_at,
-      ...(this.bridgeState.last_publish_error_at !== undefined
-        ? { last_publish_error_at: this.bridgeState.last_publish_error_at }
-        : {}),
-    };
-  }
-
-  private async publishStaleSnapshotManifest(
-    message: string,
-    context: Record<string, unknown> = {},
-  ): Promise<void> {
-    if (this.bridgeState.latest_snapshot && this.bridgeState.last_publish_error_at !== undefined) {
-      this.bridgeState.latest_snapshot = {
-        ...this.bridgeState.latest_snapshot,
-        last_publish_error_at: this.bridgeState.last_publish_error_at,
-      };
-    }
-
-    if (this.bridgeState.last_publish_at === undefined) {
-      return;
-    }
-
-    try {
-      await this.publishSnapshotManifest();
-    } catch (manifestError) {
-      this.runObservabilitySafely(() => {
-        this.dependencies.observability.log('error', message, {
-          ...context,
-          error: describeError(manifestError),
-        });
-      });
-    }
-  }
-
-  private async publishSnapshotManifest(): Promise<void> {
-    const latestSnapshot = this.bridgeState.latest_snapshot;
-    const lastPublishAt = this.bridgeState.last_publish_at;
-    const lastPublishedGeneratedAt = this.bridgeState.last_published_generated_at ?? latestSnapshot?.generated_at;
-
-    if (!latestSnapshot || lastPublishAt === undefined || lastPublishedGeneratedAt === undefined) {
-      return;
-    }
-
-    await this.dependencies.publishSnapshot({
-      key: deriveSnapshotManifestObjectKey(this.config.snapshotObjectKey),
-      body: encodeSnapshotManifest(
-        this.createSnapshotManifest(
-          {
-            ...latestSnapshot,
-            generated_at: lastPublishedGeneratedAt,
-            published_at: lastPublishAt,
-          },
-          deriveVersionedSnapshotObjectKey(this.config.snapshotObjectKey, lastPublishedGeneratedAt),
-        ),
-      ),
-      options: {
-        httpMetadata: {
-          contentType: SNAPSHOT_CONTENT_TYPE,
-          cacheControl: 'no-store',
-        },
-        customMetadata: {
-          'schema-version': '1',
-        },
-      },
-    });
-    await this.persistRuntimeState();
-  }
-
   private async readAgentHistoryDocument(agentId: string): Promise<AgentHistoryDocument> {
     const object = await this.env.SNAPSHOT_BUCKET?.get(historyAgentObjectKey(agentId));
     if (!object) {
@@ -1586,13 +1360,7 @@ export class UIBridgeDurableObject {
     }
 
     const parsed = agentHistoryDocumentSchema.parse(JSON.parse(await object.text()));
-    return {
-      agent_id: parsed.agent_id ?? agentId,
-      updated_at: parsed.updated_at ?? 0,
-      items: parsed.items ?? [],
-      recent_actions: parsed.recent_actions ?? [],
-      recent_conversations: parsed.recent_conversations ?? [],
-    };
+    return coerceAgentHistoryDocument(parsed, agentId);
   }
 
   private async writeAgentHistoryDocument(document: AgentHistoryDocument): Promise<void> {
@@ -1623,11 +1391,7 @@ export class UIBridgeDurableObject {
     }
 
     const parsed = conversationHistoryDocumentSchema.parse(JSON.parse(await object.text()));
-    return {
-      conversation_id: parsed.conversation_id ?? conversationId,
-      updated_at: parsed.updated_at ?? 0,
-      items: parsed.items ?? [],
-    };
+    return coerceConversationHistoryDocument(parsed, conversationId);
   }
 
   private async writeConversationHistoryDocument(document: ConversationHistoryDocument): Promise<void> {
@@ -1647,7 +1411,7 @@ export class UIBridgeDurableObject {
     );
   }
 
-  private async appendAgentHistory(agentId: string, events: PublishedHistoryEntry[]): Promise<void> {
+  private async appendAgentHistory(agentId: string, events: HistoryEntry[]): Promise<void> {
     await this.enqueueSerializedOperation(async () => {
       const current = await this.readAgentHistoryDocument(agentId);
       const generalEntries = events.filter((event) => !isActionEventType(event.type) && !isConversationEventType(event.type));
@@ -1665,7 +1429,7 @@ export class UIBridgeDurableObject {
 
       await this.writeAgentHistoryDocument(updatedDocument);
 
-      const byConversationId = new Map<string, PublishedHistoryEntry[]>();
+      const byConversationId = new Map<string, HistoryEntry[]>();
       for (const event of conversationEntries) {
         if (!event.conversation_id) {
           continue;
@@ -1699,7 +1463,6 @@ export class UIBridgeDurableObject {
       snapshot.published_at > 0 ? Math.max(0, now - snapshot.published_at) : 0,
     );
   }
-
 
   private async rescheduleAlarm(): Promise<void> {
     const nextAlarmAt = this.bridgeState.publish_alarm_at;

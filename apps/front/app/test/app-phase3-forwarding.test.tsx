@@ -33,9 +33,8 @@ vi.mock('../components/map/MapCanvasHost.js', () => ({
 
 function createReadyStore() {
   return createSnapshotStore({
-    snapshotUrl: 'https://snapshot.example.com/snapshot/manifest.json',
+    snapshotUrl: 'https://snapshot.example.com/snapshot/latest.json',
     authMode: 'public',
-    historyApiUrl: 'https://relay.example.com/api/history',
     initialSnapshot: createFixtureSnapshot(),
     initialSelectedAgentId: 'alice',
   });
@@ -57,9 +56,8 @@ describe('App Phase 3 effect forwarding', () => {
     render(
       <App
         env={{
-          snapshotUrl: 'https://snapshot.example.com/snapshot/manifest.json',
+          snapshotUrl: 'https://snapshot.example.com/snapshot/latest.json',
           authMode: 'public',
-          apiBaseUrl: 'https://relay.example.com/api/history',
           phase3EffectsEnabled: true,
           phase3EnvironmentEffects,
           phase3MotionEffects,

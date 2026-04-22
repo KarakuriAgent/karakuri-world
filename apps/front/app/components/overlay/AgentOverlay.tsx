@@ -1,5 +1,5 @@
-import type { FetchHistoryOptions, HistoryCacheEntry, SnapshotStoreState } from '../../store/snapshot-store.js';
-import { getHistoryRetryOptions, shouldFetchHistory, toHistoryScopeKey } from '../../store/snapshot-store.js';
+import type { HistoryCacheEntry, HistoryScope, SnapshotStoreState } from '../../store/snapshot-store.js';
+import { toHistoryScopeKey } from '../../store/snapshot-store.js';
 import type {
   SpectatorAgentSnapshot,
   SpectatorConversationSnapshot,
@@ -113,7 +113,7 @@ function HistoryRetryButton({
 
 interface HistoryTimelineProps {
   history: HistoryCacheEntry | undefined;
-  scope: { agent_id: string } | { conversation_id: string };
+  scope: HistoryScope;
   historyCache?: SnapshotStoreState['history_cache'];
   expandedConversationIds?: SnapshotStoreState['expanded_conversation_ids'];
   fetchHistory?: SnapshotStoreState['fetchHistory'];
@@ -146,21 +146,8 @@ function HistoryTimeline({
   hideFirstEntry = false,
   snapshot,
 }: HistoryTimelineProps) {
-  const handleFetch = (options?: FetchHistoryOptions) => {
-    void fetchHistory?.(scope, options);
-  };
-
   const handleRetry = () => {
-    handleFetch(getHistoryRetryOptions(history));
-  };
-
-  const handleAppend = () => {
-    const nextCursor = history && 'response' in history ? history.response?.next_cursor : undefined;
-    if (!nextCursor) {
-      return;
-    }
-
-    handleFetch({ cursor: nextCursor, merge: 'append' });
+    void fetchHistory?.(scope);
   };
 
   if (!history || history.status === 'idle' || (history.status === 'loading' && !history.response)) {
@@ -194,19 +181,16 @@ function HistoryTimeline({
     : rawItems;
   const orderedItems = reverseItemOrder ? [...collapsedItems].reverse() : collapsedItems;
   const items = hideFirstEntry ? orderedItems.slice(1) : orderedItems;
-  const isReplaceLoading = history.status === 'loading' && history.request.merge === 'replace';
-  const isReplaceError = history.status === 'error' && Boolean(history.response) && history.request.merge === 'replace';
-  const isAppendLoading = history.status === 'loading' && history.request.merge === 'append';
-  const isAppendError = history.status === 'error' && Boolean(history.response) && history.request.merge === 'append';
-  const nextCursor = history.response?.next_cursor;
+  const isRefreshing = history.status === 'loading';
+  const hasRefreshError = history.status === 'error';
 
   if (items.length === 0) {
-    if (isReplaceLoading || isReplaceError) {
+    if (isRefreshing || hasRefreshError) {
       return (
         <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-2 lg:p-4">
           <div className="flex items-center justify-between gap-2 lg:gap-3">
             <p className="text-xs uppercase tracking-wide text-slate-500">{title}</p>
-            {isReplaceLoading ? (
+            {isRefreshing ? (
               <span className="text-xs text-cyan-300" data-testid={`${baseTestId}-updating`}>
                 更新中…
               </span>
@@ -240,11 +224,11 @@ function HistoryTimeline({
     <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-2 lg:p-4">
       <div className="flex items-center justify-between gap-2 lg:gap-3">
         <p className="text-xs uppercase tracking-wide text-slate-500">{title}</p>
-        {isReplaceLoading ? (
+        {isRefreshing ? (
           <span className="text-xs text-cyan-300" data-testid={`${baseTestId}-updating`}>
             更新中…
           </span>
-        ) : isReplaceError ? (
+        ) : hasRefreshError ? (
           <div className="flex items-center gap-2">
             <span className="text-xs text-rose-300" data-testid={`${baseTestId}-warning`}>
               更新に失敗しました
@@ -321,11 +305,8 @@ function HistoryTimeline({
                         const nextExpanded = !isExpanded;
                         onToggleConversationExpanded?.(conversationId, nextExpanded);
 
-                        if (nextExpanded && shouldFetchHistory(conversationEntry)) {
-                          void fetchHistory?.(
-                            { conversation_id: conversationId },
-                            getHistoryRetryOptions(conversationEntry),
-                          );
+                        if (nextExpanded) {
+                          void fetchHistory?.({ conversation_id: conversationId });
                         }
                       }}
                     >
@@ -361,27 +342,6 @@ function HistoryTimeline({
           });
         })()}
       </ol>
-      {nextCursor || isAppendLoading || isAppendError ? (
-        <div className="mt-4 flex flex-wrap items-center gap-3" data-testid={`${baseTestId}-pagination`}>
-          {isAppendError ? (
-            <span className="text-xs text-rose-300" data-testid={`${baseTestId}-append-error`}>
-              続きの取得に失敗しました
-            </span>
-          ) : null}
-          {nextCursor ? (
-            <button
-              type="button"
-              className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-200 transition-colors hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-              data-testid={`${baseTestId}-load-more`}
-              disabled={isAppendLoading}
-              onClick={handleAppend}
-            >
-              {isAppendLoading ? '読み込み中…' : 'さらに読み込む'}
-            </button>
-          ) : null}
-          {isAppendError ? <HistoryRetryButton onClick={handleAppend} testId={`${baseTestId}-append-retry`} /> : null}
-        </div>
-      ) : null}
     </div>
   );
 }

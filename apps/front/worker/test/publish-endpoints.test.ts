@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import relayWorker from '../src/index.js';
-import type { PersistedHistoryEntry } from '../src/history/api.js';
+import type { HistoryEntry } from '../src/contracts/history-document.js';
 import { UIBridgeDurableObject, type DurableObjectStateLike, type R2BucketLike, type R2ObjectBodyLike } from '../src/relay/bridge.js';
 
 class FakeR2Object implements R2ObjectBodyLike {
@@ -79,25 +79,26 @@ function createWorldSnapshot(generatedAt = 1_750_000_000_000) {
   };
 }
 
-function historyEntry(overrides: Partial<PersistedHistoryEntry> & Pick<PersistedHistoryEntry, 'event_id' | 'type' | 'occurred_at'>): PersistedHistoryEntry {
-  const detail = overrides.type === 'conversation_message'
-    ? {
-        type: 'conversation_message' as const,
-        conversation_id: overrides.conversation_id ?? 'conv-1',
-        speaker_agent_id: 'alice',
-        listener_agent_ids: ['bob'],
-        turn: 1,
-        message: 'hello',
-      }
-    : {
-        type: 'action_started' as const,
-        agent_id: 'alice',
-        agent_name: 'Alice',
-        action_id: 'craft',
-        action_name: 'Craft',
-        duration_ms: 60_000,
-        completes_at: overrides.occurred_at + 60_000,
-      };
+function historyEntry(overrides: Partial<HistoryEntry> & Pick<HistoryEntry, 'event_id' | 'type' | 'occurred_at'>): HistoryEntry {
+  const detail: Record<string, unknown> =
+    overrides.type === 'conversation_message'
+      ? {
+          type: 'conversation_message',
+          conversation_id: overrides.conversation_id ?? 'conv-1',
+          speaker_agent_id: 'alice',
+          listener_agent_ids: ['bob'],
+          turn: 1,
+          message: 'hello',
+        }
+      : {
+          type: 'action_started',
+          agent_id: 'alice',
+          agent_name: 'Alice',
+          action_id: 'craft',
+          action_name: 'Craft',
+          duration_ms: 60_000,
+          completes_at: overrides.occurred_at + 60_000,
+        };
 
   return {
     event_id: overrides.event_id,
@@ -111,7 +112,7 @@ function historyEntry(overrides: Partial<PersistedHistoryEntry> & Pick<Persisted
       text: 'payload',
     },
     detail,
-  } as PersistedHistoryEntry;
+  };
 }
 
 describe('publish endpoints', () => {
@@ -221,17 +222,13 @@ describe('publish endpoints', () => {
     }), env);
     expect(publishResponse.status).toBe(204);
 
-    const agentHistory = await relayWorker.fetch(new Request('https://relay.example.com/api/history?agent_id=alice&limit=10'), env);
-    await expect(agentHistory.json()).resolves.toEqual({
-      items: [message, action],
-    });
+    const agentHistoryJson = JSON.parse(bucket.objects.get('history/agents/alice.json') ?? '');
+    expect(agentHistoryJson.items).toEqual([]);
+    expect(agentHistoryJson.recent_actions).toEqual([action]);
+    expect(agentHistoryJson.recent_conversations).toEqual([message]);
 
-    const conversationHistory = await relayWorker.fetch(new Request('https://relay.example.com/api/history?conversation_id=conv-1&limit=10'), env);
-    await expect(conversationHistory.json()).resolves.toEqual({
-      items: [message],
-    });
-    expect(bucket.objects.has('history/agents/alice.json')).toBe(true);
-    expect(bucket.objects.has('history/conversations/conv-1.json')).toBe(true);
+    const conversationHistoryJson = JSON.parse(bucket.objects.get('history/conversations/conv-1.json') ?? '');
+    expect(conversationHistoryJson.items).toEqual([message]);
   });
 
   it('rejects agent-history publish with invalid JSON as 400 invalid_json instead of bubbling a 500', async () => {

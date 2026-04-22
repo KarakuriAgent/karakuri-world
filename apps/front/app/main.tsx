@@ -9,7 +9,6 @@ const env = getEnv();
 
 document.documentElement.dataset.authMode = env.authMode;
 document.documentElement.dataset.snapshotUrl = env.snapshotUrl;
-document.documentElement.dataset.apiBaseUrl = env.apiBaseUrl;
 document.documentElement.dataset.phase3EffectsEnabled = String(env.phase3EffectsEnabled ?? false);
 document.documentElement.dataset.phase3EffectRainEnabled = String(env.phase3EnvironmentEffects?.rain ?? false);
 document.documentElement.dataset.phase3EffectSnowEnabled = String(env.phase3EnvironmentEffects?.snow ?? false);

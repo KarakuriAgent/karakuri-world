@@ -23,9 +23,9 @@ Issue #60 の current-state UI は、**event-driven な snapshot / history publi
 
 対象:
 
-- manifest + versioned snapshot publish
-- browser 側 polling の正本化
-- `/api/history` の empty/degraded 整合
+- R2 alias (`snapshot/latest.json`) + `history/*` の event-driven publish
+- browser 側 polling の正本化（snapshot と history を同じ 5 秒周期で R2 直接 fetch）
+- history 404 / degraded 時の UI 挙動整合
 
 完了条件:
 
@@ -110,7 +110,7 @@ Issue #60 の current-state UI は、**event-driven な snapshot / history publi
 
 完了条件:
 
-- current-state UI の primary path は **manifest + versioned snapshot + browser polling** で固定
+- current-state UI の primary path は **R2 alias (`snapshot/latest.json`) + `history/*` の browser 直接 polling** で固定
 - `/ws` 互換窓を前提にした設計・運用記述が残っていない
 - stale / 遅延診断は publish health 指標で判断する
 
@@ -140,7 +140,7 @@ Issue #60 の current-state UI は、**event-driven な snapshot / history publi
 - stale / 遅延バナーが publish health 指標に基づいて表示できること
 - stale になっても直前の描画を維持すること
 - エージェント選択で overlay / detail と履歴表示が成立すること
-- `next_cursor` を使った append pagination が成立すること
+- snapshot poll 成功時に選択中 agent / 展開中 conversation の history が自動再取得されること
 
 ## 5. 将来拡張の扱い
 

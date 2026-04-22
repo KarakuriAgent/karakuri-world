@@ -4,8 +4,6 @@ import {
   type DurableObjectNamespaceLike,
   type RelayBindings,
 } from './relay/bridge.js';
-import { handleHistoryRequest } from './history/api.js';
-import { parseHistoryCorsConfig, parseHistoryCorsConfigFallback } from './relay/env.js';
 
 export { PRIMARY_BRIDGE_NAME, UIBridgeDurableObject };
 export type RelayWorkerEnv = RelayBindings & {
@@ -60,14 +58,6 @@ export default {
       return new Response(null, { status: 404 });
     }
 
-    if (url.pathname === '/api/history') {
-      try {
-        return handleHistoryRequest(request, env.SNAPSHOT_BUCKET, parseHistoryCorsConfig(env));
-      } catch (error) {
-        return handleHistoryRequest(request, env.SNAPSHOT_BUCKET, parseHistoryCorsConfigFallback(env), error);
-      }
-    }
-
     if (url.pathname === '/api/publish-snapshot' || url.pathname === '/api/publish-agent-history') {
       if (request.method !== 'POST') {
         return new Response(null, {
@@ -82,9 +72,11 @@ export default {
       if (authFailure) {
         return authFailure;
       }
+
+      const id = env.UI_BRIDGE.idFromName(PRIMARY_BRIDGE_NAME);
+      return env.UI_BRIDGE.get(id).fetch(request);
     }
 
-    const id = env.UI_BRIDGE.idFromName(PRIMARY_BRIDGE_NAME);
-    return env.UI_BRIDGE.get(id).fetch(request);
+    return new Response(null, { status: 404 });
   },
 };

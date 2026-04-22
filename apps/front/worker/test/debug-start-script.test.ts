@@ -17,12 +17,12 @@ describe('debug-start script', () => {
     expect(script).toContain('本体サーバー側の SNAPSHOT_PUBLISH_AUTH_KEY と同じ値を入力してください');
   });
 
-  it('uses the snapshot manifest URL contract in the interactive prompts', () => {
+  it('uses the snapshot alias URL contract in the interactive prompts', () => {
     const script = readFileSync(debugStartScriptPath, 'utf8');
 
-    expect(script).toContain('Cache Everything on snapshot/manifest.json');
-    expect(script).toContain('https://snapshot.example.com/snapshot/manifest.json');
-    expect(script).not.toContain('https://snapshot.example.com/snapshot/latest.json');
+    expect(script).toContain('Cache Everything on snapshot/latest.json');
+    expect(script).toContain('https://snapshot.example.com/snapshot/latest.json');
+    expect(script).not.toContain('https://snapshot.example.com/snapshot/manifest.json');
   });
 
   it('documents that debug:start must use the backend publish secret', () => {

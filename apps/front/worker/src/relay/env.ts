@@ -9,11 +9,6 @@ export interface RelayConfig {
   authMode: RelayAuthMode;
 }
 
-export interface HistoryCorsConfig {
-  authMode: RelayAuthMode;
-  allowedOrigins: string[];
-}
-
 const DEFAULT_SNAPSHOT_OBJECT_KEY = 'snapshot/latest.json';
 const DEFAULT_SNAPSHOT_CACHE_MAX_AGE_SEC = 5;
 
@@ -49,85 +44,6 @@ function parsePositiveInteger(value: unknown, fieldName: string, defaultValue: n
   }
 
   return parsed;
-}
-
-function normalizeCorsOrigin(origin: string): string {
-  let parsedUrl: URL;
-
-  try {
-    parsedUrl = new URL(origin);
-  } catch {
-    throw new Error('HISTORY_CORS_ALLOWED_ORIGINS must contain absolute origins');
-  }
-
-  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
-    throw new Error('HISTORY_CORS_ALLOWED_ORIGINS must use http or https');
-  }
-
-  if (parsedUrl.origin !== origin || parsedUrl.pathname !== '/' || parsedUrl.search !== '' || parsedUrl.hash !== '') {
-    throw new Error('HISTORY_CORS_ALLOWED_ORIGINS entries must be bare origins without path, query, or fragment');
-  }
-
-  return parsedUrl.origin;
-}
-
-function coerceCorsOrigin(origin: string): string | undefined {
-  try {
-    const parsedUrl = new URL(origin);
-
-    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
-      return undefined;
-    }
-
-    return parsedUrl.origin;
-  } catch {
-    return undefined;
-  }
-}
-
-export function parseHistoryCorsConfig(env: Record<string, unknown>): HistoryCorsConfig {
-  const allowedOriginsRaw = env.HISTORY_CORS_ALLOWED_ORIGINS;
-
-  if (allowedOriginsRaw !== undefined && typeof allowedOriginsRaw !== 'string') {
-    throw new Error('HISTORY_CORS_ALLOWED_ORIGINS must be a comma-separated string');
-  }
-
-  const allowedOrigins = allowedOriginsRaw
-    ?.split(',')
-    .map((origin) => origin.trim())
-    .filter((origin) => origin.length > 0)
-    .map(normalizeCorsOrigin);
-
-  return {
-    authMode: parseAuthMode(env.AUTH_MODE),
-    allowedOrigins: allowedOrigins ? [...new Set(allowedOrigins)] : [],
-  };
-}
-
-export function parseHistoryCorsConfigFallback(env: Record<string, unknown>): HistoryCorsConfig {
-  const allowedOrigins =
-    typeof env.HISTORY_CORS_ALLOWED_ORIGINS === 'string'
-      ? [
-          ...new Set(
-            env.HISTORY_CORS_ALLOWED_ORIGINS.split(',')
-              .map((origin) => origin.trim())
-              .filter((origin) => origin.length > 0)
-              .map((origin) => {
-                try {
-                  return normalizeCorsOrigin(origin);
-                } catch {
-                  return coerceCorsOrigin(origin);
-                }
-              })
-              .filter((origin): origin is string => origin !== undefined),
-          ),
-        ]
-      : [];
-
-  return {
-    authMode: env.AUTH_MODE === 'access' ? 'access' : 'public',
-    allowedOrigins,
-  };
 }
 
 export function parseRelayEnv(env: Record<string, unknown>): RelayConfig {
