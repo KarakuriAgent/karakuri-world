@@ -6,7 +6,6 @@ import type {
 import { AgentAvatar } from '../common/AgentAvatar.js';
 import { getAgentStateLabel } from '../../lib/agent-state-label.js';
 import { formatNodeLabel } from '../../lib/node-label.js';
-import { getSidebarServerEvents } from '../../lib/recent-server-events.js';
 import { formatHistoryTimestamp } from '../../lib/timestamp.js';
 
 export interface SidebarProps {
@@ -17,7 +16,7 @@ export interface SidebarProps {
 }
 
 export function Sidebar({ snapshot, agents, selectedAgentId, onSelectAgent }: SidebarProps) {
-  const recentServerEvents = getSidebarServerEvents(snapshot);
+  const recentServerEvents = snapshot?.recent_server_events.slice(0, 3) ?? [];
   const timezone = snapshot?.timezone;
 
   return (

@@ -1118,9 +1118,48 @@ export class UIBridgeDurableObject {
     }
 
     if (url.pathname === '/api/publish-agent-history' && request.method === 'POST') {
-      const body = publishAgentHistoryRequestSchema.parse(await request.json());
-      await this.appendAgentHistory(body.agent_id, body.events);
-      return new Response(null, { status: 204 });
+      let payload: unknown;
+      try {
+        payload = await request.json();
+      } catch (error) {
+        this.runObservabilitySafely(() => {
+          this.dependencies.observability.log('warn', 'relay publish-agent-history body parse failed', {
+            error: describeError(error),
+          });
+        });
+        return new Response(JSON.stringify({ error: 'invalid_json' }), {
+          status: 400,
+          headers: { 'content-type': SNAPSHOT_CONTENT_TYPE },
+        });
+      }
+
+      const parseResult = publishAgentHistoryRequestSchema.safeParse(payload);
+      if (!parseResult.success) {
+        this.runObservabilitySafely(() => {
+          this.dependencies.observability.log('warn', 'relay publish-agent-history schema mismatch', {
+            issues: parseResult.error.issues,
+          });
+        });
+        return new Response(JSON.stringify({ error: 'invalid_agent_history' }), {
+          status: 400,
+          headers: { 'content-type': SNAPSHOT_CONTENT_TYPE },
+        });
+      }
+
+      try {
+        await this.appendAgentHistory(parseResult.data.agent_id, parseResult.data.events);
+        return new Response(null, { status: 204 });
+      } catch (error) {
+        this.runObservabilitySafely(() => {
+          this.dependencies.observability.log('error', 'relay publish-agent-history failed', {
+            error: describeError(error),
+          });
+        });
+        return new Response(JSON.stringify({ error: 'publish_failed' }), {
+          status: 502,
+          headers: { 'content-type': SNAPSHOT_CONTENT_TYPE },
+        });
+      }
     }
 
     return new Response(null, { status: 404 });

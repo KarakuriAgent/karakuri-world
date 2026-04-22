@@ -71,9 +71,7 @@ export function MapCanvasHost({
   const viewStateRef = useRef<MapViewportViewState | undefined>(
     snapshot ? createInitialMapViewState(snapshot) : undefined,
   );
-  const [viewState, setViewState] = useState<MapViewportViewState | undefined>(viewStateRef.current);
   const [lastFocusCommand, setLastFocusCommand] = useState<MapSelectionFocusCommand | undefined>(undefined);
-  const [focusRequestCount, setFocusRequestCount] = useState(0);
   const [viewportCommand, setViewportCommand] = useState<MapViewportCommand | undefined>(undefined);
   const zoomTokenRef = useRef(0);
 
@@ -87,14 +85,11 @@ export function MapCanvasHost({
 
     if (!currentSnapshot) {
       viewStateRef.current = undefined;
-      setViewState(undefined);
       setLastFocusCommand(undefined);
       return;
     }
 
-    const initialView = createInitialMapViewState(currentSnapshot);
-    viewStateRef.current = initialView;
-    setViewState(initialView);
+    viewStateRef.current = createInitialMapViewState(currentSnapshot);
   }, [mapGeometryKey]);
 
   useEffect(() => {
@@ -121,7 +116,6 @@ export function MapCanvasHost({
     }
 
     setLastFocusCommand(nextFocusCommand);
-    setFocusRequestCount((count) => count + 1);
   }, [mapGeometryKey, selectedAgentId, selectedAgentPositionKey, selectionRevision, overlayOffsetX]);
 
   const handleViewportLiveViewStateChange = useCallback((nextViewState: MapViewportViewState) => {
@@ -130,7 +124,6 @@ export function MapCanvasHost({
 
   const handleViewportViewStateChange = useCallback((nextViewState: MapViewportViewState) => {
     viewStateRef.current = nextViewState;
-    setViewState(nextViewState);
   }, []);
 
   useEffect(() => {

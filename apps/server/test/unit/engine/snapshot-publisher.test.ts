@@ -147,6 +147,34 @@ describe('SnapshotPublisher', () => {
     });
   });
 
+  it('notifies listeners and logs SNAPSHOT_PUBLISH_DISPOSE_FAILED when the final flush fails on dispose', async () => {
+    vi.useFakeTimers();
+    const logger = { error: vi.fn() };
+    const fetchImpl = vi.fn<typeof fetch>().mockRejectedValue(new Error('drain failed'));
+    const listener = vi.fn();
+    const publisher = new SnapshotPublisher({
+      workerBaseUrl: new URL('https://relay.example.com'),
+      authKey: 'publish-key',
+      fetchImpl,
+      buildSnapshot: () => createMinimalSnapshot(),
+      debounceMs: 1_000,
+      retryBaseIntervalMs: 10,
+      retryMaxIntervalMs: 10,
+      retryMaxAttempts: 1,
+      logger,
+    });
+    publisher.onPublish(listener);
+
+    publisher.requestPublish();
+    await publisher.dispose();
+
+    expect(logger.error).toHaveBeenCalledWith('SNAPSHOT_PUBLISH_DISPOSE_FAILED', {
+      error: 'drain failed',
+    });
+    expect(logger.error).not.toHaveBeenCalledWith('SNAPSHOT_PUBLISH_EXHAUSTED', expect.anything());
+    expect(listener).toHaveBeenCalledWith({ type: 'gave_up', lastError: 'drain failed' });
+  });
+
   it('flushes a pending debounce on dispose', async () => {
     vi.useFakeTimers();
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));

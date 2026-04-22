@@ -7,7 +7,6 @@ import type {
 import type { HistoryCacheEntry, MobileSheetMode, SnapshotStoreState } from '../../store/snapshot-store.js';
 import { getAgentStateLabel } from '../../lib/agent-state-label.js';
 import { formatNodeLabel } from '../../lib/node-label.js';
-import { getSidebarServerEvents } from '../../lib/recent-server-events.js';
 import { formatHistoryTimestamp } from '../../lib/timestamp.js';
 import { AgentOverlay } from '../overlay/AgentOverlay.js';
 
@@ -38,7 +37,7 @@ export function BottomSheet({
   onClearSelectedAgent,
   onToggleConversationExpanded,
 }: BottomSheetProps) {
-  const recentServerEvents = useMemo(() => getSidebarServerEvents(snapshot), [snapshot]);
+  const recentServerEvents = useMemo(() => snapshot?.recent_server_events.slice(0, 3) ?? [], [snapshot]);
 
   return (
     <section

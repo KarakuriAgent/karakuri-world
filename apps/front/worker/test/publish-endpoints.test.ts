@@ -234,6 +234,58 @@ describe('publish endpoints', () => {
     expect(bucket.objects.has('history/conversations/conv-1.json')).toBe(true);
   });
 
+  it('rejects agent-history publish with invalid JSON as 400 invalid_json instead of bubbling a 500', async () => {
+    const bridge = new UIBridgeDurableObject(
+      new FakeDurableObjectState(),
+      { SNAPSHOT_PUBLISH_AUTH_KEY: 'publish-key' },
+    );
+    const env = {
+      SNAPSHOT_PUBLISH_AUTH_KEY: 'publish-key',
+      UI_BRIDGE: {
+        idFromName: () => ({}),
+        get: () => ({ fetch: async (request: Request) => bridge.fetch(request) }),
+      },
+    } as never;
+
+    const response = await relayWorker.fetch(new Request('https://relay.example.com/api/publish-agent-history', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer publish-key',
+        'Content-Type': 'application/json',
+      },
+      body: '{not json',
+    }), env);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: 'invalid_json' });
+  });
+
+  it('rejects agent-history publish with schema mismatch as 400 invalid_agent_history instead of bubbling a 500', async () => {
+    const bridge = new UIBridgeDurableObject(
+      new FakeDurableObjectState(),
+      { SNAPSHOT_PUBLISH_AUTH_KEY: 'publish-key' },
+    );
+    const env = {
+      SNAPSHOT_PUBLISH_AUTH_KEY: 'publish-key',
+      UI_BRIDGE: {
+        idFromName: () => ({}),
+        get: () => ({ fetch: async (request: Request) => bridge.fetch(request) }),
+      },
+    } as never;
+
+    const response = await relayWorker.fetch(new Request('https://relay.example.com/api/publish-agent-history', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer publish-key',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ agent_id: 'alice', events: 'not-an-array' }),
+    }), env);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: 'invalid_agent_history' });
+  });
+
   it('returns 404 for removed legacy /ws requests that reach the durable object fallback path', async () => {
     const bridge = new UIBridgeDurableObject(new FakeDurableObjectState(), {});
 

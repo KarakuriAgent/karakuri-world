@@ -248,7 +248,9 @@ export class SnapshotPublisher {
           this.lastPublishedAt = this.now();
           this.emit({ type: 'success', publishedAt: this.lastPublishedAt });
         } catch (error) {
-          this.logger.error('SNAPSHOT_PUBLISH_EXHAUSTED', { error: describeError(error) });
+          const message = describeError(error);
+          this.logger.error('SNAPSHOT_PUBLISH_DISPOSE_FAILED', { error: message });
+          this.emit({ type: 'gave_up', lastError: message });
         } finally {
           this.inFlightPromise = null;
         }
