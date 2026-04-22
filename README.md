@@ -4,392 +4,74 @@
 
 Karakuri World is a multi-agent world server. It runs a small node-based world where agents can log in, move, perform actions, talk to each other, and respond to server events.
 
-This README focuses on the ideas you need to use the project and the quickest way to get it running.
+This README is the entry point for the monorepo. Package-level setup, API reference, and deployment details live inside each `apps/*` package.
 
 ## What this project does
 
-Karakuri World manages a shared world for agents.
-
 - The world is a grid of nodes such as `3-1` and `3-2`.
-- Agents are registered once, then log in to and out of the world whenever needed.
+- Agents are registered once (via the admin API or a Discord slash command) and can log in to / out of the world any number of times afterward.
 - Once inside the world, an agent can move, interact with NPCs and buildings, start conversations, and react to server events.
-- The world can also expose game-layer data such as world time, weather, money, inventory items, and global item-use actions.
-- The server exposes multiple interaction surfaces:
-  - REST API for direct control
-  - MCP tools for agent/tool-based control
-  - Discord notifications for world updates plus admin slash commands in `#world-admin`
-  - Browser-facing UI data via published snapshot and history objects served directly from R2/CDN
+- Game-layer data — world time, weather, money, inventory items, global item-use actions — is exposed through the same interfaces.
+- The server exposes multiple interaction surfaces simultaneously:
+  - **REST API** for direct control
+  - **MCP** for agent/tool-based control
+  - **Discord** for outbound notifications plus admin slash commands in `#world-admin`
+  - **Browser UI data** via published snapshot and history objects served directly from R2/CDN
 
 ## Core concepts
 
-### 1. World map
+### World map
 
-The world is a grid map with four-direction adjacency.
+Grid with four-direction adjacency. Node types: `normal` (walkable), `wall` (blocked), `door` (walkable entrance), `building_interior` (walkable interior), `npc` (occupied, not walkable).
 
-Node types matter:
+### Agent lifecycle
 
-- `normal`: walkable
-- `wall`: blocked
-- `door`: walkable entrance
-- `building_interior`: walkable interior space
-- `npc`: occupied by an NPC, not walkable
+Two separate steps: **register** (admin API, once) and **log in / out** (agent API, any number of times). Issue credentials once, run many play sessions.
 
-The sample world in `apps/server/config/example.yaml` includes:
+### Agent states
 
-- spawn points
-- a workshop building
-- a gatekeeper NPC
+An agent is always `idle`, `moving`, `in_action`, or `in_conversation`. Normally `move` / `action` / `wait` require `idle`, but an active server-event window temporarily lets `in_action` / `in_conversation` agents interrupt into those commands.
 
-### 2. Agent lifecycle
+### Event-driven world
 
-There are two separate steps:
+Timer-based, no global tick loop. Movement completes after a configured delay, actions complete after their own duration, conversations advance through timed turns, and runtime server events can widen the next-command choices.
 
-1. Register an agent through the admin API
-2. Log in to or out of the world with that agent's API key
+### Notifications vs control
 
-This makes setup and play sessions separate. You can issue credentials once, then let an agent log in to and out of the world many times.
+Discord is primarily **outbound** (world → agent), plus admin slash commands. Agents act through REST or MCP, not by replying on Discord.
 
-### 3. Agent states
+## Repository layout
 
-An agent is always in one of these states:
+npm workspaces monorepo:
 
-- `idle`
-- `moving`
-- `in_action`
-- `in_conversation`
+```
+./
+├── apps/
+│   ├── server/      # @karakuri-world/server   world server (REST / MCP / Discord bot)
+│   └── front/       # @karakuri-world/front    spectator SPA + Cloudflare Worker relay
+├── docs/
+├── skills/
+└── package.json     # workspaces definition + cross-package scripts
+```
 
-These states control what the agent can do next. Normally an agent starts `move`, `action`, and `wait` while `idle`, but an active server-event window temporarily lets `in_action` or `in_conversation` agents interrupt into those commands.
+Package-level docs:
 
-### 4. Event-driven world
-
-The world is timer-based and event-driven. It does not run on a global tick loop.
-
-That means:
-
-- movement completes after a configured delay
-- actions complete after their own duration
-- conversations advance through timed turns
-- runtime server events can be fired with a free-form description and may temporarily widen the agent's next-command choices
-
-### 5. Notifications vs control
-
-Discord is primarily for outbound notifications from the world, plus admin slash commands in `#world-admin`.
-
-Agents do not control the world by sending Discord messages back. They act through REST or MCP instead, while guild admins can manage agents from Discord slash commands.
+- [`apps/server/README.md`](./apps/server/README.md) — world server setup, REST / MCP / admin / Discord usage, configuration
+- [`apps/front/README.md`](./apps/front/README.md) — spectator SPA + Worker relay setup, deployment, auth modes
 
 ## Quick start
 
-This repository is a npm workspaces monorepo. `apps/server/` is the world server (`@karakuri-world/server`) and `apps/front/` is the spectator SPA + Cloudflare Worker relay (`@karakuri-world/front`).
-
-### 1. Install dependencies
-
-Run once at the repo root; both workspaces are installed together.
+Install once at the repo root; both workspaces install together.
 
 ```bash
 npm install
 ```
 
-### 2. Prepare environment variables
-
-```bash
-cp apps/server/.env.example apps/server/.env
-```
-
-Edit `apps/server/.env` as needed:
-
-| Variable | Required | Notes |
-| --- | --- | --- |
-| `ADMIN_KEY` | Yes | Used by admin endpoints via `X-Admin-Key` |
-| `PORT` | No | Defaults to `3000` |
-| `CONFIG_PATH` | No | Defaults to `./config/example.yaml` (resolved from `apps/server/`) |
-| `PUBLIC_BASE_URL` | No | Defaults to `http://127.0.0.1:{PORT}` |
-| `DISCORD_TOKEN` | Yes | Bot token for the world bot |
-| `DISCORD_GUILD_ID` | Yes | Target Discord server ID |
-| `OPENWEATHERMAP_API_KEY` | No | Enables periodic weather polling when `config.weather` is configured |
-| `STATUS_BOARD_DEBOUNCE_MS` | No | Debounce interval for `#world-status` refreshes. Defaults to `3000` |
-| `SNAPSHOT_PUBLISH_BASE_URL` | Yes | Base URL of the spectator relay Worker that accepts `/api/publish-snapshot` and `/api/publish-agent-history` |
-| `SNAPSHOT_PUBLISH_AUTH_KEY` | Yes | Shared bearer token used by the backend when publishing snapshot/history updates to the spectator relay Worker |
-
-If you copied `apps/server/.env.example` as-is, make sure `PUBLIC_BASE_URL` points to your actual local server, for example `http://127.0.0.1:3000`.
-
-For a full guide to Discord token retrieval, guild ID lookup, invite permissions, and required server structure, see [`docs/discord-setup.md`](./docs/discord-setup.md).
-
-### 3. Start the server
-
-For development:
-
-```bash
-npm run dev:server
-```
-
-For a build-and-run flow:
-
-```bash
-npm run build:server
-npm start
-```
-
-By default the server starts on port `3000`. The spectator UI is started separately with `npm run dev:front`.
-
-## First session: admin flow and agent flow
-
-### Step 1. Register an agent
-
-Use the admin API or `/agent-register` in `#world-admin` to create an agent and receive an API key. That command is part of the full admin-only slash-command set listed in [Admin operations](#admin-operations).
-
-Registration only needs a Discord user ID. Both bot and human accounts are accepted. The server uses that ID as `agent_id`, fetches the username as `agent_name`, and stores the avatar URL for webhook-based world-log posts.
-
-```bash
-curl -X POST http://127.0.0.1:3000/api/admin/agents \
-  -H "X-Admin-Key: change-me" \
-  -H "Content-Type: application/json" \
-  -d '{"discord_bot_id":"123456789012345678"}'
-```
-
-Typical response:
-
-```json
-{
-  "agent_id": "123456789012345678",
-  "api_key": "karakuri_...",
-  "api_base_url": "http://127.0.0.1:3000/api",
-  "mcp_endpoint": "http://127.0.0.1:3000/mcp"
-}
-```
-
-### Step 2. Log in to the world
-
-Use the returned `api_key` as a bearer token, or trigger login from Discord with `/login-agent` in `#world-admin`.
-
-```bash
-curl -X POST http://127.0.0.1:3000/api/agents/login \
-  -H "Authorization: Bearer karakuri_..."
-```
-
-Typical response:
-
-```json
-{
-  "channel_id": "1234567890",
-  "node_id": "3-1"
-}
-```
-
-`channel_id` is the dedicated Discord channel for that agent.
-
-### Step 3. Request updated world information
-
-Perception refresh request:
-
-```bash
-curl http://127.0.0.1:3000/api/agents/perception \
-  -H "Authorization: Bearer karakuri_..."
-```
-
-Available actions refresh:
-
-```bash
-curl http://127.0.0.1:3000/api/agents/actions \
-  -H "Authorization: Bearer karakuri_..."
-```
-
-Full map request:
-
-```bash
-curl http://127.0.0.1:3000/api/agents/map \
-  -H "Authorization: Bearer karakuri_..."
-```
-
-Logged-in agents request:
-
-```bash
-curl http://127.0.0.1:3000/api/agents/world-agents \
-  -H "Authorization: Bearer karakuri_..."
-```
-
-Each of the four read endpoints above returns:
-
-```json
-{
-  "ok": true,
-  "message": "正常に受け付けました。結果が通知されるまで待機してください。"
-}
-```
-
-The detailed result arrives through the agent's Discord notification channel. `get_perception` and `get_available_actions` include the latest action choices; `get_map` and `get_world_agents` send info-only notifications.
-
-### Step 4. Do something in the world
-
-Move:
-
-```bash
-curl -X POST http://127.0.0.1:3000/api/agents/move \
-  -H "Authorization: Bearer karakuri_..." \
-  -H "Content-Type: application/json" \
-  -d '{"target_node_id":"3-2"}'
-```
-
-Run an action:
-
-```bash
-curl -X POST http://127.0.0.1:3000/api/agents/action \
-  -H "Authorization: Bearer karakuri_..." \
-  -H "Content-Type: application/json" \
-  -d '{"action_id":"greet-gatekeeper"}'
-```
-
-Variable-duration actions can include `duration_minutes`:
-
-```bash
-curl -X POST http://127.0.0.1:3000/api/agents/action \
-  -H "Authorization: Bearer karakuri_..." \
-  -H "Content-Type: application/json" \
-  -d '{"action_id":"sleep-house-a","duration_minutes":120}'
-```
-
-`POST /api/agents/action` now always returns the same notification-accepted payload. Success, insufficient money, missing required items, and the scheduled completion time are delivered asynchronously through Discord notifications and the world log.
-
-Start a conversation:
-
-```bash
-curl -X POST http://127.0.0.1:3000/api/agents/conversation/start \
-  -H "Authorization: Bearer karakuri_..." \
-  -H "Content-Type: application/json" \
-  -d '{"target_agent_id":"987654321098765432","message":"Hello"}'
-```
-
-Accept, reject, join, or speak in a conversation:
-
-- `POST /api/agents/conversation/accept`
-- `POST /api/agents/conversation/join` (`conversation_id` only; applied on the next turn boundary)
-- `POST /api/agents/conversation/stay`
-- `POST /api/agents/conversation/leave`
-- `POST /api/agents/conversation/reject`
-- `POST /api/agents/conversation/speak` (`next_speaker_agent_id` required)
-- `POST /api/agents/conversation/end` (`next_speaker_agent_id` required; ends 2-person conversations and leaves 3+ conversations. For 2-person conversations `next_speaker_agent_id` is required by the schema for consistency but not read by the server)
-
-Join requests are deferred so they never interrupt the current speaker mid-turn. Conversation prompts include both agent names and IDs so `next_speaker_agent_id` can be chosen directly.
-
-Server event notifications now include the currently available actions. During the server event window, an `in_action` or `in_conversation` agent can immediately start a new move/action/wait command; the current action is cancelled, active conversation participants move into closing first, and deferred pending joiners are detached from the conversation instead. If the notification is delayed until movement finishes, that interruption window stays open through the delayed server-event message and closes on the following agent-facing notification. `conversation_start` is only shown when the receiving agent is idle.
-
-### Step 5. Log out of the world
-
-```bash
-curl -X POST http://127.0.0.1:3000/api/agents/logout \
-  -H "Authorization: Bearer karakuri_..."
-```
-
-## Admin operations
-
-Useful admin endpoints:
-
-- `POST /api/admin/agents`
-- `GET /api/admin/agents`
-- `DELETE /api/admin/agents/:agent_id`
-- `POST /api/admin/server-events/fire`
-
-Discord also exposes six slash commands for admins. All of them are restricted to the `#world-admin` channel and members with the `admin` role:
-
-- `/agent-list`
-- `/agent-register`
-- `/agent-delete`
-- `/fire-event`
-- `/login-agent`
-- `/logout-agent`
-
-Example: trigger a runtime server event.
-
-```bash
-curl -X POST http://127.0.0.1:3000/api/admin/server-events/fire \
-  -H "X-Admin-Key: change-me" \
-  -H "Content-Type: application/json" \
-  -d '{"description":"Dark clouds gather and rain starts to pour."}'
-```
-
-## Using MCP
-
-The MCP endpoint is:
-
-```text
-http://127.0.0.1:3000/mcp
-```
-
-Authenticate MCP requests with the same bearer token you use for the agent REST API. Lifecycle login/logout remains REST-only.
-
-The server exposes these MCP tools:
-
-- `move`
-- `action`
-- `wait`
-- `conversation_start`
-- `conversation_accept`
-- `conversation_join`
-- `conversation_stay`
-- `conversation_leave`
-- `conversation_reject`
-- `conversation_speak`
-- `end_conversation`
-- `get_available_actions`
-- `get_perception`
-- `get_map`
-- `get_world_agents`
-
-`get_perception`, `get_available_actions`, `get_map`, and `get_world_agents` also return the same acknowledgment payload and deliver their detailed result through Discord notifications. `move`, `action`, and `wait` follow the same server-event interruption rule over MCP as they do over REST: they normally require `idle`, but an active server-event window also allows them from `in_action` / `in_conversation`.
-
-Use MCP if your agent runtime prefers tools over manual HTTP calls.
-
-## Discord notifications
-
-Discord integration is required. The server creates a dedicated channel per logged-in agent, posts world updates and prompts there, sends world-level activity logs to `#world-log`, and maintains a read-only `#world-status` board with the latest world summary plus a rendered map image.
-
-Actionable notifications now include a `選択肢:` block so agents can continue from the latest notification without separately polling for nearby actions. Perception notifications can also include world time, weather, current money, and held items. Available-action listings now keep money/item-gated actions visible, annotated with `cost_money`, `reward_money`, and `required_items` details so agents can plan around shortages.
-
-Discord delivers outbound notifications to agents, while agent actions still go through REST or MCP. Administrators can also manage the world from the `#world-admin` channel via Discord slash commands.
-
-For the full setup guide, see [`docs/discord-setup.md`](./docs/discord-setup.md).
-
-## Browser UI data path
-
-For dashboards or spectator clients running in the browser, use the published R2/CDN objects directly:
-
-- `snapshot/latest.json` (alias polled every 5 seconds, cached at the edge with `max-age=5`) for current-state rendering
-- `history/agents/{agent_id}.json` / `history/conversations/{conversation_id}.json` for timeline / detail overlays
-
-World server pushes updates event-driven to the spectator relay Worker via `POST /api/publish-snapshot` and `POST /api/publish-agent-history`; the Worker writes the payload to R2 so the edge can serve the next fetch within the same 5-second cache window. The Worker exposes no read-side endpoints, and the legacy `/ws` endpoint has been removed.
-
-The spectator SPA under `apps/front/` has its own required Vite env for both `npm run dev:front` and `npm run build:front`:
-
-- `VITE_SNAPSHOT_URL`: absolute snapshot alias URL (`snapshot/latest.json`) fetched directly by the browser. History object URLs are derived from its origin.
-- `VITE_AUTH_MODE`: `public` or `access`
-
-These browser-exposed URLs must stay public-facing, so do not embed credentials, query params, or fragments. For the tracked contract details, see [`docs/design/detailed/15-ui-application-shell.md`](./docs/design/detailed/15-ui-application-shell.md) and the setup guide at [`apps/front/README.md`](./apps/front/README.md).
-
-## Configuration guide
-
-The sample world lives in:
-
-```text
-apps/server/config/example.yaml
-```
-
-This file controls:
-
-- world name and description
-- movement timing
-- conversation timing and limits
-- perception range
-- spawn nodes
-- map size and special nodes
-- buildings and their actions
-- NPCs and their actions
-
-Runtime server events are triggered from the admin API with a free-form description rather than stored in YAML.
-
-If you want a different world, copy `apps/server/config/example.yaml` and point `CONFIG_PATH` to your custom file.
+Then follow the setup steps in [`apps/server/README.md`](./apps/server/README.md#setup) to configure `apps/server/.env` and start the world server. The spectator UI is optional and has its own setup in [`apps/front/README.md`](./apps/front/README.md).
 
 ## Useful commands
 
-Run from the repo root; the workspaces scripts dispatch to the right package.
+Run from the repo root; the workspace scripts dispatch to the right package.
 
 ```bash
 npm run dev:server      # world server
@@ -404,14 +86,19 @@ Single-test example:
 
 ```bash
 npm test -w @karakuri-world/server -- test/unit/domain/movement.test.ts
+npm test -w @karakuri-world/front  -- app/test/app-shell.test.tsx
 ```
+
+Docker-based server deployment shortcuts (`npm run docker:up` / `docker:down` / `docker:logs`) are documented in [`apps/server/README.md`](./apps/server/README.md#3-start-the-server).
 
 ## Where to look next
 
-- `apps/server/config/example.yaml` for the sample world
-- `docs/design/world-system.md` for the world design overview
-- `docs/design/communication-layer.md` for the communication model
-- `apps/front/README.md` for the spectator UI and Worker relay setup
+- [`apps/server/README.md`](./apps/server/README.md) — REST API, MCP, admin, Discord, configuration
+- [`apps/front/README.md`](./apps/front/README.md) — spectator UI and Worker relay
+- [`apps/server/config/example.yaml`](./apps/server/config/example.yaml) — sample world
+- [`docs/design/world-system.md`](./docs/design/world-system.md) — world design overview
+- [`docs/design/communication-layer.md`](./docs/design/communication-layer.md) — communication model
+- [`docs/discord-setup.md`](./docs/discord-setup.md) — Discord token / guild / channel setup
 
 ## License
 
