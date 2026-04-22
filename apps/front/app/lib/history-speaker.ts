@@ -1,4 +1,4 @@
-import type { HistoryEntry } from '../../worker/src/history/api.js';
+import type { HistoryEntry } from '../../worker/src/contracts/history-document.js';
 import type {
   SpectatorAgentSnapshot,
   SpectatorKnownAgent,

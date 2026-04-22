@@ -171,6 +171,35 @@ describe('AgentHistoryManager', () => {
     expect(finalPublish.events.map((entry) => entry.event_id)).toEqual(['evt-2']);
   });
 
+  it('retries a failed flush via backoff even when no new events arrive', async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const manager = new AgentHistoryManager({
+      workerBaseUrl: new URL('https://relay.example.com'),
+      authKey: 'publish-key',
+      fetchImpl,
+      retryBaseIntervalMs: 1_000,
+      retryMaxIntervalMs: 10_000,
+      logger: { error: () => undefined },
+    });
+
+    manager.recordEvent(actionStartedEvent('evt-1', 100));
+    await vi.runOnlyPendingTimersAsync();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    // No further events arrive — the retry must still fire on its own.
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+
+    const secondBody = JSON.parse(String(fetchImpl.mock.calls[1]?.[1]?.body)) as {
+      events: Array<{ event_id: string }>;
+    };
+    expect(secondBody.events.map((entry) => entry.event_id)).toEqual(['evt-1']);
+  });
+
   it('clears the dispose timeout when an in-flight flush finishes early', async () => {
     vi.useFakeTimers();
     const publish = createDeferred<Response>();

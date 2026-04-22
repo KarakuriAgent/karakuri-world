@@ -6,19 +6,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../App.js';
 import {
   buildAuthModeRequestInit,
-  buildSnapshotRequestInit,
   createSnapshotStore,
-  getHistoryRetryOptions,
-  mergeHistoryResponses,
-  SNAPSHOT_CONDITIONAL_FETCH_GATE,
 } from '../store/snapshot-store.js';
 import { createFixtureSnapshot } from './fixtures/snapshot.js';
 
 const env = {
-  snapshotUrl: 'https://snapshot.example.com/snapshot/manifest.json',
+  snapshotUrl: 'https://snapshot.example.com/snapshot/latest.json',
   authMode: 'public' as const,
-  apiBaseUrl: 'https://relay.example.com/api/history',
 };
+
+const AGENT_HISTORY_URL_ALICE = 'https://snapshot.example.com/history/agents/alice.json';
 
 function createResponse(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
@@ -34,26 +31,6 @@ function createSnapshot(overrides: Partial<ReturnType<typeof createFixtureSnapsh
   return {
     ...createFixtureSnapshot(),
     ...overrides,
-  };
-}
-
-function createManifest(
-  snapshot: ReturnType<typeof createSnapshot>,
-  overrides: Partial<{
-    latest_snapshot_key: string;
-    generated_at: number;
-    published_at: number;
-    last_publish_error_at?: number;
-  }> = {},
-) {
-  return {
-    schema_version: 1 as const,
-    latest_snapshot_key: overrides.latest_snapshot_key ?? `snapshot/v/${snapshot.generated_at}.json`,
-    generated_at: overrides.generated_at ?? snapshot.generated_at,
-    published_at: overrides.published_at ?? snapshot.published_at,
-    ...(overrides.last_publish_error_at !== undefined
-      ? { last_publish_error_at: overrides.last_publish_error_at }
-      : {}),
   };
 }
 
@@ -119,15 +96,11 @@ describe('snapshot store polling', () => {
   it('switches browser fetch options by auth mode for both snapshot and history requests', async () => {
     expect(buildAuthModeRequestInit('public')).toEqual({});
     expect(buildAuthModeRequestInit('access')).toEqual({ credentials: 'include' });
-    expect(buildSnapshotRequestInit('public')).toEqual({});
-    expect(buildSnapshotRequestInit('access')).toEqual({ credentials: 'include' });
-    expect(SNAPSHOT_CONDITIONAL_FETCH_GATE.enabled).toBe(false);
 
     const accessFetch = vi.fn<typeof fetch>().mockResolvedValue(createResponse(createSnapshot()));
     const accessStore = createSnapshotStore({
       snapshotUrl: env.snapshotUrl,
       authMode: 'access',
-      historyApiUrl: env.apiBaseUrl,
       fetchImpl: accessFetch,
     });
 
@@ -139,7 +112,7 @@ describe('snapshot store polling', () => {
       expect.objectContaining({ credentials: 'include', signal: expect.any(AbortSignal) }),
     );
     expect(accessFetch).toHaveBeenCalledWith(
-      'https://relay.example.com/api/history?agent_id=alice&limit=20',
+      AGENT_HISTORY_URL_ALICE,
       expect.objectContaining({ credentials: 'include', signal: expect.any(AbortSignal) }),
     );
 
@@ -147,14 +120,13 @@ describe('snapshot store polling', () => {
     const publicStore = createSnapshotStore({
       snapshotUrl: env.snapshotUrl,
       authMode: 'public',
-      historyApiUrl: env.apiBaseUrl,
       fetchImpl: publicFetch,
     });
 
     await publicStore.getState().fetchHistory({ agent_id: 'alice' });
 
     expect(publicFetch).toHaveBeenCalledWith(
-      'https://relay.example.com/api/history?agent_id=alice&limit=20',
+      AGENT_HISTORY_URL_ALICE,
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     const publicHistoryCall = publicFetch.mock.calls[0]?.[1];
@@ -421,65 +393,27 @@ describe('snapshot store polling', () => {
     expect(store.getState().is_stale).toBe(true);
   });
 
-  it('follows snapshot manifests to versioned snapshot objects', async () => {
+  it('fetches the snapshot alias directly without a separate manifest hop', async () => {
     const snapshot = createSnapshot({ generated_at: Date.now(), published_at: Date.now() + 1_000 });
-    const manifestUrl = 'https://snapshot.example.com/snapshot/manifest.json';
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(createResponse(createManifest(snapshot)))
-      .mockResolvedValueOnce(createResponse(snapshot));
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(createResponse(snapshot));
     const store = createSnapshotStore({
-      snapshotUrl: manifestUrl,
+      snapshotUrl: env.snapshotUrl,
       authMode: env.authMode,
       fetchImpl: fetchMock,
     });
 
     await store.getState().poll();
 
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      manifestUrl,
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      'https://snapshot.example.com/snapshot/v/' + `${snapshot.generated_at}.json`,
+      env.snapshotUrl,
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(store.getState().snapshot).toMatchObject({
       generated_at: snapshot.generated_at,
       published_at: snapshot.published_at,
     });
-  });
-
-  it('marks stale from manifest metadata without refetching an unchanged versioned snapshot', async () => {
-    const now = Date.now();
-    const current = createSnapshot({
-      generated_at: now - 1_000,
-      published_at: now - 500,
-    });
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        createResponse(
-          createManifest(current, {
-            last_publish_error_at: now + 250,
-          }),
-        ),
-      );
-    const store = createSnapshotStore({
-      snapshotUrl: 'https://snapshot.example.com/snapshot/manifest.json',
-      authMode: env.authMode,
-      fetchImpl: fetchMock,
-      initialSnapshot: current,
-      staleAfterMs: 60_000,
-    });
-
-    await store.getState().poll();
-
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(store.getState().snapshot?.last_publish_error_at).toBe(now + 250);
-    expect(store.getState().is_stale).toBe(true);
   });
 
   it('does not mark a healthy snapshot stale when polling restarts after a quiet period', async () => {
@@ -831,63 +765,12 @@ describe('snapshot store polling', () => {
     expect(store.getState().snapshot?.agents.map((agent) => agent.agent_id)).toEqual(['bob']);
   });
 
-  it('merges appended history pages with event dedupe and descending order', () => {
-    const merged = mergeHistoryResponses(
-      {
-        items: [
-          {
-            event_id: 'event-3',
-            type: 'action_completed',
-            occurred_at: 300,
-            agent_ids: ['alice'],
-            summary: { emoji: '✅', title: 'Newest', text: 'Newest event' },
-            detail: {},
-          },
-          {
-            event_id: 'event-2',
-            type: 'action_started',
-            occurred_at: 200,
-            agent_ids: ['alice'],
-            summary: { emoji: '🛠️', title: 'Middle', text: 'Middle event' },
-            detail: {},
-          },
-        ],
-        next_cursor: 'cursor-1',
-      },
-      {
-        items: [
-          {
-            event_id: 'event-2',
-            type: 'action_started',
-            occurred_at: 200,
-            agent_ids: ['alice'],
-            summary: { emoji: '🛠️', title: 'Middle duplicate', text: 'Duplicate middle event' },
-            detail: {},
-          },
-          {
-            event_id: 'event-1',
-            type: 'movement_started',
-            occurred_at: 100,
-            agent_ids: ['alice'],
-            summary: { emoji: '🚶', title: 'Oldest', text: 'Oldest event' },
-            detail: {},
-          },
-        ],
-        next_cursor: 'cursor-2',
-      },
-    );
-
-    expect(merged.items.map((item) => item.event_id)).toEqual(['event-3', 'event-2', 'event-1']);
-    expect(merged.next_cursor).toBe('cursor-2');
-  });
-
-  it('preserves cached history and cursor state when an append request fails', async () => {
+  it('keeps the previous history response and marks the entry as error when a refresh fails', async () => {
     vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(new Response('upstream failed', { status: 503 })));
 
     const store = createSnapshotStore({
       snapshotUrl: env.snapshotUrl,
       authMode: env.authMode,
-      historyApiUrl: env.apiBaseUrl,
     });
 
     store.setState((state) => ({
@@ -895,10 +778,6 @@ describe('snapshot store polling', () => {
         ...state.history_cache,
         'agent:alice': {
           status: 'ready',
-          request: {
-            limit: 20,
-            merge: 'replace',
-          },
           last_fetched_at: 1_780_000_000_000,
           response: {
             items: [
@@ -911,28 +790,143 @@ describe('snapshot store polling', () => {
                 detail: {},
               },
             ],
-            next_cursor: 'cursor-1',
           },
         },
       },
     }));
 
-    await store.getState().fetchHistory({ agent_id: 'alice' }, { cursor: 'cursor-1', merge: 'append' });
+    await store.getState().fetchHistory({ agent_id: 'alice' });
 
     const entry = store.getState().history_cache['agent:alice'];
     expect(entry?.status).toBe('error');
-    expect(entry && entry.status !== 'idle' ? entry.request : undefined).toEqual({
-      cursor: 'cursor-1',
-      limit: 20,
-      merge: 'append',
-    });
     expect(entry && 'response' in entry ? entry.response?.items.map((item) => item.event_id) : []).toEqual(['event-2']);
-    expect(entry && 'response' in entry ? entry.response?.next_cursor : undefined).toBe('cursor-1');
     expect(entry && 'last_fetched_at' in entry ? entry.last_fetched_at : undefined).toBe(1_780_000_000_000);
-    expect(getHistoryRetryOptions(entry)).toEqual({
-      cursor: 'cursor-1',
-      limit: 20,
-      merge: 'append',
+  });
+
+  it('treats a 404 history fetch as an empty document and warns once per scope', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 404 })));
+
+    const store = createSnapshotStore({
+      snapshotUrl: env.snapshotUrl,
+      authMode: env.authMode,
     });
+
+    await store.getState().fetchHistory({ agent_id: 'alice' });
+
+    const entry = store.getState().history_cache['agent:alice'];
+    expect(entry?.status).toBe('ready');
+    expect(entry && 'response' in entry ? entry.response?.items : undefined).toEqual([]);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0]?.[0]).toContain('History object missing');
+
+    await store.getState().fetchHistory({ agent_id: 'alice' });
+    expect(warnSpy).toHaveBeenCalledTimes(1); // no double warn for same scope
+
+    warnSpy.mockRestore();
+  });
+
+  it('logs a loud error when the history response fails schema parsing', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(createResponse({ items: [{ bogus: true }] })),
+    );
+
+    const store = createSnapshotStore({
+      snapshotUrl: env.snapshotUrl,
+      authMode: env.authMode,
+    });
+
+    await store.getState().fetchHistory({ agent_id: 'alice' });
+
+    const entry = store.getState().history_cache['agent:alice'];
+    expect(entry?.status).toBe('error');
+    expect(errorSpy).toHaveBeenCalledWith(
+      'History schema parse failed',
+      expect.objectContaining({ url: AGENT_HISTORY_URL_ALICE }),
+    );
+
+    errorSpy.mockRestore();
+  });
+
+  it('derives the history base URL from the snapshot URL origin (cross-origin safe)', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(createResponse(createSnapshot()))
+      .mockResolvedValueOnce(createResponse({ items: [] }));
+    const store = createSnapshotStore({
+      snapshotUrl: 'https://cdn.other.test/snapshot/latest.json',
+      authMode: env.authMode,
+      fetchImpl: fetchMock,
+    });
+
+    await store.getState().fetchHistory({ agent_id: 'carol' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://cdn.other.test/history/agents/carol.json',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it('refreshes selected agent + expanded conversation histories on each successful poll', async () => {
+    const snapshot = createSnapshot({ generated_at: 1_780_000_000_000, published_at: 1_780_000_005_000 });
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url === env.snapshotUrl) {
+        return createResponse(snapshot);
+      }
+      return createResponse({ items: [] });
+    });
+    const store = createSnapshotStore({
+      snapshotUrl: env.snapshotUrl,
+      authMode: env.authMode,
+      fetchImpl: fetchMock,
+    });
+
+    store.getState().setSelectedAgentId('alice');
+    store.getState().toggleConversationExpanded('conv-1', true);
+
+    await store.getState().poll();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      AGENT_HISTORY_URL_ALICE,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://snapshot.example.com/history/conversations/conv-1.json',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it('aborts in-flight history requests when stopPolling is called', async () => {
+    const abortReasons: unknown[] = [];
+    const fetchMock = vi.fn<typeof fetch>(async (_input, init) => {
+      return new Promise((_, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          abortReasons.push(init.signal?.reason);
+          reject(new DOMException('aborted', 'AbortError'));
+        });
+      });
+    });
+    const store = createSnapshotStore({
+      snapshotUrl: env.snapshotUrl,
+      authMode: env.authMode,
+      fetchImpl: fetchMock,
+    });
+
+    const pendingFetch = store.getState().fetchHistory({ agent_id: 'alice' });
+
+    // Give the fetch time to register its abort listener
+    await Promise.resolve();
+
+    store.getState().stopPolling();
+
+    await pendingFetch;
+
+    expect(abortReasons).toContain('history-polling-stopped');
+    // The abort short-circuits before any state mutation, so the entry stays in its loading stub.
+    const entry = store.getState().history_cache['agent:alice'];
+    expect(entry?.status).toBe('loading');
   });
 });

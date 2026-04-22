@@ -9,9 +9,8 @@
 `apps/front/.env.local`（または他の Vite env ファイル）を作成する：
 
 ```bash
-VITE_SNAPSHOT_URL=https://snapshots.example.com/snapshot/manifest.json
+VITE_SNAPSHOT_URL=https://snapshots.example.com/snapshot/latest.json
 VITE_AUTH_MODE=public
-VITE_API_BASE_URL=https://history.example.com/api/history
 VITE_PHASE3_EFFECTS_ENABLED=false
 VITE_PHASE3_EFFECT_RAIN_ENABLED=false
 VITE_PHASE3_EFFECT_SNOW_ENABLED=false
@@ -23,9 +22,8 @@ VITE_PHASE3_EFFECT_ACTION_PARTICLES_ENABLED=false
 
 ### 必須項目
 
-- `VITE_SNAPSHOT_URL`: ブラウザから直接 fetch できるスナップショット manifest URL の絶対パス。ブラウザは公開 R2/CDN 上の `snapshot/manifest.json` をポーリングし、その manifest に入っている versioned key から `snapshot/v/{generated_at}.json` を取得する。ブラウザバンドルに同梱される値なので、`http` / `https` のみ、かつ認証情報・クエリ・フラグメントを含めてはならない。
+- `VITE_SNAPSHOT_URL`: ブラウザから直接 fetch できるスナップショット alias URL（R2/CDN の `snapshot/latest.json`）の絶対パス。ブラウザはこのオブジェクトを 5 秒周期で polling し、edge は `Cache-Control: public, max-age=5` で同期する。history オブジェクト (`history/agents/{agent_id}.json` / `history/conversations/{conversation_id}.json`) は同じ origin から派生して取得されるため、別 URL は不要。ブラウザバンドルに同梱される値なので、`http` / `https` のみ、かつ認証情報・クエリ・フラグメントを含めてはならない。
 - `VITE_AUTH_MODE`: `public` または `access` のいずれか。
-- `VITE_API_BASE_URL`: Worker history API の絶対 URL。必ず `/api/history` までを含む完全な URL とし、Worker オリジンだけ / 親パス `/api` だけでは不可。こちらもブラウザ公開値のため、認証情報・クエリ・フラグメントは禁止。
 - `VITE_PHASE3_EFFECTS_ENABLED`（任意）: `true` / `false`。既定値 `false`。意図的に Phase 3 エフェクトを検証するとき以外は OFF のままにする。
 - `VITE_PHASE3_EFFECT_RAIN_ENABLED` / `VITE_PHASE3_EFFECT_SNOW_ENABLED` / `VITE_PHASE3_EFFECT_FOG_ENABLED` / `VITE_PHASE3_EFFECT_DAY_NIGHT_ENABLED`（任意）: 個別エフェクトの rollout フラグ。既定値はすべて `false` で、`VITE_PHASE3_EFFECTS_ENABLED=true` のときにのみ有効。rain / snow / fog / day-night を Phase 3 基盤を残したまま個別にロールバック可能。
 - `VITE_PHASE3_EFFECT_MOTION_ENABLED` / `VITE_PHASE3_EFFECT_ACTION_PARTICLES_ENABLED`（任意）: 移動補間と `current_activity.emoji` ベースの軽量パーティクルの rollout フラグ。既定値 `false`、かつ `VITE_PHASE3_EFFECTS_ENABLED=true` のときのみ有効。段階 rollout / ロールバック時は Phase 1 の静的ノード描画がフォールバックとして残る。
@@ -47,8 +45,8 @@ npm run test:phase1-acceptance
 
 - デスクトップ / モバイル初期シェルが同一 map host を共有して描画される
 - 100 エージェントのスナップショット反映が Phase 1 の 15 秒予算内に収まる
-- `/api/history` が空 or 劣化していても、選択中エージェント詳細の一貫性が保たれる
-- `/api/history?agent_id=...&limit=20` が取得できる場合は会話ログ展開が加算的に動く
+- history オブジェクトが空 or 劣化していても、選択中エージェント詳細の一貫性が保たれる
+- `history/agents/{agent_id}.json` が取得できる場合は会話ログ展開が加算的に動く
 - stale が quiet period の経過時間ではなく publish health メタデータ（`last_publish_error_at`）で決まり、その後の成功 publish または 3 分 fallback resync で回復できること
 - **Unit 29/32 との整合**: event-driven な snapshot/history 配信を primary とし、静穏期経路は sub-minute heartbeat ではなく **3 分 fallback resync** のみとすること
 
@@ -56,31 +54,30 @@ npm run test:phase1-acceptance
 
 ## Phase 2 認証モード別デプロイガイド
 
-1 つのデプロイで選べる認証モードは `AUTH_MODE=public` または `AUTH_MODE=access` のいずれか 1 つ。Pages / Worker `/api/history` / R2 `snapshot_url` のすべてが同じモードで構成されたときのみデプロイ成立。
+1 つのデプロイで選べる認証モードは `AUTH_MODE=public` または `AUTH_MODE=access` のいずれか 1 つ。Pages と R2 カスタムドメイン（`snapshot/latest.json` と `history/*` を配信する）が同じモードで構成されたときのみデプロイ成立。
 
-- `AUTH_MODE=public`: Pages・Worker `/api/history`・R2 カスタムドメインがすべて公開。
-- `AUTH_MODE=access`: Pages・Worker `/api/history`・R2 カスタムドメインがすべて Cloudflare Access で保護され、ブラウザは `snapshot_url` / `/api/history` 双方を `credentials: 'include'` で fetch する。
-- Pages と Worker `/api/history` がクロスオリジンの場合、Worker の `HISTORY_CORS_ALLOWED_ORIGINS` に許可する Pages オリジンをカンマ区切りで指定する（例: `https://ui.example.com,https://preview-ui.example.com`）。Worker は設定済みオリジンのみエコーし、`AUTH_MODE=access` では `Access-Control-Allow-Credentials: true` も返すため `*` では代替不可。
+- `AUTH_MODE=public`: Pages・R2 カスタムドメインがすべて公開。
+- `AUTH_MODE=access`: Pages・R2 カスタムドメインがすべて Cloudflare Access で保護され、ブラウザは snapshot / history オブジェクトを `credentials: 'include'` で fetch する。
 
-1 デプロイ内でモードを混在させないこと。また `AUTH_MODE=access` の前提が満たされない場合でも Worker/Pages によるスナップショットプロキシをフォールバックとして追加してはならない。Access Cookie の共有 / 事前 seed が確約できない場合は `/api` 経由で中継せず、`AUTH_MODE=public` に切り替える。
+1 デプロイ内でモードを混在させないこと。また `AUTH_MODE=access` の前提が満たされない場合でも Worker/Pages によるスナップショットプロキシをフォールバックとして追加してはならない。Access Cookie の共有 / 事前 seed が確約できない場合は `AUTH_MODE=public` に切り替える。
 
 ### R2 カスタムドメインの必須セットアップ
 
-`snapshot_url` は常に公開 R2 カスタムドメイン上の manifest URL（既定値: `https://snapshot.example.com/snapshot/manifest.json`）。ブラウザは両認証モードともまず manifest を取得し、そこに入っている `latest_snapshot_key` から immutable な versioned snapshot object を fetch する。`snapshot/latest.json` は互換エイリアスにとどまる。
+`snapshot_url` は公開 R2 カスタムドメイン上の alias URL（既定値: `https://snapshot.example.com/snapshot/latest.json`）。ブラウザはこのオブジェクトを 5 秒周期で直接 fetch し、history オブジェクト (`history/agents/{agent_id}.json` / `history/conversations/{conversation_id}.json`) も同じ origin から同周期で取得する。
 
 運用側の設定：
 
 1. バケットを Cloudflare カスタムドメイン経由で公開する。
-2. スナップショットオブジェクトパスに `Cache Everything` の Cache Rule を追加。
-3. Edge TTL を `5 seconds` に固定。
+2. `snapshot/latest.json` と `history/*` の両方に `Cache Everything` の Cache Rule を追加。
+3. それぞれの Edge TTL を `5 seconds` に固定。
 4. オリジン側の `Cache-Control: public, max-age=5` と整合させる。
-5. Pages と R2 カスタムドメインがクロスオリジンなら、両モードとも Pages オリジンを R2 CORS で許可する。`AUTH_MODE=access` ではさらに `Access-Control-Allow-Credentials: true` を許可。
+5. Pages と R2 カスタムドメインがクロスオリジンなら、`snapshot/*` と `history/*` の両 prefix について Pages オリジンを R2 CORS で許可する。`AUTH_MODE=access` ではさらに `Access-Control-Allow-Credentials: true` を許可。
 
 ### `AUTH_MODE=access` の絶対要件
 
 `AUTH_MODE=access` が有効なのは、SPA が `snapshot_url` のポーリングを開始する前に、Pages オリジン・R2 カスタムドメイン双方で利用可能な Access セッションをブラウザが既に持っているときに限る。
 
-- 推奨: Pages / Worker `/api/history` / R2 カスタムドメインを 1 つの Access アプリ（または同等の複数ドメインポリシー）配下に置き、1 回ログインで双方の Cookie を事前に seed する。
+- 推奨: Pages と R2 カスタムドメインを 1 つの Access アプリ（または同等の複数ドメインポリシー）配下に置き、1 回ログインで双方の Cookie を事前に seed する。
 - 許容される代替策: R2 カスタムドメイン向け Cookie を明示的に事前 seed する（専用 R2 訪問 / サイレント事前 seed フロー）。
 - 不可: CORS のみに依存する / R2 Access Cookie が無い場合に同一オリジン Worker・Pages のスナップショットプロキシへフォールバックする。
 
@@ -92,14 +89,13 @@ npm run test:phase1-acceptance
 2. `VITE_SNAPSHOT_URL` を直接ブラウザで叩く：
    - `AUTH_MODE=public`: Access ログイン無しで 200。
    - `AUTH_MODE=access`: Pages / R2 双方で Access セッションが確立されてからのみ 200。Pages ログイン済なのに R2 で Access challenge が残る場合はデプロイ未完了。
-3. 返答が R2 カスタムドメインオブジェクトパスから来ていること（Worker には `/api/snapshot` pull endpoint が存在しない）。
+3. 返答が R2 カスタムドメイン上の `snapshot/latest.json` から来ていること（Worker には read 系 endpoint が存在しない）。
 4. 同じリクエストを再実行し、`Cache Everything` + `Edge TTL = 5 seconds` により edge キャッシュ HIT（`CF-Cache-Status: HIT` 等）となること。
-5. `/api/history?agent_id=<known-agent>&limit=1` をデプロイ済 Worker に叩く：
+5. `history/agents/<known-agent>.json` を同じ R2 origin から直接取得する：
    - `AUTH_MODE=public`: Access ログイン無しで成功。
    - `AUTH_MODE=access`: ログイン前は Access challenge / 失敗、ログイン後に成功。
-6. Pages と Worker `/api/history` がクロスオリジンなら、preflight / GET 応答に `Access-Control-Allow-Origin: <Pages オリジン>` が含まれ、`AUTH_MODE=access` では `Access-Control-Allow-Credentials: true` および credentialed fetch 成功も確認。
-7. Pages と R2 がクロスオリジンなら、`AUTH_MODE=access` で `Access-Control-Allow-Credentials: true` と credentialed fetch 成功も確認。
-8. 上記が `AUTH_MODE=access` で満たせない場合は Access Cookie 共有 / 事前 seed を直すか `AUTH_MODE=public` を選択。プロキシフォールバックは禁止。
+6. Pages と R2 がクロスオリジンなら、`snapshot/*` と `history/*` の両方について preflight / GET 応答が期待どおりの CORS ヘッダを返し、`AUTH_MODE=access` では `Access-Control-Allow-Credentials: true` と credentialed fetch 成功も確認。
+7. 上記が `AUTH_MODE=access` で満たせない場合は Access Cookie 共有 / 事前 seed を直すか `AUTH_MODE=public` を選択。プロキシフォールバックは禁止。
 
 ### 運用側に残る手動チェック項目
 
@@ -158,13 +154,13 @@ npm run deploy:prod
 2. `npx wrangler deploy` でデプロイ。
 3. Worker URL に対して 1 回 `curl` を打ち、`UIBridgeDurableObject.boot()` を即時起動して静穏期 alarm 経路を立ち上げる。
 
-最低限、バックエンドが `/api/publish-snapshot` / `/api/publish-agent-history` を叩くときに使う共有シークレット `SNAPSHOT_PUBLISH_AUTH_KEY` が必要。Pages と Worker `/api/history` がクロスオリジンなら `HISTORY_CORS_ALLOWED_ORIGINS` に Pages オリジンリストも設定する。
+最低限、バックエンドが `/api/publish-snapshot` / `/api/publish-agent-history` を叩くときに使う共有シークレット `SNAPSHOT_PUBLISH_AUTH_KEY` が必要。Worker 側には read endpoint が無くなったので `HISTORY_CORS_ALLOWED_ORIGINS` の設定は不要。
 
-共有 R2 バケットには、公開スナップショットに加えて `GET /api/history` が読む history オブジェクト（例: `history/agents/{agent_id}.json`、`history/conversations/{conversation_id}.json`）も保存される。
+共有 R2 バケットには snapshot alias (`snapshot/latest.json`) と history オブジェクト（`history/agents/{agent_id}.json`、`history/conversations/{conversation_id}.json`）が同居し、観戦 UI は R2 カスタムドメインから直接読む。
 
 ## Relay アラート配線と readiness ゲート
 
-Unit 32 で relay `/ws` は primary path から外れ、バックエンドの legacy `/ws` endpoint も削除済み。Worker 側も `/ws` を Durable Object fallback に流さず `404` で fail-close する。readiness は polling + R2/CDN の鮮度、manifest 経由の versioned snapshot fetch、event-driven な snapshot/history 配信、認証モードの整合性を中心に構成され、静穏期に残る periodic path は 3 分 fallback resync のみ。relay アラート成果物（`relay-alerting-spec.json` 等）は `ui.*` と `relay.r2.*` シグナルだけをカバーし、relay WebSocket シグナルは残っていない。
+Unit 32 で relay `/ws` は primary path から外れ、バックエンドの legacy `/ws` endpoint も削除済み。Worker 側も `/ws` を Durable Object fallback に流さず `404` で fail-close する。readiness は polling + R2/CDN の鮮度、alias オブジェクト（snapshot / history 双方）への直接 fetch、event-driven な snapshot/history 配信、認証モードの整合性を中心に構成され、静穏期に残る periodic path は 3 分 fallback resync のみ。relay アラート成果物（`relay-alerting-spec.json` 等）は `ui.*` と `relay.r2.*` シグナルだけをカバーし、relay WebSocket シグナルは残っていない。
 
 リポジトリ管理の正本成果物：
 

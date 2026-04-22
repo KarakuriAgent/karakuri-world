@@ -7,7 +7,7 @@ import {
   resolveHistorySpeaker,
 } from '../lib/history-speaker.js';
 import { createFixtureSnapshot } from './fixtures/snapshot.js';
-import type { HistoryEntry } from '../../worker/src/history/api.js';
+import type { HistoryEntry } from '../../worker/src/contracts/history-document.js';
 
 describe('history-speaker', () => {
   it('classifies speaking event types', () => {

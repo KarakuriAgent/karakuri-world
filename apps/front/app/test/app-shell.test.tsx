@@ -10,16 +10,16 @@ import { createFixtureSnapshot } from './fixtures/snapshot.js';
 import type { SpectatorSnapshot } from '../../worker/src/contracts/spectator-snapshot.js';
 
 const env = {
-  snapshotUrl: 'https://snapshot.example.com/snapshot/manifest.json',
+  snapshotUrl: 'https://snapshot.example.com/snapshot/latest.json',
   authMode: 'public' as const,
-  apiBaseUrl: 'https://relay.example.com/api/history',
 };
+
+const AGENT_HISTORY_URL_ALICE = 'https://snapshot.example.com/history/agents/alice.json';
 
 function createReadyStore() {
   return createSnapshotStore({
     snapshotUrl: env.snapshotUrl,
     authMode: env.authMode,
-    historyApiUrl: env.apiBaseUrl,
     initialSnapshot: createFixtureSnapshot(),
     initialSelectedAgentId: 'alice',
   });
@@ -252,7 +252,7 @@ describe('App shell bootstrap', () => {
     await waitFor(() => expect(store.getState().selected_agent_id).toBeUndefined());
   });
 
-  it('loads selected-agent history from /api/history?agent_id=...&limit=20 and renders it in the overlay', async () => {
+  it('loads selected-agent history from the R2 history/agents/{id}.json URL and renders it in the overlay', async () => {
     const store = createSnapshotStore({
       snapshotUrl: env.snapshotUrl,
       authMode: env.authMode,
@@ -296,7 +296,7 @@ describe('App shell bootstrap', () => {
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        'https://relay.example.com/api/history?agent_id=alice&limit=20',
+        AGENT_HISTORY_URL_ALICE,
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       ),
     );
@@ -351,104 +351,12 @@ describe('App shell bootstrap', () => {
     await waitFor(() =>
       expect(fetchMock).toHaveBeenNthCalledWith(
         2,
-        'https://relay.example.com/api/history?agent_id=alice&limit=20',
+        AGENT_HISTORY_URL_ALICE,
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       ),
     );
     await waitFor(() => expect(screen.getAllByText('Recovered history')).toHaveLength(2));
     expect(screen.queryByTestId('desktop-agent-history-error')).not.toBeInTheDocument();
-  });
-
-  it('appends agent history pages with retryable inline errors while preserving existing items', async () => {
-    const store = createSnapshotStore({
-      snapshotUrl: env.snapshotUrl,
-      authMode: env.authMode,
-      initialSnapshot: createReadySnapshot(),
-    });
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        createResponse({
-          items: [
-            {
-              event_id: 'event-2',
-              type: 'action_completed',
-              occurred_at: 1_780_000_020_000,
-              agent_ids: ['alice'],
-              summary: {
-                emoji: '✅',
-                title: 'Craft complete',
-                text: 'Alice finished crafting.',
-              },
-              detail: {},
-            },
-          ],
-          next_cursor: 'cursor-1',
-        }),
-      )
-      .mockResolvedValueOnce(new Response('upstream failed', { status: 503 }))
-      .mockResolvedValueOnce(
-        createResponse({
-          items: [
-            {
-              event_id: 'event-2',
-              type: 'action_completed',
-              occurred_at: 1_780_000_020_000,
-              agent_ids: ['alice'],
-              summary: {
-                emoji: '✅',
-                title: 'Craft complete duplicate',
-                text: 'Duplicate event should be removed.',
-              },
-              detail: {},
-            },
-            {
-              event_id: 'event-1',
-              type: 'movement_started',
-              occurred_at: 1_780_000_000_000,
-              agent_ids: ['alice'],
-              summary: {
-                emoji: '🚶',
-                title: 'Moved',
-                text: 'Alice started moving.',
-              },
-              detail: {},
-            },
-          ],
-        }),
-      );
-    vi.stubGlobal('fetch', fetchMock);
-
-    render(<App env={env} store={store} autoStartPolling={false} />);
-
-    fireEvent.click(screen.getByTestId('sidebar-agent-button-alice'));
-
-    await waitFor(() => expect(screen.getByTestId('desktop-agent-history-load-more')).toBeInTheDocument());
-
-    fireEvent.click(screen.getByTestId('desktop-agent-history-load-more'));
-
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenNthCalledWith(
-        2,
-        'https://relay.example.com/api/history?agent_id=alice&limit=20&cursor=cursor-1',
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
-      ),
-    );
-    await waitFor(() => expect(screen.getByTestId('desktop-agent-history-append-error')).toHaveTextContent('続きの取得に失敗しました'));
-    expect(screen.getByTestId('desktop-agent-history-list')).toBeInTheDocument();
-    expect(screen.queryByTestId('desktop-agent-history-error')).not.toBeInTheDocument();
-    expect(screen.getAllByText('Craft complete')).toHaveLength(2);
-
-    fireEvent.click(screen.getByTestId('desktop-agent-history-append-retry'));
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
-    await waitFor(() =>
-      expect(within(screen.getByTestId('desktop-agent-history-list')).getAllByTestId('desktop-agent-history-item')).toHaveLength(2),
-    );
-    const items = within(screen.getByTestId('desktop-agent-history-list')).getAllByTestId('desktop-agent-history-item');
-    expect(items[0]).toHaveTextContent('Craft complete');
-    expect(items[1]).toHaveTextContent('Moved');
-    expect(screen.queryByTestId('desktop-agent-history-append-error')).not.toBeInTheDocument();
   });
 
   it('keeps the last good history visible and retries a failed background replace fetch', async () => {
@@ -517,20 +425,9 @@ describe('App shell bootstrap', () => {
     const desktopOverlay = screen.getByTestId('desktop-overlay');
     await waitFor(() => expect(within(desktopOverlay).getByText('Craft started')).toBeInTheDocument());
 
-    store.setState((state) => ({
-      history_cache: {
-        ...state.history_cache,
-        'agent:alice':
-          state.history_cache['agent:alice']?.status === 'ready'
-            ? {
-                ...state.history_cache['agent:alice'],
-                last_fetched_at: Date.now() - 31_000,
-              }
-            : state.history_cache['agent:alice'],
-      },
-    }));
-
-    fireEvent.click(screen.getByTestId('sidebar-agent-button-alice'));
+    await act(async () => {
+      await store.getState().fetchHistory({ agent_id: 'alice' });
+    });
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(within(desktopOverlay).getByTestId('desktop-agent-history-warning')).toHaveTextContent('更新に失敗しました'));
@@ -587,20 +484,9 @@ describe('App shell bootstrap', () => {
       expect(within(desktopOverlay).getByTestId('desktop-agent-history-empty')).toHaveTextContent('履歴はまだありません'),
     );
 
-    store.setState((state) => ({
-      history_cache: {
-        ...state.history_cache,
-        'agent:alice':
-          state.history_cache['agent:alice']?.status === 'ready'
-            ? {
-                ...state.history_cache['agent:alice'],
-                last_fetched_at: Date.now() - 31_000,
-              }
-            : state.history_cache['agent:alice'],
-      },
-    }));
-
-    fireEvent.click(screen.getByTestId('sidebar-agent-button-alice'));
+    await act(async () => {
+      await store.getState().fetchHistory({ agent_id: 'alice' });
+    });
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     await waitFor(() =>
@@ -613,193 +499,6 @@ describe('App shell bootstrap', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     await waitFor(() => expect(within(desktopOverlay).getByText('Craft complete')).toBeInTheDocument());
     expect(within(desktopOverlay).queryByTestId('desktop-agent-history-warning')).not.toBeInTheDocument();
-  });
-
-  it('retries the preserved append request on same-agent reselection after an append failure', async () => {
-    const store = createSnapshotStore({
-      snapshotUrl: env.snapshotUrl,
-      authMode: env.authMode,
-      initialSnapshot: createReadySnapshot(),
-    });
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        createResponse({
-          items: [
-            {
-              event_id: 'event-2',
-              type: 'action_completed',
-              occurred_at: 1_780_000_020_000,
-              agent_ids: ['alice'],
-              summary: {
-                emoji: '✅',
-                title: 'Craft complete',
-                text: 'Alice finished crafting.',
-              },
-              detail: {},
-            },
-          ],
-          next_cursor: 'cursor-1',
-        }),
-      )
-      .mockResolvedValueOnce(new Response('upstream failed', { status: 503 }))
-      .mockResolvedValueOnce(
-        createResponse({
-          items: [
-            {
-              event_id: 'event-1',
-              type: 'movement_started',
-              occurred_at: 1_780_000_000_000,
-              agent_ids: ['alice'],
-              summary: {
-                emoji: '🚶',
-                title: 'Moved',
-                text: 'Alice started moving.',
-              },
-              detail: {},
-            },
-          ],
-        }),
-      );
-    vi.stubGlobal('fetch', fetchMock);
-
-    render(<App env={env} store={store} autoStartPolling={false} />);
-
-    fireEvent.click(screen.getByTestId('sidebar-agent-button-alice'));
-
-    await waitFor(() => expect(screen.getByTestId('desktop-agent-history-load-more')).toBeInTheDocument());
-
-    fireEvent.click(screen.getByTestId('desktop-agent-history-load-more'));
-
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenNthCalledWith(
-        2,
-        'https://relay.example.com/api/history?agent_id=alice&limit=20&cursor=cursor-1',
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
-      ),
-    );
-    await waitFor(() => expect(screen.getByTestId('desktop-agent-history-append-error')).toBeInTheDocument());
-
-    fireEvent.click(screen.getByTestId('sidebar-agent-button-alice'));
-
-    await waitFor(() => expect(store.getState().selected_agent_revision).toBe(2));
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenNthCalledWith(
-        3,
-        'https://relay.example.com/api/history?agent_id=alice&limit=20&cursor=cursor-1',
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
-      ),
-    );
-    await waitFor(() =>
-      expect(within(screen.getByTestId('desktop-agent-history-list')).getAllByTestId('desktop-agent-history-item')).toHaveLength(2),
-    );
-
-    const items = within(screen.getByTestId('desktop-agent-history-list')).getAllByTestId('desktop-agent-history-item');
-    expect(items[0]).toHaveTextContent('Craft complete');
-    expect(items[1]).toHaveTextContent('Moved');
-    expect(screen.queryByTestId('desktop-agent-history-append-error')).not.toBeInTheDocument();
-  });
-
-  it('reuses fresh history on same-agent reselection and reloads stale history after 30 seconds', async () => {
-    const store = createSnapshotStore({
-      snapshotUrl: env.snapshotUrl,
-      authMode: env.authMode,
-      initialSnapshot: createReadySnapshot(),
-    });
-    const reloadResponse = createDeferredResponse();
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        createResponse({
-          items: [
-            {
-              event_id: 'event-1',
-              type: 'action_started',
-              occurred_at: 1_780_000_000_000,
-              agent_ids: ['alice'],
-              summary: {
-                emoji: '🛠️',
-                title: 'Craft started',
-                text: 'Alice started crafting.',
-              },
-              detail: {},
-            },
-          ],
-        }),
-      )
-      .mockImplementationOnce(() => reloadResponse.promise);
-    vi.stubGlobal('fetch', fetchMock);
-
-    render(<App env={env} store={store} autoStartPolling={false} />);
-
-    fireEvent.click(screen.getByTestId('sidebar-agent-button-alice'));
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    const desktopOverlay = screen.getByTestId('desktop-overlay');
-    await waitFor(() => expect(within(desktopOverlay).getByTestId('desktop-agent-history-list')).toBeInTheDocument());
-    expect(within(desktopOverlay).getByText('Craft started')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId('sidebar-agent-button-alice'));
-
-    await waitFor(() => expect(store.getState().selected_agent_revision).toBe(2));
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-
-    store.setState((state) => ({
-      history_cache: {
-        ...state.history_cache,
-        'agent:alice':
-          state.history_cache['agent:alice']?.status === 'ready'
-            ? {
-                ...state.history_cache['agent:alice'],
-                last_fetched_at: Date.now() - 31_000,
-              }
-            : state.history_cache['agent:alice'],
-      },
-    }));
-
-    fireEvent.click(screen.getByTestId('sidebar-agent-button-alice'));
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    expect(within(desktopOverlay).getByTestId('desktop-agent-history-updating')).toHaveTextContent('更新中…');
-    expect(within(desktopOverlay).getByText('Craft started')).toBeInTheDocument();
-
-    reloadResponse.resolve(
-      createResponse({
-        items: [
-          {
-            event_id: 'event-2',
-            type: 'action_completed',
-            occurred_at: 1_780_000_020_000,
-            agent_ids: ['alice'],
-            summary: {
-              emoji: '✅',
-              title: 'Craft complete',
-              text: 'Alice finished crafting.',
-            },
-            detail: {},
-          },
-          {
-            event_id: 'event-1',
-            type: 'action_started',
-            occurred_at: 1_780_000_000_000,
-            agent_ids: ['alice'],
-            summary: {
-              emoji: '🛠️',
-              title: 'Craft started',
-              text: 'Alice started crafting.',
-            },
-            detail: {},
-          },
-        ],
-      }),
-    );
-
-    await waitFor(() => expect(within(desktopOverlay).getByText('Craft complete')).toBeInTheDocument());
-    const items = within(within(desktopOverlay).getByTestId('desktop-agent-history-list')).getAllByTestId(
-      'desktop-agent-history-item',
-    );
-    expect(items[0]).toHaveTextContent('Craft complete');
-    expect(items[1]).toHaveTextContent('Craft started');
   });
 
   it('keeps the rendered desktop overlay history in sync during the close animation', async () => {
@@ -815,10 +514,6 @@ describe('App shell bootstrap', () => {
         ...state.history_cache,
         'agent:alice': {
           status: 'ready',
-          request: {
-            limit: 20,
-            merge: 'replace',
-          },
           last_fetched_at: 1_780_000_010_000,
           response: {
             items: [

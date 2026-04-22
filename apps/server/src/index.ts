@@ -128,6 +128,9 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
       agentHistoryManager,
     });
     snapshotPublisher.setBuildSnapshot(() => engine.getSnapshot());
+    // Ensure the spectator relay has a current snapshot right after a restart,
+    // even if no world event fires for a while.
+    snapshotPublisher.requestPublish();
     const adminRoleId = discordBot.getAdminRoleId();
     const worldAdminChannelId = discordBot.getWorldAdminChannelId();
     adminCommandHandler = new AdminCommandHandler(engine, options.publicBaseUrl, adminRoleId, worldAdminChannelId);

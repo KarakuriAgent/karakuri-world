@@ -11,9 +11,8 @@ The Vite app is fail-fast by design: both `npm run dev` and `npm run build` stop
 Create `apps/front/.env.local` (or another Vite env file) with:
 
 ```bash
-VITE_SNAPSHOT_URL=https://snapshots.example.com/snapshot/manifest.json
+VITE_SNAPSHOT_URL=https://snapshots.example.com/snapshot/latest.json
 VITE_AUTH_MODE=public
-VITE_API_BASE_URL=https://history.example.com/api/history
 VITE_PHASE3_EFFECTS_ENABLED=false
 VITE_PHASE3_EFFECT_RAIN_ENABLED=false
 VITE_PHASE3_EFFECT_SNOW_ENABLED=false
@@ -25,9 +24,8 @@ VITE_PHASE3_EFFECT_ACTION_PARTICLES_ENABLED=false
 
 Required values:
 
-- `VITE_SNAPSHOT_URL`: absolute browser-fetchable snapshot manifest URL. The browser polls the public R2/CDN `snapshot/manifest.json`, resolves the versioned snapshot key from that manifest, and then fetches the immutable `snapshot/v/{generated_at}.json` object. Because this value ships in the browser bundle, it must stay public-facing: use only `http` / `https`, and do not embed credentials, query params, or fragments.
+- `VITE_SNAPSHOT_URL`: absolute browser-fetchable snapshot alias URL (the R2/CDN `snapshot/latest.json`). The browser polls this object every 5 seconds and the edge caches it with `Cache-Control: public, max-age=5`. Because this value ships in the browser bundle, it must stay public-facing: use only `http` / `https`, and do not embed credentials, query params, or fragments. The history object URLs (`history/agents/{agent_id}.json` / `history/conversations/{conversation_id}.json`) are derived from the same origin.
 - `VITE_AUTH_MODE`: `public` or `access`.
-- `VITE_API_BASE_URL`: absolute Worker history API endpoint. This must be the full `/api/history` URL, not just the Worker origin and not a parent path such as `/api`. Because this value is also browser-exposed, do not embed credentials, query params, or fragments.
 - `VITE_PHASE3_EFFECTS_ENABLED` (optional): `true` or `false`. Defaults to `false`; keep it off until Phase 3 effects are intentionally being exercised.
 - `VITE_PHASE3_EFFECT_RAIN_ENABLED`, `VITE_PHASE3_EFFECT_SNOW_ENABLED`, `VITE_PHASE3_EFFECT_FOG_ENABLED`, `VITE_PHASE3_EFFECT_DAY_NIGHT_ENABLED` (optional): per-effect rollout flags. Each defaults to `false`, and each only takes effect when `VITE_PHASE3_EFFECTS_ENABLED=true`, so rain / snow / fog / day-night can be rolled back independently without removing the Phase 3 foundation.
 - `VITE_PHASE3_EFFECT_MOTION_ENABLED`, `VITE_PHASE3_EFFECT_ACTION_PARTICLES_ENABLED` (optional): rollout flags for movement interpolation and lightweight `current_activity.emoji` particles. Both default to `false`, and both only take effect when `VITE_PHASE3_EFFECTS_ENABLED=true`, so Phase 1 static node rendering remains the fallback during staged rollout or rollback.
@@ -49,8 +47,8 @@ The automated gate covers:
 
 - desktop + mobile initial shell layout on one shared map host
 - 100-agent snapshot reflection within the Phase 1 15-second budget
-- selected agent detail remains coherent even when `/api/history` is empty or degraded
-- populated `/api/history?agent_id=...&limit=20` checks and conversation log expansion are additive comparisons when ingest/backfill is available
+- selected agent detail remains coherent even when the history object is empty or degraded
+- populated agent history fetches (`history/agents/{agent_id}.json`) and conversation log expansion are additive comparisons when ingest/backfill is available
 - stale signaling driven by publish-health metadata (`last_publish_error_at`) rather than quiet periods alone, while later successful publishes or the 3-minute fallback resync clear the banner
 - **Units 29/32 alignment**: event-driven snapshot/history publication is the primary freshness path, and the quiet-period path is only the **3-minute fallback resync**, not a sub-minute heartbeat
 
@@ -58,31 +56,30 @@ Run the full suite with `npm test`; use `npm run test:phase1-acceptance` when yo
 
 ## Phase 2 auth-mode deployment guide
 
-Choose exactly one auth mode per deployment: `AUTH_MODE=public` or `AUTH_MODE=access`. A deployment is valid only when Pages, Worker `/api/history`, and the R2 `snapshot_url` are all configured for that same mode.
+Choose exactly one auth mode per deployment: `AUTH_MODE=public` or `AUTH_MODE=access`. A deployment is valid only when Pages and the R2 custom domain (serving both `snapshot/latest.json` and `history/*`) are configured for that same mode.
 
-- `AUTH_MODE=public`: Pages, Worker `/api/history`, and the R2 custom domain are all publicly reachable.
-- `AUTH_MODE=access`: Pages, Worker `/api/history`, and the R2 custom domain are all protected by Cloudflare Access, and the browser fetches both `snapshot_url` and `/api/history` with `credentials: 'include'`.
-- If Pages and Worker `/api/history` are cross-origin, set Worker `HISTORY_CORS_ALLOWED_ORIGINS` to a comma-separated list of exact Pages origins (for example `https://ui.example.com,https://preview-ui.example.com`). The Worker echoes only configured origins; in `AUTH_MODE=access` it also returns `Access-Control-Allow-Credentials: true`, so `*` is not a valid substitute.
+- `AUTH_MODE=public`: Pages and the R2 custom domain are all publicly reachable.
+- `AUTH_MODE=access`: Pages and the R2 custom domain are protected by Cloudflare Access, and the browser fetches snapshot and history objects with `credentials: 'include'`.
 
-Do not mix modes within one deployment, and do not add a Worker/Pages snapshot proxy fallback when `AUTH_MODE=access` preconditions are not met. If Access cookie sharing or pre-seeding cannot be guaranteed, switch the deployment to `AUTH_MODE=public` instead of proxying snapshot traffic through `/api`.
+Do not mix modes within one deployment, and do not add a Worker/Pages snapshot proxy fallback when `AUTH_MODE=access` preconditions are not met. If Access cookie sharing or pre-seeding cannot be guaranteed, switch the deployment to `AUTH_MODE=public`.
 
 ### Required R2 custom-domain setup
 
-`snapshot_url` is the public manifest URL on the R2 custom domain (default: `https://snapshot.example.com/snapshot/manifest.json`). The browser fetches that manifest in both auth modes, then follows its `latest_snapshot_key` to the immutable versioned snapshot object. `snapshot/latest.json` remains a compatibility alias only.
+`snapshot_url` is the public alias URL on the R2 custom domain (default: `https://snapshot.example.com/snapshot/latest.json`). The browser fetches this object directly every 5 seconds, and history documents (`history/agents/{agent_id}.json` / `history/conversations/{conversation_id}.json`) are fetched from the same origin on the same cadence.
 
 Required operator setup on the R2 custom domain:
 
 1. Publish the bucket through a Cloudflare custom domain.
-2. Add Cache Rules for the snapshot object path with `Cache Everything`.
-3. Fix the Edge TTL to `5 seconds`.
-4. Keep that rule aligned with the origin `Cache-Control: public, max-age=5`.
-5. If Pages and the R2 custom domain are cross-origin, configure R2 CORS so the Pages origin is allowed in both auth modes. For `AUTH_MODE=access`, also allow credentialed fetches (`Access-Control-Allow-Credentials: true`).
+2. Add Cache Rules with `Cache Everything` on both `snapshot/latest.json` and `history/*`.
+3. Fix the Edge TTL to `5 seconds` for each rule.
+4. Keep those rules aligned with the origin `Cache-Control: public, max-age=5`.
+5. If Pages and the R2 custom domain are cross-origin, configure R2 CORS so the Pages origin is allowed for both `snapshot/*` and `history/*` in both auth modes. For `AUTH_MODE=access`, also allow credentialed fetches (`Access-Control-Allow-Credentials: true`).
 
 ### `AUTH_MODE=access` hard preconditions
 
 `AUTH_MODE=access` is valid only when the browser already has a usable Access session for both the Pages origin and the R2 custom domain before the SPA starts polling `snapshot_url`.
 
-- Preferred: place Pages, Worker `/api/history`, and the R2 custom domain behind one Access app or an equivalent multi-domain policy so one login pre-seeds both cookies.
+- Preferred: place Pages and the R2 custom domain behind one Access app or an equivalent multi-domain policy so one login pre-seeds both cookies.
 - Acceptable alternative: explicitly pre-seed the R2 custom-domain cookie before the SPA starts (for example via a dedicated R2 visit / silent pre-seeding flow).
 - Not acceptable: relying on CORS alone, or falling back to a same-origin Worker/Pages snapshot proxy when R2 Access cookies are missing.
 
@@ -94,14 +91,13 @@ Run the following after each deployment or auth-mode change:
 2. Request `VITE_SNAPSHOT_URL` directly in the browser:
    - `AUTH_MODE=public`: expect HTTP 200 without Access login.
    - `AUTH_MODE=access`: expect HTTP 200 only after Pages and R2 Access sessions are both established; if R2 still challenges while Pages is already logged in, the deployment is not ready.
-3. Verify the snapshot response comes from the R2 custom domain object path (the Worker no longer exposes any `/api/snapshot` pull endpoint).
+3. Verify the snapshot response comes from the R2 custom domain (`snapshot/latest.json`); the Worker exposes no read-side endpoints.
 4. Repeat the snapshot request and confirm edge caching (`CF-Cache-Status: HIT` or equivalent) with the `Cache Everything` + `Edge TTL = 5 seconds` rule in effect.
-5. Request `/api/history?agent_id=<known-agent>&limit=1` from the deployed Worker:
+5. Request `history/agents/<known-agent>.json` from the same R2 origin:
    - `AUTH_MODE=public`: expect success without Access login.
    - `AUTH_MODE=access`: expect an Access auth challenge/failure before login, then success after the Access session is established.
-6. If Pages and Worker `/api/history` are cross-origin, confirm the Worker preflight/GET responses include `Access-Control-Allow-Origin: <Pages origin>`, and for `AUTH_MODE=access` also confirm `Access-Control-Allow-Credentials: true` and a successful credentialed browser fetch.
-7. If Pages and R2 are cross-origin, confirm the R2 response includes the expected CORS behavior for the Pages origin in both auth modes, and for `AUTH_MODE=access` also confirm `Access-Control-Allow-Credentials: true` and a successful credentialed fetch.
-8. If any of the above fails in `AUTH_MODE=access`, fix Access cookie sharing / pre-seeding or choose `AUTH_MODE=public`; do not ship a proxy fallback.
+6. If Pages and R2 are cross-origin, confirm the R2 response includes the expected CORS behavior for the Pages origin on both `snapshot/*` and `history/*`, and for `AUTH_MODE=access` also confirm `Access-Control-Allow-Credentials: true` and a successful credentialed fetch.
+7. If any of the above fails in `AUTH_MODE=access`, fix Access cookie sharing / pre-seeding or choose `AUTH_MODE=public`; do not ship a proxy fallback.
 
 ### Manual acceptance items that still require an operator
 
@@ -160,13 +156,13 @@ For the interactive debug flow (`npm run debug:start`), the script now prompts f
 2. Run `npx wrangler deploy`.
 3. `curl` the Worker URL once so `UIBridgeDurableObject.boot()` runs immediately and starts the quiet-period alarm path.
 
-At minimum, deployment requires the shared publish secret `SNAPSHOT_PUBLISH_AUTH_KEY` used by the backend when calling `/api/publish-snapshot` and `/api/publish-agent-history`. When Pages and Worker `/api/history` are cross-origin, also set `HISTORY_CORS_ALLOWED_ORIGINS` to the exact Pages origin list.
+At minimum, deployment requires the shared publish secret `SNAPSHOT_PUBLISH_AUTH_KEY` used by the backend when calling `/api/publish-snapshot` and `/api/publish-agent-history`. The Worker no longer serves any read-side `/api/history` endpoint, so `HISTORY_CORS_ALLOWED_ORIGINS` is not required.
 
-The shared R2 bucket now stores both the published snapshot objects and the history objects read by `GET /api/history` (for example `history/agents/{agent_id}.json` and `history/conversations/{conversation_id}.json`).
+The shared R2 bucket stores the snapshot alias (`snapshot/latest.json`) alongside history objects (`history/agents/{agent_id}.json` and `history/conversations/{conversation_id}.json`). Observer UIs read these objects directly from the R2 custom domain.
 
 ## Relay alert wiring and readiness gate
 
-Unit 32 removed relay `/ws` as a primary path, and the backend has now removed the legacy `/ws` endpoint entirely. The Worker now fail-closes `/ws` with `404` instead of falling through any Durable Object fallback. The readiness story is polling + R2/CDN freshness, manifest-driven versioned snapshot fetches, event-driven snapshot/history publication, and auth-mode correctness, with only the 3-minute quiet-period fallback resync remaining. The relay alert artifacts (`relay-alerting-spec.json` etc.) cover `ui.*` and `relay.r2.*` signals only — no relay WebSocket signals remain.
+Unit 32 removed relay `/ws` as a primary path, and the backend has now removed the legacy `/ws` endpoint entirely. The Worker now fail-closes `/ws` with `404` instead of falling through any Durable Object fallback. The readiness story is polling + R2/CDN freshness, direct alias-object fetches for both snapshot and history, event-driven snapshot/history publication, and auth-mode correctness, with only the 3-minute quiet-period fallback resync remaining. The relay alert artifacts (`relay-alerting-spec.json` etc.) cover `ui.*` and `relay.r2.*` signals only — no relay WebSocket signals remain.
 
 Authoritative repo-owned artifacts:
 

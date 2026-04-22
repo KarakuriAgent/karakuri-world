@@ -1,8 +1,17 @@
-import { z } from 'zod';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
-import type { HistoryResponse } from '../../worker/src/history/api.js';
-import { snapshotManifestSchema } from '../../worker/src/contracts/snapshot-manifest.js';
+import {
+  agentHistoryDocumentSchema,
+  coerceAgentHistoryDocument,
+  coerceConversationHistoryDocument,
+  conversationHistoryDocumentSchema,
+  dedupeHistoryEntriesByEventId,
+  historyAgentObjectKey,
+  historyConversationObjectKey,
+  sortHistoryEntriesByOccurredAtDesc,
+  type HistoryEntry,
+  type HistoryResponse,
+} from '../../worker/src/contracts/history-document.js';
 import { spectatorSnapshotSchema } from '../../worker/src/contracts/snapshot-serializer.js';
 import type {
   SpectatorBuildingConfig,
@@ -15,21 +24,13 @@ import type { AppEnv } from '../env-contract.js';
 
 export type HistoryScopeKey = `agent:${string}` | `conversation:${string}`;
 export type HistoryScope = { agent_id: string } | { conversation_id: string };
-export type HistoryFetchMergeMode = 'replace' | 'append';
-
-export interface HistoryFetchRequest {
-  cursor?: string;
-  limit: number;
-  merge: HistoryFetchMergeMode;
-}
 
 export type HistoryCacheEntry =
   | { status: 'idle' }
-  | { status: 'loading'; request: HistoryFetchRequest; response?: HistoryResponse; last_fetched_at?: number }
-  | { status: 'ready'; response: HistoryResponse; last_fetched_at: number; request: HistoryFetchRequest }
+  | { status: 'loading'; response?: HistoryResponse; last_fetched_at?: number }
+  | { status: 'ready'; response: HistoryResponse; last_fetched_at: number }
   | {
       status: 'error';
-      request: HistoryFetchRequest;
       response?: HistoryResponse;
       last_fetched_at?: number;
       error_at: number;
@@ -38,16 +39,9 @@ export type HistoryCacheEntry =
 export type SnapshotStatus = 'idle' | 'loading' | 'ready' | 'error' | 'incompatible';
 export type MobileSheetMode = 'list' | 'detail';
 
-export interface FetchHistoryOptions {
-  limit?: number;
-  cursor?: string;
-  merge?: HistoryFetchMergeMode;
-}
-
 export interface SnapshotStoreState {
   snapshot_url: string;
   auth_mode: AppEnv['authMode'];
-  history_api_url?: string;
   snapshot?: SpectatorSnapshot;
   snapshot_status: SnapshotStatus;
   last_success_at?: number;
@@ -57,7 +51,7 @@ export interface SnapshotStoreState {
   selected_agent_revision: number;
   setSelectedAgentId: (agentId?: string) => void;
   history_cache: Record<HistoryScopeKey, HistoryCacheEntry | undefined>;
-  fetchHistory: (scope: HistoryScope, options?: FetchHistoryOptions) => Promise<void>;
+  fetchHistory: (scope: HistoryScope) => Promise<void>;
   expanded_conversation_ids: Record<string, boolean | undefined>;
   toggleConversationExpanded: (conversationId: string, expanded?: boolean) => void;
   mobile_sheet_mode: MobileSheetMode;
@@ -70,7 +64,6 @@ export interface SnapshotStoreState {
 export interface CreateSnapshotStoreOptions {
   snapshotUrl: string;
   authMode: AppEnv['authMode'];
-  historyApiUrl?: string;
   fetchImpl?: typeof fetch;
   pollIntervalMs?: number;
   fetchTimeoutMs?: number;
@@ -88,163 +81,19 @@ interface SnapshotVersion {
   last_publish_error_at?: number;
 }
 
-interface SnapshotManifestMetadata extends SnapshotVersion {
-  latest_snapshot_key: string;
-}
-
-const historyResponseSchema = z.object({
-  items: z.array(
-    z.object({
-      event_id: z.string().min(1),
-      type: z.string().min(1),
-      occurred_at: z.number().int().nonnegative(),
-      agent_ids: z.array(z.string().min(1)),
-      conversation_id: z.string().min(1).optional(),
-      summary: z.object({
-        emoji: z.string(),
-        title: z.string(),
-        text: z.string(),
-      }),
-      detail: z.record(z.string(), z.unknown()),
-    }),
-  ),
-  next_cursor: z.string().min(1).optional(),
-});
-
 class SnapshotIncompatibleError extends Error {}
 const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
 const POLL_STOP_ABORT_REASON = 'snapshot-poll-stopped';
 const POLL_TIMEOUT_ABORT_REASON = 'snapshot-poll-timeout';
 const HISTORY_ABORT_REASON = 'history-request-replaced';
-export const HISTORY_CACHE_TTL_MS = 30_000;
-export const DEFAULT_AGENT_HISTORY_LIMIT = 20;
-export const DEFAULT_CONVERSATION_HISTORY_LIMIT = 50;
-export const SNAPSHOT_CONDITIONAL_FETCH_GATE = Object.freeze({
-  enabled: false as const,
-  reason: '304 semantics stay disabled until the detailed conditional-fetch design is finalized.',
-});
+const HISTORY_STOP_ABORT_REASON = 'history-polling-stopped';
 
 export function toHistoryScopeKey(scope: HistoryScope): HistoryScopeKey {
   return 'agent_id' in scope ? `agent:${scope.agent_id}` : `conversation:${scope.conversation_id}`;
 }
 
-export function shouldFetchHistory(entry: HistoryCacheEntry | undefined, now = Date.now()): boolean {
-  if (!entry || entry.status === 'idle' || entry.status === 'error') {
-    return true;
-  }
-
-  if (entry.status === 'loading') {
-    return false;
-  }
-
-  return now - entry.last_fetched_at >= HISTORY_CACHE_TTL_MS;
-}
-
-export function getHistoryRetryOptions(entry: HistoryCacheEntry | undefined): FetchHistoryOptions | undefined {
-  if (!entry || entry.status !== 'error') {
-    return undefined;
-  }
-
-  return {
-    limit: entry.request.limit,
-    ...(entry.request.cursor ? { cursor: entry.request.cursor } : {}),
-    merge: entry.request.merge,
-  };
-}
-
-function getDefaultHistoryLimit(scope: HistoryScope): number {
-  return 'agent_id' in scope ? DEFAULT_AGENT_HISTORY_LIMIT : DEFAULT_CONVERSATION_HISTORY_LIMIT;
-}
-
-function getHistoryRequest(scope: HistoryScope, options?: FetchHistoryOptions): HistoryFetchRequest {
-  const merge = options?.merge ?? (options?.cursor ? 'append' : 'replace');
-
-  return {
-    limit: options?.limit ?? getDefaultHistoryLimit(scope),
-    ...(options?.cursor ? { cursor: options.cursor } : {}),
-    merge,
-  };
-}
-
-function buildHistoryRequestUrl(baseUrl: string, scope: HistoryScope, request: HistoryFetchRequest): string {
-  const url = new URL(baseUrl);
-
-  if ('agent_id' in scope) {
-    url.searchParams.set('agent_id', scope.agent_id);
-  } else {
-    url.searchParams.set('conversation_id', scope.conversation_id);
-  }
-
-  url.searchParams.set('limit', String(request.limit));
-
-  if (request.cursor) {
-    url.searchParams.set('cursor', request.cursor);
-  }
-
-  return url.toString();
-}
-
-function compareHistoryItems(
-  left: HistoryResponse['items'][number],
-  right: HistoryResponse['items'][number],
-): number {
-  if (left.occurred_at !== right.occurred_at) {
-    return right.occurred_at - left.occurred_at;
-  }
-
-  return right.event_id.localeCompare(left.event_id);
-}
-
-export function mergeHistoryResponses(current: HistoryResponse | undefined, incoming: HistoryResponse): HistoryResponse {
-  if (!current) {
-    return incoming;
-  }
-
-  const mergedItems = [...current.items, ...incoming.items].sort(compareHistoryItems);
-  const dedupedItems = mergedItems.filter((item, index, items) => {
-    return items.findIndex((candidate) => candidate.event_id === item.event_id) === index;
-  });
-
-  return {
-    items: dedupedItems,
-    ...(incoming.next_cursor ? { next_cursor: incoming.next_cursor } : {}),
-  };
-}
-
-function snapshotHasAgent(snapshot: SpectatorSnapshot, agentId?: string): boolean {
-  return agentId ? snapshot.agents.some((agent) => agent.agent_id === agentId) : false;
-}
-
-function reconcileSelectionState(
-  snapshot: SpectatorSnapshot,
-  state: Pick<SnapshotStoreState, 'selected_agent_id' | 'mobile_sheet_mode'>,
-): Partial<Pick<SnapshotStoreState, 'selected_agent_id' | 'mobile_sheet_mode'>> {
-  if (!snapshotHasAgent(snapshot, state.selected_agent_id)) {
-    if (!state.selected_agent_id) {
-      return state.mobile_sheet_mode === 'detail' ? { mobile_sheet_mode: 'list' } : {};
-    }
-
-    return {
-      selected_agent_id: undefined,
-      ...(state.mobile_sheet_mode === 'detail' ? { mobile_sheet_mode: 'list' } : {}),
-    };
-  }
-
-  return {};
-}
-
 export function buildAuthModeRequestInit(authMode: AppEnv['authMode']): RequestInit {
   return authMode === 'access' ? { credentials: 'include' } : {};
-}
-
-export function buildSnapshotRequestInit(authMode: AppEnv['authMode']): RequestInit {
-  const requestInit = buildAuthModeRequestInit(authMode);
-
-  if (!SNAPSHOT_CONDITIONAL_FETCH_GATE.enabled) {
-    return requestInit;
-  }
-
-  throw new Error(SNAPSHOT_CONDITIONAL_FETCH_GATE.reason);
 }
 
 export function compareSnapshotVersion(left: SnapshotVersion, right: SnapshotVersion): number {
@@ -390,10 +239,76 @@ function isSchemaIncompatible(value: unknown): boolean {
   return value.schema_version !== 1;
 }
 
+function snapshotHasAgent(snapshot: SpectatorSnapshot, agentId?: string): boolean {
+  return agentId ? snapshot.agents.some((agent) => agent.agent_id === agentId) : false;
+}
+
+function resolveMobileSheetModeOnSelection(
+  agentId: string | undefined,
+  currentMode: MobileSheetMode,
+): MobileSheetMode {
+  if (agentId) {
+    return 'detail';
+  }
+  if (currentMode === 'detail') {
+    return 'list';
+  }
+  return currentMode;
+}
+
+function reconcileSelectionState(
+  snapshot: SpectatorSnapshot,
+  state: Pick<SnapshotStoreState, 'selected_agent_id' | 'mobile_sheet_mode'>,
+): Partial<Pick<SnapshotStoreState, 'selected_agent_id' | 'mobile_sheet_mode'>> {
+  if (!snapshotHasAgent(snapshot, state.selected_agent_id)) {
+    if (!state.selected_agent_id) {
+      return state.mobile_sheet_mode === 'detail' ? { mobile_sheet_mode: 'list' } : {};
+    }
+
+    return {
+      selected_agent_id: undefined,
+      ...(state.mobile_sheet_mode === 'detail' ? { mobile_sheet_mode: 'list' } : {}),
+    };
+  }
+
+  return {};
+}
+
+function deriveHistoryBaseUrl(snapshotUrl: string): string {
+  return new URL(snapshotUrl).origin;
+}
+
+function buildHistoryObjectUrl(historyBaseUrl: string, scope: HistoryScope): string {
+  const objectKey =
+    'agent_id' in scope ? historyAgentObjectKey(scope.agent_id) : historyConversationObjectKey(scope.conversation_id);
+  return `${historyBaseUrl}/${objectKey}`;
+}
+
+function normalizeAgentHistory(document: unknown, agentId: string): HistoryResponse {
+  const parsed = agentHistoryDocumentSchema.parse(document);
+  const coerced = coerceAgentHistoryDocument(parsed, agentId);
+  const combined: HistoryEntry[] = [
+    ...coerced.items,
+    ...coerced.recent_actions,
+    ...coerced.recent_conversations,
+  ];
+
+  return {
+    items: sortHistoryEntriesByOccurredAtDesc(dedupeHistoryEntriesByEventId(combined)),
+  };
+}
+
+function normalizeConversationHistory(document: unknown, conversationId: string): HistoryResponse {
+  const parsed = conversationHistoryDocumentSchema.parse(document);
+  const coerced = coerceConversationHistoryDocument(parsed, conversationId);
+  return {
+    items: sortHistoryEntriesByOccurredAtDesc(coerced.items),
+  };
+}
+
 export function createSnapshotStore({
   snapshotUrl,
   authMode,
-  historyApiUrl,
   fetchImpl = ((...args) => fetch(...args)) as typeof fetch,
   pollIntervalMs = 5_000,
   fetchTimeoutMs = DEFAULT_FETCH_TIMEOUT_MS,
@@ -402,6 +317,7 @@ export function createSnapshotStore({
   initialSelectedAgentId,
 }: CreateSnapshotStoreOptions): SnapshotStoreApi {
   const hasInitialSelectedAgent = initialSnapshot ? snapshotHasAgent(initialSnapshot, initialSelectedAgentId) : false;
+  const historyBaseUrl = deriveHistoryBaseUrl(snapshotUrl);
   let pollingInterval: ReturnType<typeof setInterval> | undefined;
   let pollingStarted = false;
   let pollInFlight = false;
@@ -413,11 +329,11 @@ export function createSnapshotStore({
   let activePollTimeout: ReturnType<typeof setTimeout> | undefined;
   let historyRequestId = 0;
   const activeHistoryRequests = new Map<HistoryScopeKey, { id: number; controller: AbortController }>();
+  const notifiedMissingScopes = new Set<HistoryScopeKey>();
 
   const store = createStore<SnapshotStoreState>(() => ({
     snapshot_url: snapshotUrl,
     auth_mode: authMode,
-    ...(historyApiUrl ? { history_api_url: historyApiUrl } : {}),
     ...(initialSnapshot ? { snapshot: initialSnapshot } : {}),
     snapshot_status: initialStatus,
     ...(initialSnapshot ? { last_success_at: Date.now() } : {}),
@@ -425,14 +341,17 @@ export function createSnapshotStore({
     ...(hasInitialSelectedAgent ? { selected_agent_id: initialSelectedAgentId } : {}),
     selected_agent_revision: hasInitialSelectedAgent ? 1 : 0,
     setSelectedAgentId: (agentId?: string) => {
-      store.setState((state) => ({
-        selected_agent_id: agentId,
-        selected_agent_revision: state.selected_agent_revision + 1,
-        mobile_sheet_mode: agentId ? 'detail' : state.mobile_sheet_mode === 'detail' ? 'list' : state.mobile_sheet_mode,
-      }));
+      store.setState((state) => {
+        const nextMobileSheetMode = resolveMobileSheetModeOnSelection(agentId, state.mobile_sheet_mode);
+        return {
+          selected_agent_id: agentId,
+          selected_agent_revision: state.selected_agent_revision + 1,
+          mobile_sheet_mode: nextMobileSheetMode,
+        };
+      });
     },
     history_cache: {},
-    fetchHistory: (scope, options) => fetchHistory(scope, options),
+    fetchHistory: (scope) => fetchHistory(scope),
     expanded_conversation_ids: {},
     toggleConversationExpanded: (conversationId, expanded) => {
       store.setState((state) => {
@@ -491,12 +410,12 @@ export function createSnapshotStore({
       queuedLifecycleId = undefined;
       queuedManualPoll = false;
       abortActivePollRequest(POLL_STOP_ABORT_REASON);
+      abortAllHistoryRequests(HISTORY_STOP_ABORT_REASON);
 
       if (pollingInterval !== undefined) {
         clearInterval(pollingInterval);
         pollingInterval = undefined;
       }
-
     },
   }));
 
@@ -522,6 +441,13 @@ export function createSnapshotStore({
     activePollAbortController = undefined;
   }
 
+  function abortAllHistoryRequests(reason: string): void {
+    for (const { controller } of activeHistoryRequests.values()) {
+      controller.abort(reason);
+    }
+    activeHistoryRequests.clear();
+  }
+
   function startPollingInterval(lifecycleId: number): void {
     pollingInterval = setInterval(() => {
       void pollSnapshot(lifecycleId);
@@ -542,26 +468,11 @@ export function createSnapshotStore({
     );
   }
 
-  function mergeSnapshotVersion(
-    snapshot: SpectatorSnapshot,
-    version: Pick<SnapshotVersion, 'published_at' | 'last_publish_error_at'>,
-  ): SpectatorSnapshot {
-    return {
-      ...snapshot,
-      published_at: version.published_at,
-      ...(version.last_publish_error_at !== undefined ? { last_publish_error_at: version.last_publish_error_at } : {}),
-    };
-  }
-
   async function fetchJsonOrThrow(url: string, signal: AbortSignal): Promise<unknown> {
     const response = await fetchImpl(url, {
-      ...buildSnapshotRequestInit(authMode),
+      ...buildAuthModeRequestInit(authMode),
       signal,
     });
-
-    if (response.status === 304) {
-      throw new Error('Snapshot conditional fetch is disabled; HTTP 304 must not be accepted yet');
-    }
 
     if (!response.ok) {
       throw new Error(`Snapshot fetch failed with HTTP ${response.status}`);
@@ -578,49 +489,8 @@ export function createSnapshotStore({
     return parsed;
   }
 
-  function parseDirectSnapshot(parsed: unknown): SpectatorSnapshot | null {
-    const result = spectatorSnapshotSchema.safeParse(parsed);
-    return result.success ? (result.data as SpectatorSnapshot) : null;
-  }
-
-  function parseSnapshotManifest(parsed: unknown): SnapshotManifestMetadata | null {
-    const result = snapshotManifestSchema.safeParse(parsed);
-    return result.success ? (result.data as SnapshotManifestMetadata) : null;
-  }
-
-  async function fetchSnapshot(signal: AbortSignal, currentSnapshot?: SpectatorSnapshot): Promise<SpectatorSnapshot> {
+  async function fetchSnapshot(signal: AbortSignal): Promise<SpectatorSnapshot> {
     const parsed = await fetchJsonOrThrow(snapshotUrl, signal);
-    const directSnapshot = parseDirectSnapshot(parsed);
-
-    if (directSnapshot) {
-      return directSnapshot;
-    }
-
-    const manifest = parseSnapshotManifest(parsed);
-    if (manifest) {
-      if (currentSnapshot && currentSnapshot.generated_at === manifest.generated_at) {
-        return mergeSnapshotVersion(currentSnapshot, manifest);
-      }
-
-      const versionedSnapshotUrl = new URL(`/${manifest.latest_snapshot_key.replace(/^\/+/, '')}`, new URL(snapshotUrl).origin)
-        .toString();
-      const versionedParsed = await fetchJsonOrThrow(versionedSnapshotUrl, signal);
-      const versionedSnapshot = parseDirectSnapshot(versionedParsed);
-
-      if (!versionedSnapshot) {
-        if (isSchemaIncompatible(versionedParsed)) {
-          const issue =
-            typeof versionedParsed === 'object' && versionedParsed !== null && 'schema_version' in versionedParsed
-              ? String(versionedParsed.schema_version)
-              : 'unknown';
-          throw new SnapshotIncompatibleError(`Unsupported snapshot schema_version: ${issue}`);
-        }
-
-        throw new Error('Snapshot manifest pointed to an invalid spectator snapshot payload');
-      }
-
-      return mergeSnapshotVersion(versionedSnapshot, manifest);
-    }
 
     if (isSchemaIncompatible(parsed)) {
       const issue =
@@ -639,19 +509,8 @@ export function createSnapshotStore({
     return result.data as SpectatorSnapshot;
   }
 
-  async function fetchHistory(scope: HistoryScope, options?: FetchHistoryOptions): Promise<void> {
-    const currentHistoryApiUrl = store.getState().history_api_url ?? historyApiUrl;
-
-    if (!currentHistoryApiUrl) {
-      throw new Error('historyApiUrl is required for history fetches');
-    }
-
+  async function fetchHistory(scope: HistoryScope): Promise<void> {
     const scopeKey = toHistoryScopeKey(scope);
-    const request = getHistoryRequest(scope, options);
-
-    if (request.merge === 'append' && !request.cursor) {
-      return;
-    }
 
     activeHistoryRequests.get(scopeKey)?.controller.abort(HISTORY_ABORT_REASON);
 
@@ -666,7 +525,6 @@ export function createSnapshotStore({
           ...state.history_cache,
           [scopeKey]: {
             status: 'loading',
-            request,
             ...(previousEntry && 'response' in previousEntry && previousEntry.response
               ? { response: previousEntry.response }
               : {}),
@@ -678,47 +536,61 @@ export function createSnapshotStore({
       };
     });
 
+    const historyUrl = buildHistoryObjectUrl(historyBaseUrl, scope);
+
     try {
-      const response = await fetchImpl(buildHistoryRequestUrl(currentHistoryApiUrl, scope, request), {
+      const response = await fetchImpl(historyUrl, {
         ...buildAuthModeRequestInit(authMode),
         signal: controller.signal,
       });
-
-      if (!response.ok) {
-        throw new Error(`History fetch failed with HTTP ${response.status}`);
-      }
-
-      const parsed = historyResponseSchema.safeParse(await response.json());
-
-      if (!parsed.success) {
-        throw new Error(parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; '));
-      }
 
       if (activeHistoryRequests.get(scopeKey)?.id !== requestId) {
         return;
       }
 
-      const responseData = parsed.data as HistoryResponse;
+      let responseData: HistoryResponse;
 
-      store.setState((state) => {
-        const currentEntry = state.history_cache[scopeKey];
-        const currentResponse = currentEntry && 'response' in currentEntry ? currentEntry.response : undefined;
-        const nextResponse = request.merge === 'append' ? mergeHistoryResponses(currentResponse, responseData) : responseData;
+      if (response.status === 404) {
+        if (!notifiedMissingScopes.has(scopeKey)) {
+          notifiedMissingScopes.add(scopeKey);
+          console.warn('History object missing (treating as empty)', { scope, url: historyUrl });
+        }
+        responseData = { items: [] };
+      } else if (!response.ok) {
+        throw new Error(`History fetch failed with HTTP ${response.status}`);
+      } else {
+        notifiedMissingScopes.delete(scopeKey);
+        const parsed = await response.json();
+        try {
+          responseData =
+            'agent_id' in scope
+              ? normalizeAgentHistory(parsed, scope.agent_id)
+              : normalizeConversationHistory(parsed, scope.conversation_id);
+        } catch (parseError) {
+          console.error('History schema parse failed', {
+            scope,
+            url: historyUrl,
+            error: parseError instanceof Error ? parseError.message : String(parseError),
+          });
+          throw parseError;
+        }
+      }
 
-        return {
-          history_cache: {
-            ...state.history_cache,
-            [scopeKey]: {
-              status: 'ready',
-              request,
-              response: nextResponse as HistoryResponse,
-              last_fetched_at: Date.now(),
-            },
+      store.setState((state) => ({
+        history_cache: {
+          ...state.history_cache,
+          [scopeKey]: {
+            status: 'ready',
+            response: responseData,
+            last_fetched_at: Date.now(),
           },
-        };
-      });
+        },
+      }));
     } catch (error) {
-      if (controller.signal.aborted && controller.signal.reason === HISTORY_ABORT_REASON) {
+      if (
+        controller.signal.aborted &&
+        (controller.signal.reason === HISTORY_ABORT_REASON || controller.signal.reason === HISTORY_STOP_ABORT_REASON)
+      ) {
         return;
       }
 
@@ -733,7 +605,6 @@ export function createSnapshotStore({
             ...state.history_cache,
             [scopeKey]: {
               status: 'error',
-              request,
               ...(currentEntry && 'response' in currentEntry && currentEntry.response
                 ? { response: currentEntry.response }
                 : {}),
@@ -748,6 +619,24 @@ export function createSnapshotStore({
     } finally {
       if (activeHistoryRequests.get(scopeKey)?.id === requestId) {
         activeHistoryRequests.delete(scopeKey);
+      }
+    }
+  }
+
+  function refreshActiveHistoryScopes(lifecycleId?: number): void {
+    if (lifecycleId !== undefined && !isPollingLifecycleActive(lifecycleId)) {
+      return;
+    }
+
+    const { selected_agent_id: selectedAgentId, expanded_conversation_ids: expandedConversationIds } = store.getState();
+
+    if (selectedAgentId) {
+      void fetchHistory({ agent_id: selectedAgentId });
+    }
+
+    for (const [conversationId, expanded] of Object.entries(expandedConversationIds)) {
+      if (expanded) {
+        void fetchHistory({ conversation_id: conversationId });
       }
     }
   }
@@ -782,7 +671,7 @@ export function createSnapshotStore({
     }
 
     try {
-      const nextSnapshot = await fetchSnapshot(requestController.signal, currentSnapshot);
+      const nextSnapshot = await fetchSnapshot(requestController.signal);
       if (lifecycleId !== undefined && !isPollingLifecycleActive(lifecycleId)) {
         return;
       }
@@ -806,6 +695,7 @@ export function createSnapshotStore({
             lifecycleId,
           );
           applyStaleState(previousSnapshot, lifecycleId);
+          refreshActiveHistoryScopes(lifecycleId);
           return;
         }
       }
@@ -825,6 +715,7 @@ export function createSnapshotStore({
         lifecycleId,
       );
       applyStaleState(snapshotWithSharedStaticRefs, lifecycleId);
+      refreshActiveHistoryScopes(lifecycleId);
     } catch (error) {
       if (requestController.signal.aborted && requestController.signal.reason === POLL_STOP_ABORT_REASON) {
         return;

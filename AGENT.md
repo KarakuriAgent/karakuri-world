@@ -143,9 +143,8 @@ apps/front/
 
 フロント側（`apps/front/.env.local` / Vite env）:
 
-- `VITE_SNAPSHOT_URL`: ブラウザが直接 fetch する snapshot manifest の絶対 URL
+- `VITE_SNAPSHOT_URL`: ブラウザが直接 fetch する snapshot alias (`snapshot/latest.json`) の絶対 URL。history オブジェクト (`history/agents/{agent_id}.json` / `history/conversations/{conversation_id}.json`) は同じ origin から派生
 - `VITE_AUTH_MODE`: `public` または `access`
-- `VITE_API_BASE_URL`: Worker history endpoint の絶対 URL（末尾まで `/api/history` まで含める）
 - Phase 3 エフェクト系 rollout フラグ（`VITE_PHASE3_EFFECTS_ENABLED` ほか）は `apps/front/README.md` を参照
 
 ### import パス

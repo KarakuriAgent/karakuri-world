@@ -10,10 +10,13 @@ import { createFixtureSnapshot } from './fixtures/snapshot.js';
 import type { SpectatorAgentSnapshot, SpectatorMapSnapshot, SpectatorSnapshot } from '../../worker/src/contracts/spectator-snapshot.js';
 
 const env = {
-  snapshotUrl: 'https://snapshot.example.com/snapshot/manifest.json',
+  snapshotUrl: 'https://snapshot.example.com/snapshot/latest.json',
   authMode: 'public' as const,
-  apiBaseUrl: 'https://relay.example.com/api/history',
 };
+
+const HISTORY_URL_PREFIX = 'https://snapshot.example.com/history/';
+const AGENT_HISTORY_URL_ALICE = 'https://snapshot.example.com/history/agents/alice.json';
+const CONVERSATION_HISTORY_URL_CONV_1 = 'https://snapshot.example.com/history/conversations/conv-1.json';
 
 function createResponse(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
@@ -125,7 +128,7 @@ describe('Phase 1 acceptance', () => {
     const fetchMock = vi.fn<typeof fetch>(async (input) => {
       const url = typeof input === 'string' ? input : input instanceof Request ? input.url : input.toString();
 
-      if (url.startsWith(env.apiBaseUrl)) {
+      if (url.startsWith(HISTORY_URL_PREFIX)) {
         return createResponse({ items: [] });
       }
 
@@ -135,7 +138,6 @@ describe('Phase 1 acceptance', () => {
     const store = createSnapshotStore({
       snapshotUrl: env.snapshotUrl,
       authMode: env.authMode,
-      historyApiUrl: env.apiBaseUrl,
       fetchImpl: fetchMock,
       pollIntervalMs: 5_000,
       initialSnapshot: initialSnapshot,
@@ -171,11 +173,11 @@ describe('Phase 1 acceptance', () => {
     const fetchMock = vi.fn<typeof fetch>(async (input) => {
       const url = typeof input === 'string' ? input : input instanceof Request ? input.url : input.toString();
 
-      if (url === 'https://relay.example.com/api/history?agent_id=alice&limit=20') {
+      if (url === AGENT_HISTORY_URL_ALICE) {
         return createResponse(createAgentHistoryResponse());
       }
 
-      if (url === 'https://relay.example.com/api/history?conversation_id=conv-1&limit=50') {
+      if (url === CONVERSATION_HISTORY_URL_CONV_1) {
         return createResponse({
           items: [
             {
@@ -213,7 +215,6 @@ describe('Phase 1 acceptance', () => {
     const store = createSnapshotStore({
       snapshotUrl: env.snapshotUrl,
       authMode: env.authMode,
-      historyApiUrl: env.apiBaseUrl,
       fetchImpl: fetchMock,
       initialSnapshot: snapshot,
     });
@@ -224,7 +225,7 @@ describe('Phase 1 acceptance', () => {
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        'https://relay.example.com/api/history?agent_id=alice&limit=20',
+        AGENT_HISTORY_URL_ALICE,
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       ),
     );
@@ -240,7 +241,7 @@ describe('Phase 1 acceptance', () => {
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        'https://relay.example.com/api/history?conversation_id=conv-1&limit=50',
+        CONVERSATION_HISTORY_URL_CONV_1,
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       ),
     );
@@ -275,7 +276,7 @@ describe('Phase 1 acceptance', () => {
     const fetchMock = vi.fn<typeof fetch>(async (input) => {
       const url = typeof input === 'string' ? input : input instanceof Request ? input.url : input.toString();
 
-      if (url.startsWith(env.apiBaseUrl)) {
+      if (url.startsWith(HISTORY_URL_PREFIX)) {
         return createResponse({ items: [] });
       }
 
@@ -285,7 +286,6 @@ describe('Phase 1 acceptance', () => {
     const store = createSnapshotStore({
       snapshotUrl: env.snapshotUrl,
       authMode: env.authMode,
-      historyApiUrl: env.apiBaseUrl,
       fetchImpl: fetchMock,
       pollIntervalMs: 5_000,
       initialSnapshot,

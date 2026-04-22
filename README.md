@@ -18,7 +18,7 @@ Karakuri World manages a shared world for agents.
   - REST API for direct control
   - MCP tools for agent/tool-based control
   - Discord notifications for world updates plus admin slash commands in `#world-admin`
-  - Browser-facing UI data via a published snapshot object plus `/api/history`
+  - Browser-facing UI data via published snapshot and history objects served directly from R2/CDN
 
 ## Core concepts
 
@@ -350,18 +350,17 @@ For the full setup guide, see [`docs/discord-setup.md`](./docs/discord-setup.md)
 
 ## Browser UI data path
 
-For dashboards or spectator clients running in the browser, use:
+For dashboards or spectator clients running in the browser, use the published R2/CDN objects directly:
 
-- the published snapshot manifest URL (`VITE_SNAPSHOT_URL`) on R2/CDN for current-state polling
-- the Worker `/api/history` endpoint for timeline / detail overlays
+- `snapshot/latest.json` (alias polled every 5 seconds, cached at the edge with `max-age=5`) for current-state rendering
+- `history/agents/{agent_id}.json` / `history/conversations/{conversation_id}.json` for timeline / detail overlays
 
-World server pushes snapshots to the spectator relay Worker via `POST /api/publish-snapshot` whenever an event requires it; the Worker applies the body directly and republishes to R2/CDN. Browser clients poll only the manifest URL; there is no pull endpoint and the legacy `/ws` endpoint has been removed.
+World server pushes updates event-driven to the spectator relay Worker via `POST /api/publish-snapshot` and `POST /api/publish-agent-history`; the Worker writes the payload to R2 so the edge can serve the next fetch within the same 5-second cache window. The Worker exposes no read-side endpoints, and the legacy `/ws` endpoint has been removed.
 
 The spectator SPA under `apps/front/` has its own required Vite env for both `npm run dev:front` and `npm run build:front`:
 
-- `VITE_SNAPSHOT_URL`: absolute snapshot manifest URL fetched directly by the browser
+- `VITE_SNAPSHOT_URL`: absolute snapshot alias URL (`snapshot/latest.json`) fetched directly by the browser. History object URLs are derived from its origin.
 - `VITE_AUTH_MODE`: `public` or `access`
-- `VITE_API_BASE_URL`: absolute Worker history endpoint URL, and it must end at `/api/history`
 
 These browser-exposed URLs must stay public-facing, so do not embed credentials, query params, or fragments. For the tracked contract details, see [`docs/design/detailed/15-ui-application-shell.md`](./docs/design/detailed/15-ui-application-shell.md) and the setup guide at [`apps/front/README.md`](./apps/front/README.md).
 
