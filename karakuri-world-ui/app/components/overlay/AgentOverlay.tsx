@@ -166,7 +166,7 @@ function HistoryTimeline({
   if (!history || history.status === 'idle' || (history.status === 'loading' && !history.response)) {
     return (
       <div
-        className="rounded-2xl border border-dashed border-slate-700 p-4 text-slate-400"
+        className="rounded-2xl border border-dashed border-slate-700 p-2 text-slate-400 lg:p-4"
         data-testid={`${baseTestId}-loading`}
       >
         履歴を読み込んでいます…
@@ -177,7 +177,7 @@ function HistoryTimeline({
   if (history.status === 'error' && !history.response) {
     return (
       <div
-        className="rounded-2xl border border-dashed border-rose-900/80 bg-rose-950/30 p-4 text-rose-200"
+        className="rounded-2xl border border-dashed border-rose-900/80 bg-rose-950/30 p-2 text-rose-200 lg:p-4"
         data-testid={`${baseTestId}-error`}
       >
         <p>履歴の取得に失敗しました</p>
@@ -203,8 +203,8 @@ function HistoryTimeline({
   if (items.length === 0) {
     if (isReplaceLoading || isReplaceError) {
       return (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
-          <div className="flex items-center justify-between gap-3">
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-2 lg:p-4">
+          <div className="flex items-center justify-between gap-2 lg:gap-3">
             <p className="text-xs uppercase tracking-wide text-slate-500">{title}</p>
             {isReplaceLoading ? (
               <span className="text-xs text-cyan-300" data-testid={`${baseTestId}-updating`}>
@@ -219,7 +219,7 @@ function HistoryTimeline({
               </div>
             )}
           </div>
-          <div className="mt-3 text-slate-400" data-testid={`${baseTestId}-empty`}>
+          <div className="mt-2 text-slate-400 lg:mt-3" data-testid={`${baseTestId}-empty`}>
             履歴はまだありません
           </div>
         </div>
@@ -228,7 +228,7 @@ function HistoryTimeline({
 
     return (
       <div
-        className="rounded-2xl border border-dashed border-slate-700 p-4 text-slate-400"
+        className="rounded-2xl border border-dashed border-slate-700 p-2 text-slate-400 lg:p-4"
         data-testid={`${baseTestId}-empty`}
       >
         履歴はまだありません
@@ -237,8 +237,8 @@ function HistoryTimeline({
   }
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
-      <div className="flex items-center justify-between gap-3">
+    <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-2 lg:p-4">
+      <div className="flex items-center justify-between gap-2 lg:gap-3">
         <p className="text-xs uppercase tracking-wide text-slate-500">{title}</p>
         {isReplaceLoading ? (
           <span className="text-xs text-cyan-300" data-testid={`${baseTestId}-updating`}>
@@ -253,7 +253,7 @@ function HistoryTimeline({
           </div>
         ) : null}
       </div>
-      <ol className="mt-3 space-y-3" data-testid={`${baseTestId}-list`}>
+      <ol className="mt-2 space-y-2 lg:mt-3 lg:space-y-3" data-testid={`${baseTestId}-list`}>
         {(() => {
           const seenConversationIds = new Set<string>();
           return items.map((item) => {
@@ -270,93 +270,92 @@ function HistoryTimeline({
           return (
             <li
               key={item.event_id}
-              className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-3"
+              className="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-2 lg:p-3"
               data-testid={`${baseTestId}-item`}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  {speaker ? (
-                    <div className="flex items-start gap-2">
-                      <AgentAvatar
-                        agent={{
-                          agent_id: speaker.speaker_agent_id,
-                          agent_name: speaker.display_name,
-                          discord_bot_avatar_url: speaker.discord_bot_avatar_url,
-                        }}
-                        size="sm"
-                        testId={`${baseTestId}-item-speaker-avatar-${item.event_id}`}
-                        fallbackTestId={`${baseTestId}-item-speaker-avatar-fallback-${item.event_id}`}
-                      />
-                      <div className="min-w-0">
-                        <p
-                          className="text-sm font-medium text-white"
-                          data-testid={`${baseTestId}-item-speaker-name-${item.event_id}`}
-                        >
-                          {speaker.display_name}
-                        </p>
-                        <p className="mt-1 text-sm text-slate-200">{item.summary.text}</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <p className="font-medium text-white">
-                        <span className="mr-2" aria-hidden="true">
-                          {item.summary.emoji}
-                        </span>
-                        {item.summary.title}
-                      </p>
-                      <p className="mt-1 text-sm text-slate-300">{item.summary.text}</p>
-                    </>
-                  )}
-                  {showConversationToggle && conversationId ? (
-                    <div className="mt-2 space-y-3">
-                      <div className="flex items-center gap-3">
-                        <button
-                          type="button"
-                          className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-200 transition-colors hover:border-slate-500 hover:text-white"
-                          data-testid={`${prefix}-conversation-toggle-${conversationId}`}
-                          onClick={() => {
-                            const nextExpanded = !isExpanded;
-                            onToggleConversationExpanded?.(conversationId, nextExpanded);
+              {speaker ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <AgentAvatar
+                      agent={{
+                        agent_id: speaker.speaker_agent_id,
+                        agent_name: speaker.display_name,
+                        discord_bot_avatar_url: speaker.discord_bot_avatar_url,
+                      }}
+                      size="sm"
+                      testId={`${baseTestId}-item-speaker-avatar-${item.event_id}`}
+                      fallbackTestId={`${baseTestId}-item-speaker-avatar-fallback-${item.event_id}`}
+                    />
+                    <p
+                      className="min-w-0 flex-1 truncate text-sm font-medium text-white"
+                      data-testid={`${baseTestId}-item-speaker-name-${item.event_id}`}
+                    >
+                      {speaker.display_name}
+                    </p>
+                    <time className="shrink-0 text-xs text-slate-500">{formatHistoryTimestamp(item.occurred_at, timeZone)}</time>
+                  </div>
+                  <p className="mt-1 text-sm text-slate-200">{item.summary.text}</p>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <p className="min-w-0 flex-1 truncate font-medium text-white">
+                      <span className="mr-2" aria-hidden="true">
+                        {item.summary.emoji}
+                      </span>
+                      {item.summary.title}
+                    </p>
+                    <time className="shrink-0 text-xs text-slate-500">{formatHistoryTimestamp(item.occurred_at, timeZone)}</time>
+                  </div>
+                  <p className="mt-1 text-sm text-slate-300">{item.summary.text}</p>
+                </>
+              )}
+              {showConversationToggle && conversationId ? (
+                <div className="mt-2 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-200 transition-colors hover:border-slate-500 hover:text-white"
+                      data-testid={`${prefix}-conversation-toggle-${conversationId}`}
+                      onClick={() => {
+                        const nextExpanded = !isExpanded;
+                        onToggleConversationExpanded?.(conversationId, nextExpanded);
 
-                            if (nextExpanded && shouldFetchHistory(conversationEntry)) {
-                              void fetchHistory?.(
-                                { conversation_id: conversationId },
-                                getHistoryRetryOptions(conversationEntry),
-                              );
-                            }
-                          }}
-                        >
-                          {isExpanded ? '折りたたむ' : '会話ログを表示'}
-                        </button>
-                      </div>
-                      {isExpanded ? (
-                        <div
-                          className="rounded-2xl border border-slate-800 bg-slate-900/60 p-3"
-                          data-testid={`${prefix}-conversation-history-panel-${conversationId}`}
-                        >
-                          <HistoryTimeline
-                            history={conversationEntry}
-                            scope={{ conversation_id: conversationId }}
-                            historyCache={historyCache}
-                            expandedConversationIds={expandedConversationIds}
-                            fetchHistory={fetchHistory}
-                            onToggleConversationExpanded={onToggleConversationExpanded}
-                            prefix={prefix}
-                            title="会話ログ"
-                            baseTestId={`${prefix}-conversation-history-${conversationId}`}
-                            timeZone={timeZone}
-                            reverseItemOrder
-                            hideFirstEntry
-                            snapshot={snapshot}
-                          />
-                        </div>
-                      ) : null}
+                        if (nextExpanded && shouldFetchHistory(conversationEntry)) {
+                          void fetchHistory?.(
+                            { conversation_id: conversationId },
+                            getHistoryRetryOptions(conversationEntry),
+                          );
+                        }
+                      }}
+                    >
+                      {isExpanded ? '折りたたむ' : '会話ログを表示'}
+                    </button>
+                  </div>
+                  {isExpanded ? (
+                    <div
+                      className="rounded-2xl border border-slate-800 bg-slate-900/60 p-2 lg:p-3"
+                      data-testid={`${prefix}-conversation-history-panel-${conversationId}`}
+                    >
+                      <HistoryTimeline
+                        history={conversationEntry}
+                        scope={{ conversation_id: conversationId }}
+                        historyCache={historyCache}
+                        expandedConversationIds={expandedConversationIds}
+                        fetchHistory={fetchHistory}
+                        onToggleConversationExpanded={onToggleConversationExpanded}
+                        prefix={prefix}
+                        title="会話ログ"
+                        baseTestId={`${prefix}-conversation-history-${conversationId}`}
+                        timeZone={timeZone}
+                        reverseItemOrder
+                        hideFirstEntry
+                        snapshot={snapshot}
+                      />
                     </div>
                   ) : null}
                 </div>
-                <time className="shrink-0 text-xs text-slate-500">{formatHistoryTimestamp(item.occurred_at, timeZone)}</time>
-              </div>
+              ) : null}
             </li>
           );
           });
@@ -401,13 +400,13 @@ export function AgentOverlay({
   const Wrapper = compact ? 'div' : 'aside';
   const containerClassName = compact
     ? 'rounded-3xl border border-slate-800 bg-slate-900/80 p-4'
-    : 'flex h-screen flex-col overflow-y-auto border-l border-slate-800 bg-slate-950/95 p-6';
+    : 'flex h-screen flex-col overflow-y-auto border-l border-slate-800 bg-slate-950/95 p-3 max-lg:landscape:text-xs lg:p-6';
   const prefix = compact ? 'mobile' : 'desktop';
 
   return (
     <Wrapper className={containerClassName} data-testid={compact ? 'mobile-agent-overlay' : 'desktop-overlay'}>
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex min-w-0 items-start gap-4">
+      <div className="flex items-start justify-between gap-3 lg:gap-4">
+        <div className="flex min-w-0 items-start gap-2 lg:gap-4">
           <AgentAvatar
             agent={agent}
             size={compact ? 'md' : 'lg'}
@@ -415,10 +414,10 @@ export function AgentOverlay({
             fallbackTestId={compact ? 'mobile-agent-avatar-fallback' : 'desktop-agent-avatar-fallback'}
           />
           <div className="min-w-0">
-            <h2 className="text-2xl font-semibold text-white" data-testid={`${prefix}-agent-name`}>
+            <h2 className="text-base font-semibold text-white lg:text-2xl" data-testid={`${prefix}-agent-name`}>
               {agent.agent_name}
             </h2>
-            <p className="mt-1 text-sm text-slate-400">
+            <p className="mt-1 text-[10px] text-slate-400 lg:text-sm">
               現在地:{' '}
               <span className="text-slate-200" data-testid={`${prefix}-agent-location`}>
                 {formatNodeLabel(agent.node_id, snapshot?.map)}
@@ -429,7 +428,7 @@ export function AgentOverlay({
         {onClose ? (
           <button
             type="button"
-            className="shrink-0 rounded-full border border-slate-700 px-3 py-1 text-sm text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
+            className="shrink-0 rounded-full border border-slate-700 px-2 py-1 text-[10px] text-slate-300 transition-colors hover:border-slate-500 hover:text-white lg:px-3 lg:text-sm"
             data-testid={compact ? 'mobile-overlay-close' : 'desktop-overlay-close'}
             onClick={onClose}
           >
@@ -438,7 +437,7 @@ export function AgentOverlay({
         ) : null}
       </div>
 
-      <div className="mt-6 grid gap-3 text-sm text-slate-300">
+      <div className="mt-4 grid gap-2 text-xs text-slate-300 lg:mt-6 lg:gap-3 lg:text-sm">
         <DetailCard
           title="現在の行動"
           value={getCurrentActivitySummary(agent, snapshot)}

@@ -757,7 +757,7 @@ describe('snapshot store polling', () => {
       initialSnapshot: createSnapshot(),
     });
 
-    expect(store.getState().mobile_sheet_mode).toBe('peek');
+    expect(store.getState().mobile_sheet_mode).toBe('list');
     expect(store.getState().selected_agent_revision).toBe(0);
 
     store.getState().setSelectedAgentId('alice');

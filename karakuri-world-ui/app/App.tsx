@@ -9,7 +9,6 @@ import {
   getHistoryRetryOptions,
   shouldFetchHistory,
   toHistoryScopeKey,
-  type MobileSheetMode,
   type SnapshotStatus,
   type SnapshotStoreApi,
 } from './store/snapshot-store.js';
@@ -93,7 +92,6 @@ export function App({ env, store, autoStartPolling = true }: AppProps) {
   const fetchHistory = useStore(snapshotStore, (state) => state.fetchHistory);
   const toggleConversationExpanded = useStore(snapshotStore, (state) => state.toggleConversationExpanded);
   const mobileSheetMode = useStore(snapshotStore, (state) => state.mobile_sheet_mode);
-  const setMobileSheetMode = useStore(snapshotStore, (state) => state.setMobileSheetMode);
   const isStale = useStore(snapshotStore, (state) => state.is_stale);
 
   useEffect(() => {
@@ -156,7 +154,6 @@ export function App({ env, store, autoStartPolling = true }: AppProps) {
         onSelectAgent={setSelectedAgentId}
         onClearSelectedAgent={() => setSelectedAgentId(undefined)}
         onToggleConversationExpanded={toggleConversationExpanded}
-        onMobileSheetModeChange={(mode: MobileSheetMode) => setMobileSheetMode(mode)}
       />
     </>
   );

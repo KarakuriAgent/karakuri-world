@@ -44,8 +44,8 @@ describe('overlay-width helpers', () => {
     expect(clampOverlayWidth(10_000)).toBe(OVERLAY_WIDTH_MAX_PX);
   });
 
-  it('applies the viewport-aware dynamic maximum (60% of viewport width)', () => {
-    expect(clampOverlayWidth(600, 800)).toBe(Math.floor(800 * 0.6));
+  it('applies the viewport-aware dynamic maximum (40% of viewport width)', () => {
+    expect(clampOverlayWidth(600, 800)).toBe(Math.floor(800 * 0.4));
   });
 
   it('returns the default when the value is not finite', () => {

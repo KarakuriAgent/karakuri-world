@@ -84,12 +84,12 @@ describe('MapCanvasHost viewport synchronization', () => {
     });
   });
 
-  it('renders the map canvas host with full-height viewport', () => {
+  it('renders the map canvas host filling its parent container', () => {
     const snapshot = createFixtureSnapshot();
     render(<MapCanvasHost snapshot={snapshot} />);
 
     const host = screen.getByTestId('map-canvas-host');
-    expect(host).toHaveClass('min-h-screen');
+    expect(host).toHaveClass('h-full');
     expect(host).toHaveClass('overflow-hidden');
   });
 

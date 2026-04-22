@@ -36,7 +36,7 @@ export type HistoryCacheEntry =
     };
 
 export type SnapshotStatus = 'idle' | 'loading' | 'ready' | 'error' | 'incompatible';
-export type MobileSheetMode = 'peek' | 'list' | 'detail';
+export type MobileSheetMode = 'list' | 'detail';
 
 export interface FetchHistoryOptions {
   limit?: number;
@@ -447,7 +447,7 @@ export function createSnapshotStore({
         };
       });
     },
-    mobile_sheet_mode: hasInitialSelectedAgent ? 'detail' : 'peek',
+    mobile_sheet_mode: hasInitialSelectedAgent ? 'detail' : 'list',
     setMobileSheetMode: (mode) => {
       store.setState((state) => {
         if (mode === 'detail' && !state.selected_agent_id) {

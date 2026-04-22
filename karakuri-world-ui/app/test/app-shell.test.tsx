@@ -71,23 +71,24 @@ beforeEach(() => {
 });
 
 describe('App shell bootstrap', () => {
-  it('renders the single-route spectator shell for desktop and mobile layouts with one shared map host', () => {
+  it('renders the single-route spectator shell for desktop and mobile layouts with separate map hosts', () => {
     render(<App env={env} store={createReadyStore()} autoStartPolling={false} />);
 
     const desktopShell = screen.getByTestId('desktop-shell');
-    const mapHost = screen.getByTestId('map-canvas-host');
+    const mobileShell = screen.getByTestId('mobile-shell');
+    const mapHosts = screen.getAllByTestId('map-canvas-host');
 
     expect(desktopShell).toBeInTheDocument();
     expect(screen.getByTestId('desktop-sidebar')).toBeInTheDocument();
-    expect(screen.getAllByTestId('map-canvas-host')).toHaveLength(1);
-    expect(desktopShell).toContainElement(mapHost);
-    expect(Array.from(desktopShell.children)[1]).toBe(mapHost);
+    expect(mapHosts).toHaveLength(2);
+    expect(desktopShell).toContainElement(mapHosts.find((element) => desktopShell.contains(element)) ?? null);
+    expect(mobileShell).toContainElement(mapHosts.find((element) => mobileShell.contains(element)) ?? null);
     expect(screen.getByTestId('desktop-overlay')).toBeInTheDocument();
     expect(screen.getByTestId('mobile-top-badge')).toBeInTheDocument();
     expect(screen.getByTestId('mobile-bottom-sheet')).toBeInTheDocument();
   });
 
-  it('starts the mobile layout in peek mode when no agent is selected and shows the summary counts', () => {
+  it('starts the mobile layout in list mode when no agent is selected and shows the agent list', () => {
     const store = createSnapshotStore({
       snapshotUrl: env.snapshotUrl,
       authMode: env.authMode,
@@ -96,8 +97,8 @@ describe('App shell bootstrap', () => {
 
     render(<App env={env} store={store} autoStartPolling={false} />);
 
-    expect(screen.getByTestId('mobile-bottom-sheet')).toHaveAttribute('data-sheet-mode', 'peek');
-    expect(screen.getByTestId('mobile-peek-panel')).toHaveTextContent('エージェント数 2');
+    expect(screen.getByTestId('mobile-bottom-sheet')).toHaveAttribute('data-sheet-mode', 'list');
+    expect(screen.getByTestId('mobile-list-panel')).toBeInTheDocument();
   });
 
   it('uses the spectator snapshot contract to populate the shell frame', () => {
@@ -132,12 +133,12 @@ describe('App shell bootstrap', () => {
     render(<App env={env} store={store} autoStartPolling={false} />);
 
     const desktopShell = screen.getByTestId('desktop-shell');
-    const mapHost = screen.getByTestId('map-canvas-host');
-    expect(desktopShell.className).toContain('lg:grid-cols-[320px_minmax(0,1fr)]');
+    const mapHost = within(desktopShell).getByTestId('map-canvas-host');
+    expect(desktopShell.className).toContain('grid-cols-[320px_minmax(0,1fr)]');
     expect(screen.queryByTestId('desktop-overlay')).not.toBeInTheDocument();
     expect(screen.queryByTestId('desktop-overlay-rail')).not.toBeInTheDocument();
     expect(Array.from(desktopShell.children)).toEqual([
-      screen.getByTestId('desktop-sidebar').parentElement,
+      screen.getByTestId('desktop-sidebar'),
       mapHost,
     ]);
 
@@ -145,7 +146,7 @@ describe('App shell bootstrap', () => {
 
     await waitFor(() => expect(screen.getByTestId('desktop-overlay')).toBeInTheDocument());
     // Grid columns remain unchanged because overlay is absolute positioned
-    expect(desktopShell.className).toContain('lg:grid-cols-[320px_minmax(0,1fr)]');
+    expect(desktopShell.className).toContain('grid-cols-[320px_minmax(0,1fr)]');
     // Overlay rail is a sibling of desktop-shell, not a child
     const overlayRail = screen.getByTestId('desktop-overlay-rail');
     expect(overlayRail).toBeInTheDocument();
@@ -155,7 +156,7 @@ describe('App shell bootstrap', () => {
 
     await waitFor(() => expect(screen.queryByTestId('desktop-overlay')).not.toBeInTheDocument());
     expect(screen.queryByTestId('desktop-overlay-rail')).not.toBeInTheDocument();
-    expect(desktopShell.className).toContain('lg:grid-cols-[320px_minmax(0,1fr)]');
+    expect(desktopShell.className).toContain('grid-cols-[320px_minmax(0,1fr)]');
   });
 
   it('keeps the map host width unchanged when overlay is visible', async () => {
@@ -167,7 +168,8 @@ describe('App shell bootstrap', () => {
 
     render(<App env={env} store={store} autoStartPolling={false} />);
 
-    const mapHost = screen.getByTestId('map-canvas-host');
+    const desktopShell = screen.getByTestId('desktop-shell');
+    const mapHost = within(desktopShell).getByTestId('map-canvas-host');
     const initialWidth = mapHost.getBoundingClientRect().width;
 
     fireEvent.click(screen.getByTestId('sidebar-agent-button-alice'));
@@ -1074,7 +1076,7 @@ describe('App shell bootstrap', () => {
     expect(screen.getByTestId('mobile-agent-activity')).toHaveTextContent('待機中');
   });
 
-  it('shows the mobile list panel with recent server events and the desktop-equivalent agent ordering after expanding from peek', async () => {
+  it('shows the mobile list panel with recent server events and the desktop-equivalent agent ordering', async () => {
     const snapshot = createReadySnapshot({
       agents: [
         {
@@ -1129,9 +1131,7 @@ describe('App shell bootstrap', () => {
 
     render(<App env={env} store={store} autoStartPolling={false} />);
 
-    fireEvent.click(screen.getByTestId('mobile-bottom-sheet-handle'));
-
-    await waitFor(() => expect(screen.getByTestId('mobile-bottom-sheet')).toHaveAttribute('data-sheet-mode', 'list'));
+    expect(screen.getByTestId('mobile-bottom-sheet')).toHaveAttribute('data-sheet-mode', 'list');
     expect(screen.getByTestId('mobile-list-panel')).toBeInTheDocument();
     expect(screen.getAllByTestId('mobile-server-event-item')).toHaveLength(2);
 
@@ -1142,38 +1142,6 @@ describe('App shell bootstrap', () => {
       expect.stringContaining('Alpha'),
       expect.stringContaining('Zeta'),
     ]);
-  });
-
-  it('supports mobile sheet transitions via handle taps and swipe gestures', async () => {
-    const store = createSnapshotStore({
-      snapshotUrl: env.snapshotUrl,
-      authMode: env.authMode,
-      initialSnapshot: createReadySnapshot(),
-    });
-
-    render(<App env={env} store={store} autoStartPolling={false} />);
-
-    const handle = screen.getByTestId('mobile-bottom-sheet-handle');
-    expect(store.getState().mobile_sheet_mode).toBe('peek');
-
-    fireEvent.click(handle);
-    await waitFor(() => expect(store.getState().mobile_sheet_mode).toBe('list'));
-
-    fireEvent.touchStart(handle, { touches: [{ clientY: 300 }] });
-    fireEvent.touchEnd(handle, { changedTouches: [{ clientY: 200 }] });
-    expect(store.getState().mobile_sheet_mode).toBe('list');
-
-    fireEvent.click(screen.getByTestId('mobile-agent-button-alice'));
-    await waitFor(() => expect(store.getState().mobile_sheet_mode).toBe('detail'));
-
-    fireEvent.touchStart(handle, { touches: [{ clientY: 200 }] });
-    fireEvent.touchEnd(handle, { changedTouches: [{ clientY: 320 }] });
-    await waitFor(() => expect(store.getState().mobile_sheet_mode).toBe('list'));
-    expect(store.getState().selected_agent_id).toBeUndefined();
-
-    fireEvent.touchStart(handle, { touches: [{ clientY: 200 }] });
-    fireEvent.touchEnd(handle, { changedTouches: [{ clientY: 320 }] });
-    await waitFor(() => expect(store.getState().mobile_sheet_mode).toBe('peek'));
   });
 
   it('renders recent server events from recent_server_events with timestamps', () => {
@@ -1206,9 +1174,10 @@ describe('App shell bootstrap', () => {
       />,
     );
 
-    // Events should be displayed with description and timestamp
-    expect(screen.getByText('First event')).toBeInTheDocument();
-    expect(screen.getByText('Second event')).toBeInTheDocument();
+    // Events should be displayed in the desktop sidebar with description and timestamp
+    const sidebar = screen.getByTestId('desktop-sidebar');
+    expect(within(sidebar).getByText('First event')).toBeInTheDocument();
+    expect(within(sidebar).getByText('Second event')).toBeInTheDocument();
     // No status badges or fallback indicators should be present
     expect(screen.queryByTestId('desktop-server-events-fallback-badge')).not.toBeInTheDocument();
     expect(screen.queryByTestId('desktop-sidebar-server-event-count')).not.toBeInTheDocument();
@@ -1225,8 +1194,9 @@ describe('App shell bootstrap', () => {
 
     render(<App env={env} store={store} autoStartPolling={false} />);
 
-    // Should show empty state message, no fallback content
-    expect(screen.getByText('サーバーイベントはまだありません')).toBeInTheDocument();
+    // Should show empty state message in the desktop sidebar, no fallback content
+    const sidebar = screen.getByTestId('desktop-sidebar');
+    expect(within(sidebar).getByText('サーバーイベントはまだありません')).toBeInTheDocument();
     expect(screen.queryByTestId('desktop-server-events-fallback-badge')).not.toBeInTheDocument();
     expect(screen.queryByTestId('desktop-server-events-fallback-note')).not.toBeInTheDocument();
   });
@@ -1331,36 +1301,6 @@ describe('App shell bootstrap', () => {
     expect(screen.getByTestId('mobile-top-stack')).toHaveStyle({
       paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)',
     });
-  });
-
-  it('caps the mobile detail sheet to the remaining viewport height below the top stack', () => {
-    const offsetHeightDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
-
-    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
-      configurable: true,
-      get() {
-        return this instanceof HTMLElement && this.dataset.testid === 'mobile-top-stack' ? 140 : 0;
-      },
-    });
-
-    try {
-      render(<App env={env} store={createReadyStore()} autoStartPolling={false} />);
-
-      expect(screen.getByTestId('mobile-bottom-sheet')).toHaveStyle({
-        maxHeight: 'calc(100dvh - 140px - env(safe-area-inset-bottom, 0px) - 1rem)',
-      });
-    } finally {
-      Object.defineProperty(
-        HTMLElement.prototype,
-        'offsetHeight',
-        offsetHeightDescriptor ?? {
-          configurable: true,
-          get() {
-            return 0;
-          },
-        },
-      );
-    }
   });
 
   it('keeps reload guidance on the full-screen bootstrap path across retries before any snapshot exists', async () => {

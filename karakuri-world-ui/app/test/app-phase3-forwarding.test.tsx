@@ -69,13 +69,18 @@ describe('App Phase 3 effect forwarding', () => {
       />,
     );
 
-    expect(screen.getByTestId('mock-map-canvas-host-phase3-enabled')).toHaveTextContent('true');
-    expect(screen.getByTestId('mock-map-canvas-host-phase3-flags')).toHaveTextContent(
-      JSON.stringify(phase3EnvironmentEffects),
-    );
-    expect(screen.getByTestId('mock-map-canvas-host-phase3-motion-flags')).toHaveTextContent(
-      JSON.stringify(phase3MotionEffects),
-    );
+    const enabledHosts = screen.getAllByTestId('mock-map-canvas-host-phase3-enabled');
+    for (const host of enabledHosts) {
+      expect(host).toHaveTextContent('true');
+    }
+    const flagsHosts = screen.getAllByTestId('mock-map-canvas-host-phase3-flags');
+    for (const host of flagsHosts) {
+      expect(host).toHaveTextContent(JSON.stringify(phase3EnvironmentEffects));
+    }
+    const motionHosts = screen.getAllByTestId('mock-map-canvas-host-phase3-motion-flags');
+    for (const host of motionHosts) {
+      expect(host).toHaveTextContent(JSON.stringify(phase3MotionEffects));
+    }
 
     expect(mapCanvasHostPropsSpy).toHaveBeenCalled();
     expect(mapCanvasHostPropsSpy.mock.lastCall?.[0]).toEqual(

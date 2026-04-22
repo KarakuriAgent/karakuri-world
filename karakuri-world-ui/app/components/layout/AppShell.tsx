@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { SpectatorSnapshot } from '../../../worker/src/contracts/spectator-snapshot.js';
 import type { Phase3EnvironmentEffectFlags } from '../map/environment-effects.js';
@@ -42,12 +42,11 @@ export interface AppShellProps {
   onSelectAgent?: (agentId: string) => void;
   onClearSelectedAgent?: () => void;
   onToggleConversationExpanded?: (conversationId: string, expanded?: boolean) => void;
-  onMobileSheetModeChange?: (mode: MobileSheetMode) => void;
 }
 
 const DESKTOP_OVERLAY_ANIMATION_MS = 200;
 const MOBILE_TOP_STACK_PADDING_TOP = 'calc(env(safe-area-inset-top, 0px) + 1rem)';
-const MOBILE_BOTTOM_SHEET_PADDING_BOTTOM = 'calc(env(safe-area-inset-bottom, 0px) + 1rem)';
+const MOBILE_BOTTOM_SHEET_PADDING_BOTTOM = 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)';
 
 function hasSnapshotStatusBanner(snapshotStatus: SnapshotStatus, isStale: boolean): boolean {
   return !((snapshotStatus === 'idle' || snapshotStatus === 'loading' || snapshotStatus === 'ready') && !isStale);
@@ -70,20 +69,26 @@ export function AppShell({
   onSelectAgent,
   onClearSelectedAgent,
   onToggleConversationExpanded,
-  onMobileSheetModeChange,
 }: AppShellProps) {
   const selectedAgent = snapshot?.agents.find((agent) => agent.agent_id === selectedAgentId);
   const sortedAgents = snapshot ? sortAgentsForSidebar(snapshot.agents) : [];
   const [desktopOverlayAgent, setDesktopOverlayAgent] = useState(selectedAgent);
   const [isDesktopOverlayVisible, setIsDesktopOverlayVisible] = useState(Boolean(selectedAgent));
-  const [mobileTopStackHeight, setMobileTopStackHeight] = useState(0);
-  const mobileTopStackRef = useRef<HTMLDivElement | null>(null);
   const showMobileStatusBanner = hasSnapshotStatusBanner(snapshotStatus, isStale);
   const [overlayWidth, setOverlayWidth] = useState<number>(OVERLAY_WIDTH_DEFAULT_PX);
   const resizePointerIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     setOverlayWidth(loadOverlayWidth());
+
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const handleViewportResize = () => {
+      setOverlayWidth((current) => clampOverlayWidth(current, window.innerWidth));
+    };
+    window.addEventListener('resize', handleViewportResize);
+    return () => window.removeEventListener('resize', handleViewportResize);
   }, []);
 
   const handleResizePointerDown = useCallback(
@@ -134,29 +139,6 @@ export function AppShell({
     [],
   );
 
-  useLayoutEffect(() => {
-    const element = mobileTopStackRef.current;
-    if (!element) {
-      return;
-    }
-
-    const updateHeight = () => {
-      setMobileTopStackHeight(element.offsetHeight);
-    };
-
-    updateHeight();
-    window.addEventListener('resize', updateHeight);
-
-    const resizeObserver =
-      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => updateHeight()) : undefined;
-    resizeObserver?.observe(element);
-
-    return () => {
-      window.removeEventListener('resize', updateHeight);
-      resizeObserver?.disconnect();
-    };
-  }, [showMobileStatusBanner, snapshot]);
-
   useEffect(() => {
     if (selectedAgent) {
       setDesktopOverlayAgent(selectedAgent);
@@ -183,25 +165,23 @@ export function AppShell({
   const desktopOverlayHistory = desktopOverlayAgent
     ? historyCache[toHistoryScopeKey({ agent_id: desktopOverlayAgent.agent_id })]
     : undefined;
-  const mobileBottomSheetMaxHeight =
-    mobileTopStackHeight > 0
-      ? `calc(100dvh - ${mobileTopStackHeight}px - env(safe-area-inset-bottom, 0px) - 1rem)`
-      : undefined;
 
   return (
-    <main className="relative min-h-screen bg-slate-950 text-slate-100" data-testid="app-shell">
+    <main
+      className="fixed inset-0 overflow-hidden bg-slate-950 text-slate-100 lg:relative lg:inset-auto lg:min-h-screen lg:overflow-visible"
+      data-testid="app-shell"
+    >
+      {/* デスクトップ & モバイル横画面: 左 Sidebar + 右 Map */}
       <div
-        className="relative min-h-screen lg:grid lg:grid-cols-[320px_minmax(0,1fr)]"
+        className="relative hidden h-full grid-cols-[320px_minmax(0,1fr)] landscape:grid landscape:h-full max-lg:landscape:grid-cols-[240px_minmax(0,1fr)] lg:grid lg:min-h-screen"
         data-testid="desktop-shell"
       >
-        <div className="pointer-events-auto hidden lg:block">
-          <Sidebar
-            snapshot={snapshot}
-            agents={sortedAgents}
-            selectedAgentId={selectedAgentId}
-            onSelectAgent={onSelectAgent}
-          />
-        </div>
+        <Sidebar
+          snapshot={snapshot}
+          agents={sortedAgents}
+          selectedAgentId={selectedAgentId}
+          onSelectAgent={onSelectAgent}
+        />
         <MapCanvasHost
           snapshot={snapshot}
           selectedAgentId={selectedAgentId}
@@ -216,7 +196,7 @@ export function AppShell({
 
       {hasDesktopOverlay ? (
         <div
-          className="pointer-events-none absolute inset-y-0 right-0 hidden overflow-hidden lg:block"
+          className="pointer-events-none absolute inset-y-0 right-0 hidden overflow-hidden landscape:block lg:block"
           data-testid="desktop-overlay-rail"
         >
           <div
@@ -247,45 +227,60 @@ export function AppShell({
         </div>
       ) : null}
 
-      <div className="pointer-events-none absolute inset-0 min-h-screen lg:hidden" data-testid="mobile-shell">
+      {/* モバイル縦画面: マップと下部パネルを 50:50 で縦積み */}
+      <div
+        className="grid h-full grid-rows-2 landscape:hidden lg:hidden"
+        data-testid="mobile-shell"
+      >
         <div
-          ref={mobileTopStackRef}
-          className="absolute inset-x-0 top-0 flex flex-col gap-2 p-4"
-          style={{ paddingTop: MOBILE_TOP_STACK_PADDING_TOP }}
-          data-testid="mobile-top-stack"
+          className="relative min-h-0 overflow-hidden border-b border-slate-800"
+          data-testid="mobile-map-area"
         >
-          <div className="pointer-events-auto">
-            <TopBadge snapshot={snapshot} />
-          </div>
-          {showMobileStatusBanner ? (
-            <div className="pointer-events-auto" data-testid="mobile-snapshot-status-banner">
-              <div className="flex flex-wrap items-center gap-2 rounded-full border border-amber-400/30 bg-slate-950/95 px-4 py-2 text-sm text-slate-100 shadow-lg backdrop-blur">
-                <SnapshotStatusBadges snapshotStatus={snapshotStatus} isStale={isStale} testIdPrefix="mobile" />
-              </div>
+          <MapCanvasHost
+            snapshot={snapshot}
+            selectedAgentId={selectedAgentId}
+            selectionRevision={selectionRevision}
+            phase3EffectsEnabled={phase3EffectsEnabled}
+            phase3EnvironmentEffectFlags={phase3EnvironmentEffectFlags}
+            phase3MotionEffectFlags={phase3MotionEffectFlags}
+            onSelectAgent={onSelectAgent}
+          />
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col gap-2 p-4"
+            style={{ paddingTop: MOBILE_TOP_STACK_PADDING_TOP }}
+            data-testid="mobile-top-stack"
+          >
+            <div className="pointer-events-auto">
+              <TopBadge snapshot={snapshot} />
             </div>
-          ) : null}
-        </div>
-        <div
-          className="absolute inset-x-0 bottom-0 p-4 pt-0"
-          style={{ paddingBottom: MOBILE_BOTTOM_SHEET_PADDING_BOTTOM }}
-        >
-          <div className="pointer-events-auto">
-            <BottomSheet
-              snapshot={snapshot}
-              agents={sortedAgents}
-                selectedAgentHistory={selectedAgentHistory}
-                historyCache={historyCache}
-                expandedConversationIds={expandedConversationIds}
-                selectedAgent={selectedAgent}
-                mode={mobileSheetMode}
-                maxHeight={mobileBottomSheetMaxHeight}
-                fetchHistory={fetchHistory}
-                onSelectAgent={onSelectAgent}
-                onClearSelectedAgent={onClearSelectedAgent}
-                onToggleConversationExpanded={onToggleConversationExpanded}
-                onModeChange={onMobileSheetModeChange}
-              />
+            {showMobileStatusBanner ? (
+              <div className="pointer-events-auto" data-testid="mobile-snapshot-status-banner">
+                <div className="flex flex-wrap items-center gap-2 rounded-full border border-amber-400/30 bg-slate-950/95 px-4 py-2 text-sm text-slate-100 shadow-lg backdrop-blur">
+                  <SnapshotStatusBadges snapshotStatus={snapshotStatus} isStale={isStale} testIdPrefix="mobile" />
+                </div>
+              </div>
+            ) : null}
           </div>
+        </div>
+
+        <div
+          className="min-h-0 overflow-hidden bg-slate-950"
+          style={{ paddingBottom: MOBILE_BOTTOM_SHEET_PADDING_BOTTOM }}
+          data-testid="mobile-bottom-panel"
+        >
+          <BottomSheet
+            snapshot={snapshot}
+            agents={sortedAgents}
+            selectedAgentHistory={selectedAgentHistory}
+            historyCache={historyCache}
+            expandedConversationIds={expandedConversationIds}
+            selectedAgent={selectedAgent}
+            mode={mobileSheetMode}
+            fetchHistory={fetchHistory}
+            onSelectAgent={onSelectAgent}
+            onClearSelectedAgent={onClearSelectedAgent}
+            onToggleConversationExpanded={onToggleConversationExpanded}
+          />
         </div>
       </div>
     </main>

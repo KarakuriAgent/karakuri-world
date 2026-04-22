@@ -186,7 +186,7 @@ export function MapCanvasHost({
   return (
     <section
       aria-label="ワールドマップ"
-      className="relative min-h-screen min-w-0 overflow-hidden bg-slate-900"
+      className="relative h-full min-h-0 min-w-0 overflow-hidden bg-slate-900"
       data-testid="map-canvas-host"
       style={viewportBackgroundStyle}
     >

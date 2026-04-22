@@ -5,7 +5,7 @@ export const OVERLAY_WIDTH_STORAGE_KEY = 'karakuri-world-ui:agent-overlay-width'
 
 export function clampOverlayWidth(value: number, viewportWidth?: number): number {
   const dynamicMax = typeof viewportWidth === 'number' && viewportWidth > 0
-    ? Math.min(OVERLAY_WIDTH_MAX_PX, Math.floor(viewportWidth * 0.6))
+    ? Math.min(OVERLAY_WIDTH_MAX_PX, Math.floor(viewportWidth * 0.4))
     : OVERLAY_WIDTH_MAX_PX;
   const effectiveMax = Math.max(OVERLAY_WIDTH_MIN_PX, dynamicMax);
 
@@ -18,22 +18,16 @@ export function clampOverlayWidth(value: number, viewportWidth?: number): number
 
 export function loadOverlayWidth(storage?: Pick<Storage, 'getItem'> | null): number {
   const source = storage ?? (typeof window !== 'undefined' ? window.localStorage : null);
+  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : undefined;
 
   if (!source) {
-    return OVERLAY_WIDTH_DEFAULT_PX;
+    return clampOverlayWidth(OVERLAY_WIDTH_DEFAULT_PX, viewportWidth);
   }
 
   const raw = source.getItem(OVERLAY_WIDTH_STORAGE_KEY);
-  if (raw === null) {
-    return OVERLAY_WIDTH_DEFAULT_PX;
-  }
+  const parsed = raw === null ? OVERLAY_WIDTH_DEFAULT_PX : Number(raw);
 
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) {
-    return OVERLAY_WIDTH_DEFAULT_PX;
-  }
-
-  return clampOverlayWidth(parsed);
+  return clampOverlayWidth(Number.isFinite(parsed) ? parsed : OVERLAY_WIDTH_DEFAULT_PX, viewportWidth);
 }
 
 export function saveOverlayWidth(
