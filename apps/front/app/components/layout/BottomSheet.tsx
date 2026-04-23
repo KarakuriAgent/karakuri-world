@@ -75,7 +75,7 @@ export function BottomSheet({
               )}
             </section>
 
-            <section className="min-h-0 flex-1 space-y-2 overflow-hidden">
+            <section className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-sm font-medium text-slate-200">エージェント一覧</h2>
                 <span className="text-xs text-slate-400">{agents.length} 人</span>
