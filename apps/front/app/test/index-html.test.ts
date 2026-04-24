@@ -9,4 +9,10 @@ describe('index.html', () => {
 
     expect(html).toContain('viewport-fit=cover');
   });
+
+  it('declares the provided favicon asset', () => {
+    const html = readFileSync(resolve(import.meta.dirname, '../../index.html'), 'utf8');
+
+    expect(html).toContain('<link rel="icon" type="image/png" href="/favicon.png" />');
+  });
 });
