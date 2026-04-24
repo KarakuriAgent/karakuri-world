@@ -493,7 +493,11 @@ export class WorldEngine {
   }
 
   reportError(message: string): void {
-    this.onError?.(message);
+    try {
+      this.onError?.(message);
+    } catch (error) {
+      console.error('World error reporter threw.', error);
+    }
   }
 
   getWeatherState(): WeatherState | null {

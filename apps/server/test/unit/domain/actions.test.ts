@@ -573,6 +573,151 @@ describe('actions domain', () => {
     expect(reportErrorSpy).toHaveBeenCalledWith(expect.stringContaining('action_id=work'));
   });
 
+  it('continues action start when action persistence fails', async () => {
+    let failPersist = false;
+    const onRegistrationChanged = vi.fn(() => {
+      if (failPersist) {
+        throw new Error('persist failed');
+      }
+    });
+    const { engine } = createTestWorld({
+      config: {
+        economy: { initial_money: 1000 },
+        map: {
+          ...createTestWorld().config.map,
+          buildings: [
+            {
+              building_id: 'building-workshop',
+              name: 'Workshop',
+              description: 'A workshop.',
+              wall_nodes: ['1-3', '1-4', '1-5', '2-3', '2-5'],
+              interior_nodes: ['2-4'],
+              door_nodes: ['3-4'],
+              actions: [
+                {
+                  action_id: 'craft-chair',
+                  name: 'Craft chair',
+                  description: 'Build a chair.',
+                  duration_ms: 1000,
+                  cost_money: 100,
+                  required_items: [{ item_id: 'wood', quantity: 2 }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+      engineOptions: { onRegistrationChanged },
+    });
+    const alice = await createLoggedInAgent(engine);
+    engine.state.setNode(alice.agent_id, '2-4');
+    engine.state.setItems(alice.agent_id, [{ item_id: 'wood', quantity: 3 }]);
+    const reportErrorSpy = vi.spyOn(engine, 'reportError');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const events: WorldEvent[] = [];
+    engine.eventBus.onAny((event) => events.push(event));
+
+    failPersist = true;
+    const response = engine.executeAction(alice.agent_id, { action_id: 'craft-chair' });
+
+    expect(response.ok).toBe(true);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('in_action');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.money).toBe(900);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.items).toEqual([{ item_id: 'wood', quantity: 1 }]);
+    expect(engine.state.getById(alice.agent_id)?.money).toBe(1000);
+    expect(engine.state.getById(alice.agent_id)?.items ?? []).toEqual([]);
+    expect(engine.timerManager.find((timer) => timer.type === 'action' && timer.agent_id === alice.agent_id)).toBeDefined();
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'action_started',
+        agent_id: alice.agent_id,
+        action_id: 'craft-chair',
+        cost_money: 100,
+        items_consumed: [{ item_id: 'wood', quantity: 2 }],
+      }),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(`agent_id=${alice.agent_id}`));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('action_id=craft-chair'));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('cost_money=100'));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('items_consumed=woodx2'));
+    expect(reportErrorSpy).toHaveBeenCalledWith(expect.stringContaining(`agent_id=${alice.agent_id}`));
+    expect(reportErrorSpy).toHaveBeenCalledWith(expect.stringContaining('action_id=craft-chair'));
+    expect(reportErrorSpy).toHaveBeenCalledWith(expect.stringContaining('cost_money=100'));
+    expect(reportErrorSpy).toHaveBeenCalledWith(expect.stringContaining('items_consumed=woodx2'));
+    expect(reportErrorSpy).toHaveBeenCalledWith(expect.stringContaining('アクションは続行します'));
+  });
+
+  it('continues action start even when the error reporter throws', async () => {
+    let failPersist = false;
+    const onRegistrationChanged = vi.fn(() => {
+      if (failPersist) {
+        throw new Error('persist failed');
+      }
+    });
+    const onError = vi.fn(() => {
+      throw new Error('report failed');
+    });
+    const { engine } = createTestWorld({
+      config: {
+        economy: { initial_money: 1000 },
+        map: {
+          ...createTestWorld().config.map,
+          buildings: [
+            {
+              building_id: 'building-workshop',
+              name: 'Workshop',
+              description: 'A workshop.',
+              wall_nodes: ['1-3', '1-4', '1-5', '2-3', '2-5'],
+              interior_nodes: ['2-4'],
+              door_nodes: ['3-4'],
+              actions: [
+                {
+                  action_id: 'craft-chair',
+                  name: 'Craft chair',
+                  description: 'Build a chair.',
+                  duration_ms: 1000,
+                  cost_money: 100,
+                  required_items: [{ item_id: 'wood', quantity: 2 }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+      engineOptions: { onRegistrationChanged, onError },
+    });
+    const alice = await createLoggedInAgent(engine);
+    engine.state.setNode(alice.agent_id, '2-4');
+    engine.state.setItems(alice.agent_id, [{ item_id: 'wood', quantity: 3 }]);
+    const reportErrorSpy = vi.spyOn(engine, 'reportError');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const events: WorldEvent[] = [];
+    engine.eventBus.onAny((event) => events.push(event));
+
+    failPersist = true;
+    let response!: ReturnType<typeof engine.executeAction>;
+    expect(() => {
+      response = engine.executeAction(alice.agent_id, { action_id: 'craft-chair' });
+    }).not.toThrow();
+
+    expect(response.ok).toBe(true);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('in_action');
+    expect(engine.timerManager.find((timer) => timer.type === 'action' && timer.agent_id === alice.agent_id)).toBeDefined();
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'action_started',
+        agent_id: alice.agent_id,
+        action_id: 'craft-chair',
+      }),
+    );
+    expect(warnSpy).toHaveBeenCalled();
+    expect(reportErrorSpy).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith(expect.stringContaining('アクションは続行します'));
+    expect(errorSpy).toHaveBeenCalledWith('World error reporter threw.', expect.any(Error));
+  });
+
   it('shows actions with required_items even when the agent does not hold them', async () => {
     const { engine } = createTestWorld({
       config: {

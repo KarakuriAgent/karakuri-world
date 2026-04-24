@@ -309,7 +309,14 @@ export function executeValidatedAction(
     engine.state.setItems(agent.agent_id, consumeItems(agent.items, source.action.required_items));
   }
   if (costMoney > 0 || itemsConsumed.length > 0) {
-    engine.persistLoggedInAgentState(agent.agent_id);
+    try {
+      engine.persistLoggedInAgentState(agent.agent_id);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const summary = `エージェント状態の保存に失敗しました（agent_id=${agent.agent_id}, action_id=${source.action.action_id}, cost_money=${costMoney}, items_consumed=${summarizeAgentItems(itemsConsumed)}）`;
+      console.warn(`${summary}: ${errorMessage}`);
+      engine.reportError(`${summary}。アクションは続行します。原因: ${errorMessage}`);
+    }
   }
 
   cancelIdleReminder(engine, agent.agent_id);
