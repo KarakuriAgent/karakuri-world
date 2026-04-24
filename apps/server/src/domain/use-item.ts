@@ -20,6 +20,10 @@ export interface ValidatedUseItem {
   item_type: ItemType;
 }
 
+function summarizeConsumedItem(itemId: string): string {
+  return `${itemId}x1`;
+}
+
 function resolveVenueHints(engine: WorldEngine, itemId: string): string[] {
   const hints: string[] = [];
   for (const building of engine.config.map.buildings) {
@@ -143,7 +147,14 @@ export function handleItemUseCompleted(engine: WorldEngine, timer: ItemUseTimer)
     timer.agent_id,
     consumeItems(agent.items, [{ item_id: timer.item_id, quantity: 1 }]),
   );
-  engine.persistLoggedInAgentState(timer.agent_id);
+  try {
+    engine.persistLoggedInAgentState(timer.agent_id);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const summary = `エージェント状態の保存に失敗しました（agent_id=${timer.agent_id}, item_id=${timer.item_id}, items_consumed=${summarizeConsumedItem(timer.item_id)}）`;
+    console.warn(`${summary}: ${errorMessage}`);
+    engine.reportError(`${summary}。idle に復帰しました。原因: ${errorMessage}`);
+  }
 
   engine.state.setState(timer.agent_id, 'idle');
   startIdleReminder(engine, timer.agent_id);

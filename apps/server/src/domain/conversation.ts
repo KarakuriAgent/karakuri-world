@@ -877,11 +877,10 @@ export function speak(engine: WorldEngine, agentId: string, request: Conversatio
   const conversation = requireActiveConversation(engine, agentId, ['active', 'closing']);
   const turnTimer = ensureTurn(engine, conversation, agentId);
   const message = ensureMessage(request.message);
-  engine.timerManager.cancel(turnTimer.timer_id);
-
   const nextSpeakerAgentId = conversation.status === 'closing'
     ? resolveClosingNextSpeaker(conversation, agentId, request.next_speaker_agent_id)
     : resolveNextSpeaker(conversation, agentId, request.next_speaker_agent_id);
+  engine.timerManager.cancel(turnTimer.timer_id);
   const listeners = getOtherParticipants(conversation, agentId);
   const turn = conversation.current_turn + 1;
   conversation.current_turn = turn;
@@ -918,9 +917,9 @@ export function endConversationByAgent(engine: WorldEngine, agentId: string, req
   const conversation = requireActiveConversation(engine, agentId, ['active']);
   const turnTimer = ensureTurn(engine, conversation, agentId);
   const message = ensureMessage(request.message);
-  engine.timerManager.cancel(turnTimer.timer_id);
 
   if (conversation.participant_agent_ids.length <= 2) {
+    engine.timerManager.cancel(turnTimer.timer_id);
     const otherAgentId = getOtherParticipants(conversation, agentId)[0]!;
     const turn = conversation.current_turn + 1;
     conversation.current_turn = turn;
@@ -960,6 +959,7 @@ export function endConversationByAgent(engine: WorldEngine, agentId: string, req
     remainingParticipantIds,
     request.next_speaker_agent_id,
   );
+  engine.timerManager.cancel(turnTimer.timer_id);
   const turn = conversation.current_turn + 1;
   conversation.current_turn = turn;
 

@@ -30,6 +30,13 @@ export type ActionSource =
       action: ActionConfig;
     };
 
+function summarizeAgentItems(items: ReadonlyArray<AgentItem> | undefined): string {
+  if (!items || items.length === 0) {
+    return 'none';
+  }
+  return items.map((item) => `${item.item_id}x${item.quantity}`).join(',');
+}
+
 function requireActionReadyAgent(engine: WorldEngine, agentId: string): LoggedInAgent {
   const agent = engine.state.getLoggedIn(agentId);
   if (!agent) {
@@ -382,7 +389,14 @@ export function handleActionCompleted(engine: WorldEngine, timer: ActionTimer): 
     engine.state.setItems(timer.agent_id, granted.items);
   }
   if (rewardMoney > 0 || (source.action.reward_items?.length ?? 0) > 0) {
-    engine.persistLoggedInAgentState(timer.agent_id);
+    try {
+      engine.persistLoggedInAgentState(timer.agent_id);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const summary = `エージェント状態の保存に失敗しました（agent_id=${timer.agent_id}, action_id=${timer.action_id}, reward_money=${rewardMoney}, items_granted=${summarizeAgentItems(granted.granted)}, items_dropped=${summarizeAgentItems(granted.dropped)}）`;
+      console.warn(`${summary}: ${errorMessage}`);
+      engine.reportError(`${summary}。idle に復帰しました。原因: ${errorMessage}`);
+    }
   }
 
   const updatedAgent = engine.state.getLoggedIn(timer.agent_id);

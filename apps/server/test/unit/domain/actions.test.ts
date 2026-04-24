@@ -4,6 +4,7 @@ import type { WorldEngine } from '../../../src/engine/world-engine.js';
 import { formatActionSourceLine, getAvailableActionSources } from '../../../src/domain/actions.js';
 import { WorldError } from '../../../src/types/api.js';
 import type { NodeId } from '../../../src/types/data-model.js';
+import type { WorldEvent } from '../../../src/types/event.js';
 import type { ActionTimer } from '../../../src/types/timer.js';
 import { createTestMapConfig } from '../../helpers/test-map.js';
 import { createTestWorld } from '../../helpers/test-world.js';
@@ -429,6 +430,7 @@ describe('actions domain', () => {
     const { engine } = createTestWorld({
       config: {
         economy: { initial_money: 1000 },
+        idle_reminder: { interval_ms: 60_000 },
         map: {
           ...createTestWorld().config.map,
           buildings: [
@@ -509,6 +511,66 @@ describe('actions domain', () => {
       { item_id: 'chair', quantity: 1 },
       { item_id: 'wood', quantity: 1 },
     ]);
+  });
+
+  it('recovers to idle when action completion persistence fails', async () => {
+    let failPersist = false;
+    const onRegistrationChanged = vi.fn(() => {
+      if (failPersist) {
+        throw new Error('persist failed');
+      }
+    });
+    const { engine } = createTestWorld({
+      config: {
+        economy: { initial_money: 1000 },
+        idle_reminder: { interval_ms: 60_000 },
+        map: {
+          ...createTestWorld().config.map,
+          buildings: [
+            {
+              building_id: 'building-workshop',
+              name: 'Workshop',
+              description: 'A workshop.',
+              wall_nodes: ['1-3', '1-4', '1-5', '2-3', '2-5'],
+              interior_nodes: ['2-4'],
+              door_nodes: ['3-4'],
+              actions: [
+                {
+                  action_id: 'work',
+                  name: 'Work',
+                  description: 'Do work.',
+                  duration_ms: 1000,
+                  reward_money: 500,
+                },
+              ],
+            },
+          ],
+        },
+      },
+      engineOptions: { onRegistrationChanged },
+    });
+    const alice = await createLoggedInAgent(engine);
+    engine.state.setNode(alice.agent_id, '2-4');
+    const reportErrorSpy = vi.spyOn(engine, 'reportError');
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const events: WorldEvent[] = [];
+    engine.eventBus.onAny((event) => events.push(event));
+
+    engine.executeAction(alice.agent_id, { action_id: 'work' });
+    failPersist = true;
+
+    vi.advanceTimersByTime(1000);
+
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('idle');
+    expect(engine.timerManager.find((timer) => timer.type === 'idle_reminder' && timer.agent_id === alice.agent_id)).toBeDefined();
+    expect(engine.timerManager.find((timer) => timer.type === 'action' && timer.agent_id === alice.agent_id)).toBeUndefined();
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'action_completed',
+      agent_id: alice.agent_id,
+      action_id: 'work',
+    }));
+    expect(reportErrorSpy).toHaveBeenCalledWith(expect.stringContaining(`agent_id=${alice.agent_id}`));
+    expect(reportErrorSpy).toHaveBeenCalledWith(expect.stringContaining('action_id=work'));
   });
 
   it('shows actions with required_items even when the agent does not hold them', async () => {

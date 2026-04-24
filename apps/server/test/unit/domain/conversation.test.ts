@@ -4,10 +4,15 @@ import {
   beginClosingConversation,
   detachParticipantFromClosingConversation,
 } from '../../../src/domain/conversation.js';
+import type { WorldEngine, WorldEngineOptions } from '../../../src/engine/world-engine.js';
 import type { WorldEvent } from '../../../src/types/event.js';
 import { createTestWorld } from '../../helpers/test-world.js';
 
-async function setupConversationWorld(options?: { max_turns?: number; inactive_check_turns?: number }) {
+async function setupConversationWorld(options?: {
+  max_turns?: number;
+  inactive_check_turns?: number;
+  engineOptions?: WorldEngineOptions;
+}) {
   const { engine } = createTestWorld({
     config: {
       conversation: {
@@ -18,6 +23,7 @@ async function setupConversationWorld(options?: { max_turns?: number; inactive_c
         turn_timeout_ms: 1000,
       },
     },
+    engineOptions: options?.engineOptions,
   });
   const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice', });
   const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob', });
@@ -33,6 +39,67 @@ async function setupGroupConversationWorld(options?: { max_turns?: number; inact
   await engine.loginAgent(carol.agent_id);
   engine.state.setNode(carol.agent_id, '3-2');
   return { engine, alice, bob, carol };
+}
+
+async function setupThreeParticipantConversationTurn(options?: { max_turns?: number; inactive_check_turns?: number }) {
+  const { engine, alice, bob, carol } = await setupGroupConversationWorld(options);
+  const started = engine.startConversation(alice.agent_id, {
+    target_agent_id: bob.agent_id,
+    message: 'Hello Bob',
+  });
+  engine.acceptConversation(bob.agent_id, { message: 'Hello Alice' });
+  vi.advanceTimersByTime(500);
+  engine.joinConversation(carol.agent_id, {
+    conversation_id: started.conversation_id,
+  });
+  engine.speak(alice.agent_id, {
+    message: 'Carolも来たよ。',
+    next_speaker_agent_id: bob.agent_id,
+  });
+  vi.advanceTimersByTime(500);
+  return { engine, alice, bob, carol, started };
+}
+
+function findConversationTurnTimer(engine: WorldEngine, conversationId: string) {
+  return engine.timerManager.find(
+    (timer) => timer.type === 'conversation_turn' && 'conversation_id' in timer && timer.conversation_id === conversationId,
+  );
+}
+
+function findConversationIntervalTimer(engine: WorldEngine, conversationId: string) {
+  return engine.timerManager.find(
+    (timer) => timer.type === 'conversation_interval' && 'conversation_id' in timer && timer.conversation_id === conversationId,
+  );
+}
+
+function createFaultyEmitSideEffectOptions(mode: 'history' | 'snapshot') {
+  if (mode === 'history') {
+    return {
+      agentHistoryManager: {
+        recordEvent: vi.fn((event: WorldEvent) => {
+          if (event.type === 'conversation_message') {
+            throw new Error('history boom');
+          }
+        }),
+        dispose: vi.fn(async () => {}),
+      } as unknown as WorldEngineOptions['agentHistoryManager'],
+    } satisfies WorldEngineOptions;
+  }
+
+  return {
+    snapshotPublisher: {
+      requestPublish: vi.fn(() => {
+        throw new Error('snapshot boom');
+      }),
+      getStats: vi.fn(() => ({
+        pending: false,
+        consecutiveFailures: 0,
+        gaveUp: false,
+        state: 'idle' as const,
+      })),
+      dispose: vi.fn(async () => {}),
+    } as unknown as WorldEngineOptions['snapshotPublisher'],
+  } satisfies WorldEngineOptions;
 }
 
 describe('conversation domain', () => {
@@ -289,6 +356,27 @@ describe('conversation domain', () => {
     expect(() => engine.acceptConversation(bob.agent_id, { message: '   ' })).toThrow(
       expect.objectContaining({ code: 'invalid_request' }),
     );
+  });
+
+  it.each(['history', 'snapshot'] as const)('continues acceptConversation when %s side effects throw', async (mode) => {
+    const { engine, alice, bob } = await setupConversationWorld({
+      max_turns: 10,
+      engineOptions: createFaultyEmitSideEffectOptions(mode),
+    });
+    const started = engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello',
+    });
+
+    expect(engine.acceptConversation(bob.agent_id, { message: 'Hi' })).toEqual({ status: 'ok' });
+
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('in_conversation');
+    expect(engine.state.getLoggedIn(bob.agent_id)?.state).toBe('in_conversation');
+    expect(engine.state.conversations.get(started.conversation_id)).toEqual(expect.objectContaining({
+      status: 'active',
+      current_turn: 2,
+    }));
+    expect(findConversationIntervalTimer(engine, started.conversation_id)).toBeDefined();
   });
 
   it('rejects speak when turn timer is missing', async () => {
@@ -1121,6 +1209,114 @@ describe('conversation domain', () => {
     })).toThrow(expect.objectContaining({ code: 'invalid_next_speaker' }));
   });
 
+  it.each([
+    ['next_speaker_required', ''],
+    ['cannot_nominate_self', 'self'],
+    ['invalid_next_speaker', 'outsider'],
+  ] as const)('keeps the turn timer when speak validation fails (%s)', async (code, mode) => {
+    const { engine, alice, bob } = await setupConversationWorld({ max_turns: 10 });
+    const started = engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello Bob',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hello Alice' });
+    vi.advanceTimersByTime(500);
+
+    const events: WorldEvent[] = [];
+    const unsubscribe = engine.eventBus.onAny((event) => {
+      if (event.type === 'conversation_message') {
+        events.push(event);
+      }
+    });
+    const conversationBefore = engine.state.conversations.get(started.conversation_id);
+    expect(conversationBefore).not.toBeNull();
+    const beforeSpeakerAgentId = conversationBefore?.current_speaker_agent_id;
+    const beforeTurn = conversationBefore?.current_turn ?? 0;
+
+    const nextSpeakerAgentId = mode === 'self'
+      ? alice.agent_id
+      : mode === 'outsider'
+        ? 'nonexistent-agent'
+        : '';
+    expect(() => engine.speak(alice.agent_id, {
+      message: 'Still my turn.',
+      next_speaker_agent_id: nextSpeakerAgentId,
+    })).toThrow(expect.objectContaining({ code }));
+
+    const conversationAfterError = engine.state.conversations.get(started.conversation_id);
+    expect(findConversationTurnTimer(engine, started.conversation_id)).toBeDefined();
+    expect(findConversationIntervalTimer(engine, started.conversation_id)).toBeUndefined();
+    expect(conversationAfterError?.current_speaker_agent_id).toBe(beforeSpeakerAgentId);
+    expect(conversationAfterError?.current_turn).toBe(beforeTurn);
+    expect(events).toEqual([]);
+
+    expect(engine.speak(alice.agent_id, {
+      message: 'Now over to Bob.',
+      next_speaker_agent_id: bob.agent_id,
+    })).toEqual({ turn: beforeTurn + 1 });
+    unsubscribe();
+  });
+
+  it.each(['history', 'snapshot'] as const)('continues speak when %s side effects throw', async (mode) => {
+    const { engine, alice, bob } = await setupConversationWorld({
+      max_turns: 10,
+      engineOptions: createFaultyEmitSideEffectOptions(mode),
+    });
+    const started = engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello Bob',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hello Alice' });
+    vi.advanceTimersByTime(500);
+
+    expect(engine.speak(alice.agent_id, {
+      message: 'Passing to Bob.',
+      next_speaker_agent_id: bob.agent_id,
+    })).toEqual({ turn: 3 });
+
+    expect(engine.state.conversations.get(started.conversation_id)).toEqual(expect.objectContaining({
+      status: 'active',
+      current_turn: 3,
+    }));
+    expect(findConversationIntervalTimer(engine, started.conversation_id)).toBeDefined();
+    expect(findConversationTurnTimer(engine, started.conversation_id)).toBeUndefined();
+  });
+
+  it('keeps the turn timer when closing speak validation fails in a 3-person conversation', async () => {
+    const { engine, alice, bob, started } = await setupThreeParticipantConversationTurn({ max_turns: 10 });
+    beginClosingConversation(engine, started.conversation_id, bob.agent_id, 'server_event');
+
+    const events: WorldEvent[] = [];
+    const unsubscribe = engine.eventBus.onAny((event) => {
+      if (event.type === 'conversation_message') {
+        events.push(event);
+      }
+    });
+    const conversationBefore = engine.state.conversations.get(started.conversation_id);
+    expect(conversationBefore?.status).toBe('closing');
+    expect(conversationBefore?.participant_agent_ids).toHaveLength(3);
+    const beforeSpeakerAgentId = conversationBefore?.current_speaker_agent_id;
+    const beforeTurn = conversationBefore?.current_turn ?? 0;
+
+    expect(() => engine.speak(bob.agent_id, {
+      message: 'I will talk again.',
+      next_speaker_agent_id: 'nonexistent-agent',
+    })).toThrow(expect.objectContaining({ code: 'invalid_next_speaker' }));
+
+    const conversationAfterError = engine.state.conversations.get(started.conversation_id);
+    expect(findConversationTurnTimer(engine, started.conversation_id)).toBeDefined();
+    expect(findConversationIntervalTimer(engine, started.conversation_id)).toBeUndefined();
+    expect(conversationAfterError?.current_speaker_agent_id).toBe(beforeSpeakerAgentId);
+    expect(conversationAfterError?.current_turn).toBe(beforeTurn);
+    expect(events).toEqual([]);
+
+    expect(engine.speak(bob.agent_id, {
+      message: 'Aliceへ渡します。',
+      next_speaker_agent_id: alice.agent_id,
+    })).toEqual({ turn: beforeTurn + 1 });
+    unsubscribe();
+  });
+
   it('removes the agent and continues the conversation when ending a 3+ participant conversation', async () => {
     const { engine, alice, bob, carol } = await setupGroupConversationWorld({ max_turns: 10 });
     const leaveEvents: WorldEvent[] = [];
@@ -1175,6 +1371,42 @@ describe('conversation domain', () => {
     );
     expect(intervalTimers).toHaveLength(1);
 
+    unsubscribe();
+  });
+
+  it.each([
+    ['invalid_next_speaker', 'nonexistent-agent'],
+    ['cannot_nominate_self', 'self'],
+  ] as const)('keeps the turn timer when group endConversation validation fails (%s)', async (code, nextSpeaker) => {
+    const { engine, bob, carol, started } = await setupThreeParticipantConversationTurn({ max_turns: 10 });
+    const events: WorldEvent[] = [];
+    const unsubscribe = engine.eventBus.onAny((event) => {
+      if (event.type === 'conversation_message' || event.type === 'conversation_leave') {
+        events.push(event);
+      }
+    });
+    const conversationBefore = engine.state.conversations.get(started.conversation_id);
+    expect(conversationBefore?.status).toBe('active');
+    const beforeStatus = conversationBefore?.status;
+    const beforeClosingReason = conversationBefore?.closing_reason;
+    const beforeTurn = conversationBefore?.current_turn ?? 0;
+
+    expect(() => engine.endConversation(bob.agent_id, {
+      message: 'I need to leave.',
+      next_speaker_agent_id: nextSpeaker === 'self' ? bob.agent_id : nextSpeaker,
+    })).toThrow(expect.objectContaining({ code }));
+
+    const conversationAfterError = engine.state.conversations.get(started.conversation_id);
+    expect(findConversationTurnTimer(engine, started.conversation_id)).toBeDefined();
+    expect(findConversationIntervalTimer(engine, started.conversation_id)).toBeUndefined();
+    expect(conversationAfterError?.status).toBe(beforeStatus);
+    expect(conversationAfterError?.closing_reason).toBe(beforeClosingReason);
+    expect(events).toEqual([]);
+
+    expect(engine.endConversation(bob.agent_id, {
+      message: 'I need to leave.',
+      next_speaker_agent_id: carol.agent_id,
+    })).toEqual({ turn: beforeTurn + 1 });
     unsubscribe();
   });
 
