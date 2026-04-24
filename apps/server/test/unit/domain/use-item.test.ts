@@ -73,6 +73,7 @@ describe('use-item domain', () => {
   it('consumes general/food/drink items and emits completed with item_type', async () => {
     const { engine } = createTestWorld({
       config: {
+        idle_reminder: { interval_ms: 60_000 },
         items: [
           { item_id: 'bread', name: 'パン', description: '焼きたて', type: 'food' as const, stackable: true, max_stack: 5 },
         ],
@@ -98,6 +99,47 @@ describe('use-item domain', () => {
     // Item consumed
     expect(engine.state.getLoggedIn(alice.agent_id)?.items).toEqual([{ item_id: 'bread', quantity: 1 }]);
     expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('idle');
+  });
+
+  it('recovers to idle when item-use completion persistence fails', async () => {
+    let failPersist = false;
+    const onRegistrationChanged = vi.fn(() => {
+      if (failPersist) {
+        throw new Error('persist failed');
+      }
+    });
+    const { engine } = createTestWorld({
+      config: {
+        idle_reminder: { interval_ms: 60_000 },
+        items: [
+          { item_id: 'bread', name: 'パン', description: '焼きたて', type: 'food' as const, stackable: true, max_stack: 5 },
+        ],
+      },
+      engineOptions: { onRegistrationChanged },
+    });
+    const alice = await createLoggedInAgent(engine);
+    engine.state.setItems(alice.agent_id, [{ item_id: 'bread', quantity: 2 }]);
+    const reportErrorSpy = vi.spyOn(engine, 'reportError');
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const events: WorldEvent[] = [];
+    engine.eventBus.onAny((event) => events.push(event));
+
+    engine.useItem(alice.agent_id, { item_id: 'bread' });
+    failPersist = true;
+
+    vi.advanceTimersByTime(600000);
+
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('idle');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.items).toEqual([{ item_id: 'bread', quantity: 1 }]);
+    expect(engine.timerManager.find((timer) => timer.type === 'idle_reminder' && timer.agent_id === alice.agent_id)).toBeDefined();
+    expect(engine.timerManager.find((timer) => timer.type === 'item_use' && timer.agent_id === alice.agent_id)).toBeUndefined();
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'item_use_completed',
+      agent_id: alice.agent_id,
+      item_id: 'bread',
+    }));
+    expect(reportErrorSpy).toHaveBeenCalledWith(expect.stringContaining(`agent_id=${alice.agent_id}`));
+    expect(reportErrorSpy).toHaveBeenCalledWith(expect.stringContaining('item_id=bread'));
   });
 
   it('resolves venue hints from multiple buildings and NPCs', async () => {
