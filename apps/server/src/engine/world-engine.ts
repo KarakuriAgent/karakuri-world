@@ -711,6 +711,16 @@ export class WorldEngine {
     this.onRegistrationChanged?.(agents);
   }
 
+  private handleEventSideEffectError(sideEffect: string, eventType: WorldEvent['type'], error: unknown): void {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`World event ${sideEffect} threw.`, error);
+    try {
+      this.onError?.(`ワールドイベントの副作用に失敗しました (${sideEffect}, event: ${eventType}): ${errorMessage}`);
+    } catch (reportError) {
+      console.error('World error reporter threw.', reportError);
+    }
+  }
+
   emitEvent(event: EmittableWorldEvent): void {
     const fullEvent = {
       ...event,
@@ -724,10 +734,18 @@ export class WorldEngine {
       console.error('World event handler threw.', error);
     }
 
-    this.agentHistoryManager?.recordEvent(fullEvent);
+    try {
+      this.agentHistoryManager?.recordEvent(fullEvent);
+    } catch (error) {
+      this.handleEventSideEffectError('history recording', fullEvent.type, error);
+    }
 
     if (isSnapshotTriggerEvent(fullEvent.type)) {
-      this.snapshotPublisher?.requestPublish();
+      try {
+        this.snapshotPublisher?.requestPublish();
+      } catch (error) {
+        this.handleEventSideEffectError('snapshot publishing', fullEvent.type, error);
+      }
     }
   }
 
