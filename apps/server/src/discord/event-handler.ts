@@ -1,5 +1,5 @@
-import { formatActionSourceLine, getAvailableActionSources } from '../domain/actions.js';
-import { buildChoicesText } from '../domain/choices.js';
+import { formatActionSourceLine, getAvailableActionSourcesWithOptions } from '../domain/actions.js';
+import { buildChoicesPrompt, type BuildChoicesTextOptions } from '../domain/choices.js';
 import { buildMapSummaryText } from '../domain/map-summary.js';
 import { buildPerceptionText } from '../domain/perception.js';
 import { clearActiveServerEvent } from '../domain/server-events.js';
@@ -69,6 +69,11 @@ interface PendingForcedConversationEnd {
 interface ForcedConversationPartner {
   conversationId: string;
   partnerId: string;
+}
+
+interface ChoicesPromptSuppressionSnapshot {
+  rejectedActionId: string | null;
+  usedItemId: string | null;
 }
 
 export class DiscordEventHandler {
@@ -142,7 +147,7 @@ export class DiscordEventHandler {
         await this.handleActionCompleted(event);
         return;
       case 'action_rejected':
-        await this.handleActionRejected(event.agent_id, event.action_name, event.rejection_reason);
+        await this.handleActionRejected(event.agent_id, event.action_id, event.action_name, event.rejection_reason);
         return;
       case 'wait_completed':
         await this.handleWaitCompleted(event.agent_id, event.duration_ms);
@@ -255,22 +260,32 @@ export class DiscordEventHandler {
   }
 
   private async handleIdleReminder(timer: IdleReminderTimer): Promise<void> {
-    const agent = this.engine.state.getLoggedIn(timer.agent_id);
-    if (!agent || agent.pending_conversation_id) {
-      return;
-    }
+    const suppressionSnapshot = this.captureChoicesPromptSuppressions(timer.agent_id);
+    let consumedRejectedActionId: string | null = null;
+    let consumedUsedItemId: string | null = null;
+    await this.sendToAgentClearingServerEventBuilt(timer.agent_id, () => {
+      const agent = this.engine.state.getLoggedIn(timer.agent_id);
+      if (!agent || agent.pending_conversation_id) {
+        return null;
+      }
 
-    const perceptionText = this.getPerceptionText(timer.agent_id);
-    if (!perceptionText) {
-      return;
-    }
+      const perceptionText = this.getPerceptionText(timer.agent_id);
+      if (!perceptionText) {
+        return null;
+      }
 
-    const choicesText = this.getChoicesText(timer.agent_id);
-    const elapsedMs = Date.now() - timer.idle_since;
-    await this.sendToAgentClearingServerEvent(
-      timer.agent_id,
-      formatIdleReminderMessage(this.getWorldContext(timer.agent_id), elapsedMs, perceptionText, this.skillName, choicesText),
-    );
+      const choicesPrompt = this.getChoicesPrompt(timer.agent_id, undefined, suppressionSnapshot);
+      consumedRejectedActionId = choicesPrompt.consumedRejectedActionId;
+      consumedUsedItemId = choicesPrompt.consumedUsedItemId;
+      const elapsedMs = Date.now() - timer.idle_since;
+      return formatIdleReminderMessage(
+        this.getWorldContext(timer.agent_id),
+        elapsedMs,
+        perceptionText,
+        this.skillName,
+        choicesPrompt.choicesText,
+      );
+    }, () => this.clearChoicesPromptSuppressionsIfCurrent(timer.agent_id, consumedRejectedActionId, consumedUsedItemId));
   }
 
   private async handleConversationInterval(timer: ConversationIntervalTimer): Promise<void> {
@@ -401,14 +416,24 @@ export class DiscordEventHandler {
   }
 
   private async handleAgentLoggedIn(agentId: string, _agentName: string, _nodeId: NodeId): Promise<void> {
-    const perceptionText = this.getPerceptionText(agentId);
-    if (perceptionText) {
-      const choicesText = this.getChoicesText(agentId);
-      await this.sendToAgent(
-        agentId,
-        formatAgentLoggedInMessage(this.getWorldContext(agentId), perceptionText, this.skillName, choicesText),
-      );
-    }
+    const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
+    let consumedRejectedActionId: string | null = null;
+    let consumedUsedItemId: string | null = null;
+    await this.sendToAgentBuilt(
+      agentId,
+      () => {
+        const perceptionText = this.getPerceptionText(agentId);
+        if (!perceptionText) {
+          return null;
+        }
+
+        const choicesPrompt = this.getChoicesPrompt(agentId, undefined, suppressionSnapshot);
+        consumedRejectedActionId = choicesPrompt.consumedRejectedActionId;
+        consumedUsedItemId = choicesPrompt.consumedUsedItemId;
+        return formatAgentLoggedInMessage(this.getWorldContext(agentId), perceptionText, this.skillName, choicesPrompt.choicesText);
+      },
+      () => this.clearChoicesPromptSuppressionsIfCurrent(agentId, consumedRejectedActionId, consumedUsedItemId),
+    );
 
     await this.sendWorldLogForAgent(agentId, formatWorldLogLoggedIn());
   }
@@ -424,14 +449,30 @@ export class DiscordEventHandler {
     const forcedConversationPartners = this.consumeForcedConversationPartners(event.agent_id);
 
     for (const { partnerId } of forcedConversationPartners) {
-      const perceptionText = this.getPerceptionText(partnerId);
-      if (perceptionText) {
-        const choicesText = this.getChoicesText(partnerId);
-        await this.sendConversationFollowUp(
-          partnerId,
-          formatConversationForcedEndedMessage(this.getWorldContext(partnerId), event.agent_name, perceptionText, this.skillName, choicesText),
-        );
-      }
+      const suppressionSnapshot = this.captureChoicesPromptSuppressions(partnerId);
+      let consumedRejectedActionId: string | null = null;
+      let consumedUsedItemId: string | null = null;
+      await this.sendConversationFollowUpBuilt(
+        partnerId,
+        () => {
+          const perceptionText = this.getPerceptionText(partnerId);
+          if (!perceptionText) {
+            return null;
+          }
+
+          const choicesPrompt = this.getChoicesPrompt(partnerId, undefined, suppressionSnapshot);
+          consumedRejectedActionId = choicesPrompt.consumedRejectedActionId;
+          consumedUsedItemId = choicesPrompt.consumedUsedItemId;
+          return formatConversationForcedEndedMessage(
+            this.getWorldContext(partnerId),
+            event.agent_name,
+            perceptionText,
+            this.skillName,
+            choicesPrompt.choicesText,
+          );
+        },
+        () => this.clearChoicesPromptSuppressionsIfCurrent(partnerId, consumedRejectedActionId, consumedUsedItemId),
+      );
     }
 
     await this.sendLogoutWorldLog(
@@ -447,23 +488,29 @@ export class DiscordEventHandler {
   }
 
   private async handleMovementCompleted(agentId: string, _agentName: string, toNodeId: NodeId): Promise<void> {
-    const perceptionText = this.getPerceptionText(agentId);
-    if (perceptionText) {
-      const label = this.engine.getMap().nodes[toNodeId]?.label;
-      const choicesText = this.getChoicesText(agentId);
-      await this.sendToAgentClearingServerEvent(
-        agentId,
-        formatMovementCompletedMessage(
-          this.getWorldContext(agentId),
-          toNodeId,
-          label,
-          perceptionText,
-          this.skillName,
-          choicesText,
-        ),
+    const label = this.engine.getMap().nodes[toNodeId]?.label;
+    const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
+    let consumedRejectedActionId: string | null = null;
+    let consumedUsedItemId: string | null = null;
+    await this.sendToAgentClearingServerEventBuilt(agentId, () => {
+      const perceptionText = this.getPerceptionText(agentId);
+      if (!perceptionText) {
+        return null;
+      }
+
+      const choicesPrompt = this.getChoicesPrompt(agentId, undefined, suppressionSnapshot);
+      consumedRejectedActionId = choicesPrompt.consumedRejectedActionId;
+      consumedUsedItemId = choicesPrompt.consumedUsedItemId;
+      return formatMovementCompletedMessage(
+        this.getWorldContext(agentId),
+        toNodeId,
+        label,
+        perceptionText,
+        this.skillName,
+        choicesPrompt.choicesText,
       );
-      await this.sendWorldLogForAgent(agentId, formatWorldLogMovement(toNodeId, label));
-    }
+    }, () => this.clearChoicesPromptSuppressionsIfCurrent(agentId, consumedRejectedActionId, consumedUsedItemId));
+    await this.sendWorldLogForAgent(agentId, formatWorldLogMovement(toNodeId, label));
   }
 
   private async handleActionStarted(agentId: string, actionName: string, completesAt: number): Promise<void> {
@@ -491,51 +538,68 @@ export class DiscordEventHandler {
   }
 
   private async handleActionCompleted(event: Extract<WorldEvent, { type: 'action_completed' }>): Promise<void> {
-    const perceptionText = this.getPerceptionText(event.agent_id);
-    if (perceptionText) {
-      const choicesText = this.getChoicesText(event.agent_id);
-      await this.sendToAgentClearingServerEvent(
-        event.agent_id,
-        formatActionCompletedMessage(
-          this.getWorldContext(event.agent_id),
-          event.action_name,
-          this.buildActionEffectText(event) || undefined,
-          perceptionText,
-          this.skillName,
-          choicesText,
-        ),
+    const suppressionSnapshot = this.captureChoicesPromptSuppressions(event.agent_id);
+    let consumedRejectedActionId: string | null = null;
+    let consumedUsedItemId: string | null = null;
+    await this.sendToAgentClearingServerEventBuilt(event.agent_id, () => {
+      const perceptionText = this.getPerceptionText(event.agent_id);
+      if (!perceptionText) {
+        return null;
+      }
+
+      const choicesPrompt = this.getChoicesPrompt(event.agent_id, undefined, suppressionSnapshot);
+      consumedRejectedActionId = choicesPrompt.consumedRejectedActionId;
+      consumedUsedItemId = choicesPrompt.consumedUsedItemId;
+      return formatActionCompletedMessage(
+        this.getWorldContext(event.agent_id),
+        event.action_name,
+        this.buildActionEffectText(event) || undefined,
+        perceptionText,
+        this.skillName,
+        choicesPrompt.choicesText,
       );
-    }
+    }, () => this.clearChoicesPromptSuppressionsIfCurrent(event.agent_id, consumedRejectedActionId, consumedUsedItemId));
 
     await this.sendWorldLogForAgent(event.agent_id, formatWorldLogAction(event.action_name));
   }
 
   private async handleActionRejected(
     agentId: string,
+    actionId: string,
     actionName: string,
     rejectionReason: string,
   ): Promise<void> {
-    const perceptionText = this.getPerceptionText(agentId);
-    if (perceptionText) {
-      const choicesText = this.getChoicesText(agentId);
-      await this.sendToAgentClearingServerEvent(
-        agentId,
-        formatActionRejectedMessage(
-          this.getWorldContext(agentId),
-          actionName,
-          rejectionReason,
-          perceptionText,
-          this.skillName,
-          choicesText,
-        ),
-      );
-    } else {
-      console.warn(`[handleActionRejected] perceptionText unavailable for agent ${agentId}, sending minimal rejection`);
-      await this.sendToAgentClearingServerEvent(
-        agentId,
-        `「${actionName}」を実行できませんでした。${rejectionReason}`,
-      );
-    }
+    const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
+    let consumedRejectedActionId: string | null = null;
+    let consumedUsedItemId: string | null = null;
+    await this.sendToAgentClearingServerEventBuilt(
+      agentId,
+      () => {
+        const perceptionText = this.getPerceptionText(agentId);
+        if (perceptionText) {
+          const choicesPrompt = this.getChoicesPrompt(agentId, {
+            excludedActionIds: [actionId],
+            includeStoredRejectedAction: false,
+          }, suppressionSnapshot);
+          consumedRejectedActionId = choicesPrompt.suppressedActionIds.includes(actionId) ? actionId : null;
+          consumedUsedItemId = choicesPrompt.consumedUsedItemId;
+          return formatActionRejectedMessage(
+            this.getWorldContext(agentId),
+            actionName,
+            rejectionReason,
+            perceptionText,
+            this.skillName,
+            choicesPrompt.choicesText,
+          );
+        }
+
+        console.warn(`[handleActionRejected] perceptionText unavailable for agent ${agentId}, sending minimal rejection`);
+        return `「${actionName}」を実行できませんでした。${rejectionReason}`;
+      },
+      () => {
+        this.clearChoicesPromptSuppressionsIfCurrent(agentId, consumedRejectedActionId, consumedUsedItemId);
+      },
+    );
 
     await this.sendWorldLogForAgent(agentId, formatWorldLogActionRejected(actionName, rejectionReason));
   }
@@ -545,14 +609,26 @@ export class DiscordEventHandler {
   }
 
   private async handleWaitCompleted(agentId: string, durationMs: number): Promise<void> {
-    const perceptionText = this.getPerceptionText(agentId);
-    if (perceptionText) {
-      const choicesText = this.getChoicesText(agentId);
-      await this.sendToAgentClearingServerEvent(
-        agentId,
-        formatWaitCompletedMessage(this.getWorldContext(agentId), durationMs, perceptionText, this.skillName, choicesText),
+    const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
+    let consumedRejectedActionId: string | null = null;
+    let consumedUsedItemId: string | null = null;
+    await this.sendToAgentClearingServerEventBuilt(agentId, () => {
+      const perceptionText = this.getPerceptionText(agentId);
+      if (!perceptionText) {
+        return null;
+      }
+
+      const choicesPrompt = this.getChoicesPrompt(agentId, undefined, suppressionSnapshot);
+      consumedRejectedActionId = choicesPrompt.consumedRejectedActionId;
+      consumedUsedItemId = choicesPrompt.consumedUsedItemId;
+      return formatWaitCompletedMessage(
+        this.getWorldContext(agentId),
+        durationMs,
+        perceptionText,
+        this.skillName,
+        choicesPrompt.choicesText,
       );
-    }
+    }, () => this.clearChoicesPromptSuppressionsIfCurrent(agentId, consumedRejectedActionId, consumedUsedItemId));
 
     await this.sendWorldLogForAgent(agentId, formatWorldLogWait(durationMs));
   }
@@ -562,34 +638,57 @@ export class DiscordEventHandler {
   }
 
   private async handleItemUseCompleted(agentId: string, itemName: string, itemType: ItemType): Promise<void> {
-    const perceptionText = this.getPerceptionText(agentId);
-    if (perceptionText) {
-      const choicesText = this.getChoicesText(agentId);
-      await this.sendToAgentClearingServerEvent(
-        agentId,
-        formatItemUseCompletedMessage(this.getWorldContext(agentId), itemName, itemType, perceptionText, this.skillName, choicesText),
+    const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
+    let consumedRejectedActionId: string | null = null;
+    let consumedUsedItemId: string | null = null;
+    await this.sendToAgentClearingServerEventBuilt(agentId, () => {
+      const perceptionText = this.getPerceptionText(agentId);
+      if (!perceptionText) {
+        return null;
+      }
+
+      const choicesPrompt = this.getChoicesPrompt(agentId, undefined, suppressionSnapshot);
+      consumedRejectedActionId = choicesPrompt.consumedRejectedActionId;
+      consumedUsedItemId = choicesPrompt.consumedUsedItemId;
+      return formatItemUseCompletedMessage(
+        this.getWorldContext(agentId),
+        itemName,
+        itemType,
+        perceptionText,
+        this.skillName,
+        choicesPrompt.choicesText,
       );
-    }
+    }, () => this.clearChoicesPromptSuppressionsIfCurrent(agentId, consumedRejectedActionId, consumedUsedItemId));
 
     await this.sendWorldLogForAgent(agentId, formatWorldLogItemUseCompleted(itemName));
   }
 
   private async handleItemUseVenueRejected(agentId: string, itemName: string, venueHints: string[]): Promise<void> {
-    const perceptionText = this.getPerceptionText(agentId);
-    if (perceptionText) {
-      const choicesText = this.getChoicesText(agentId);
-      await this.sendToAgentClearingServerEvent(
-        agentId,
-        formatItemUseVenueRejectedMessage(this.getWorldContext(agentId), itemName, venueHints, perceptionText, this.skillName, choicesText),
-      );
-    } else {
+    const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
+    let consumedRejectedActionId: string | null = null;
+    let consumedUsedItemId: string | null = null;
+    await this.sendToAgentClearingServerEventBuilt(agentId, () => {
+      const perceptionText = this.getPerceptionText(agentId);
+      if (perceptionText) {
+        const choicesPrompt = this.getChoicesPrompt(agentId, undefined, suppressionSnapshot);
+        consumedRejectedActionId = choicesPrompt.consumedRejectedActionId;
+        consumedUsedItemId = choicesPrompt.consumedUsedItemId;
+        return formatItemUseVenueRejectedMessage(
+          this.getWorldContext(agentId),
+          itemName,
+          venueHints,
+          perceptionText,
+          this.skillName,
+          choicesPrompt.choicesText,
+        );
+      }
+
       console.warn(`[handleItemUseVenueRejected] perceptionText unavailable for agent ${agentId}, sending minimal rejection`);
       const hintsText = venueHints.length > 0 ? `${venueHints.join('、')} で利用できます。` : '';
-      await this.sendToAgentClearingServerEvent(
-        agentId,
-        `ここでは「${itemName}」を利用できません。${hintsText}`,
-      );
-    }
+      return `ここでは「${itemName}」を利用できません。${hintsText}`;
+    }, () => {
+      this.clearChoicesPromptSuppressionsIfCurrent(agentId, consumedRejectedActionId, consumedUsedItemId);
+    });
 
     await this.sendWorldLogForAgent(agentId, formatWorldLogItemUseVenueRejected(itemName));
   }
@@ -688,22 +787,29 @@ export class DiscordEventHandler {
   private async handleConversationPendingJoinCancelled(
     event: Extract<WorldEvent, { type: 'conversation_pending_join_cancelled' }>,
   ): Promise<void> {
-    const loggedInAgent = this.engine.state.getLoggedIn(event.agent_id);
-    if (!loggedInAgent) {
-      return;
-    }
-    const agentContext = this.getWorldContext(event.agent_id);
-    const perceptionText = this.getPerceptionText(event.agent_id);
-    const choicesText = this.getChoicesText(event.agent_id);
-    await this.sendConversationFollowUp(
+    const suppressionSnapshot = this.captureChoicesPromptSuppressions(event.agent_id);
+    let consumedRejectedActionId: string | null = null;
+    let consumedUsedItemId: string | null = null;
+    await this.sendConversationFollowUpBuilt(
       event.agent_id,
-      formatConversationPendingJoinCancelledMessage(
-        agentContext,
-        event.reason,
-        perceptionText,
-        this.skillName,
-        choicesText,
-      ),
+      () => {
+        const loggedInAgent = this.engine.state.getLoggedIn(event.agent_id);
+        if (!loggedInAgent) {
+          return null;
+        }
+
+        const choicesPrompt = this.getChoicesPrompt(event.agent_id, undefined, suppressionSnapshot);
+        consumedRejectedActionId = choicesPrompt.consumedRejectedActionId;
+        consumedUsedItemId = choicesPrompt.consumedUsedItemId;
+        return formatConversationPendingJoinCancelledMessage(
+          this.getWorldContext(event.agent_id),
+          event.reason,
+          this.getPerceptionText(event.agent_id),
+          this.skillName,
+          choicesPrompt.choicesText,
+        );
+      },
+      () => this.clearChoicesPromptSuppressionsIfCurrent(event.agent_id, consumedRejectedActionId, consumedUsedItemId),
     );
   }
 
@@ -737,22 +843,31 @@ export class DiscordEventHandler {
       }
     }
 
+    const conversationEndReason = event.reason;
     for (const participantId of event.participant_agent_ids) {
-      const perceptionText = this.getPerceptionText(participantId);
-      if (!perceptionText) {
-        continue;
-      }
-
-      const choicesText = this.getChoicesText(participantId);
-      await this.sendConversationFollowUp(
+      const suppressionSnapshot = this.captureChoicesPromptSuppressions(participantId);
+      let consumedRejectedActionId: string | null = null;
+      let consumedUsedItemId: string | null = null;
+      await this.sendConversationFollowUpBuilt(
         participantId,
-        formatConversationEndedMessage(
-          this.getWorldContext(participantId),
-          event.reason,
-          perceptionText,
-          this.skillName,
-          choicesText,
-        ),
+        () => {
+          const perceptionText = this.getPerceptionText(participantId);
+          if (!perceptionText) {
+            return null;
+          }
+
+          const choicesPrompt = this.getChoicesPrompt(participantId, undefined, suppressionSnapshot);
+          consumedRejectedActionId = choicesPrompt.consumedRejectedActionId;
+          consumedUsedItemId = choicesPrompt.consumedUsedItemId;
+          return formatConversationEndedMessage(
+            this.getWorldContext(participantId),
+            conversationEndReason,
+            perceptionText,
+            this.skillName,
+            choicesPrompt.choicesText,
+          );
+        },
+        () => this.clearChoicesPromptSuppressionsIfCurrent(participantId, consumedRejectedActionId, consumedUsedItemId),
       );
     }
 
@@ -883,13 +998,24 @@ export class DiscordEventHandler {
 
   private async handleServerEventFired(event: Extract<WorldEvent, { type: 'server_event_fired' }>): Promise<void> {
     for (const agentId of event.delivered_agent_ids) {
-      const content = formatServerEventMessage(
-        this.getWorldContext(agentId),
-        event.description,
-        this.skillName,
-        this.getChoicesText(agentId, { forceShowActions: true }),
+      const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
+      let consumedRejectedActionId: string | null = null;
+      let consumedUsedItemId: string | null = null;
+      await this.sendToAgentBuilt(
+        agentId,
+        () => {
+          const choicesPrompt = this.getChoicesPrompt(agentId, { forceShowActions: true }, suppressionSnapshot);
+          consumedRejectedActionId = choicesPrompt.consumedRejectedActionId;
+          consumedUsedItemId = choicesPrompt.consumedUsedItemId;
+          return formatServerEventMessage(
+            this.getWorldContext(agentId),
+            event.description,
+            this.skillName,
+            choicesPrompt.choicesText,
+          );
+        },
+        () => this.clearChoicesPromptSuppressionsIfCurrent(agentId, consumedRejectedActionId, consumedUsedItemId),
       );
-      await this.sendToAgent(agentId, content);
     }
 
     if (!event.delayed) {
@@ -906,16 +1032,114 @@ export class DiscordEventHandler {
     return buildPerceptionText(this.engine.getPerception(agentId));
   }
 
-  private getChoicesText(agentId: string, options?: { forceShowActions?: boolean }): string {
+  private clearRejectedActionIfCurrent(agentId: string, actionId: string | null): void {
+    if (actionId && this.engine.state.getLoggedIn(agentId)?.last_rejected_action_id === actionId) {
+      this.engine.state.setLastRejectedAction(agentId, null);
+    }
+  }
+
+  private clearLastUsedItemIfCurrent(agentId: string, itemId: string | null): void {
+    if (itemId && this.engine.state.getLoggedIn(agentId)?.last_used_item_id === itemId) {
+      this.engine.state.setLastUsedItem(agentId, null);
+    }
+  }
+
+  private clearChoicesPromptSuppressionsIfCurrent(
+    agentId: string,
+    actionId: string | null,
+    itemId: string | null,
+  ): void {
+    this.clearRejectedActionIfCurrent(agentId, actionId);
+    this.clearLastUsedItemIfCurrent(agentId, itemId);
+  }
+
+  private captureChoicesPromptSuppressions(agentId: string): ChoicesPromptSuppressionSnapshot {
+    const loggedInAgent = this.engine.state.getLoggedIn(agentId);
+    return {
+      rejectedActionId: loggedInAgent?.last_rejected_action_id ?? null,
+      usedItemId: loggedInAgent?.last_used_item_id ?? null,
+    };
+  }
+
+  private mergeChoiceSuppressionIds(ids: readonly string[] | undefined, id: string | null): string[] | undefined {
+    if (!id) {
+      return ids ? [...ids] : undefined;
+    }
+
+    return [...new Set([...(ids ?? []), id])];
+  }
+
+  private getChoicesPrompt(
+    agentId: string,
+    options?: BuildChoicesTextOptions,
+    suppressionSnapshot?: ChoicesPromptSuppressionSnapshot,
+  ): {
+    choicesText: string;
+    consumedRejectedActionId: string | null;
+    consumedUsedItemId: string | null;
+    suppressedActionIds: string[];
+    suppressedItemIds: string[];
+  } {
     try {
-      return buildChoicesText(this.engine, agentId, options);
+      const prompt = buildChoicesPrompt(
+        this.engine,
+        agentId,
+        suppressionSnapshot
+          ? {
+              ...options,
+              excludedActionIds: this.mergeChoiceSuppressionIds(options?.excludedActionIds, suppressionSnapshot.rejectedActionId),
+              excludedItemIds: this.mergeChoiceSuppressionIds(options?.excludedItemIds, suppressionSnapshot.usedItemId),
+              includeStoredRejectedAction: false,
+              includeStoredUsedItem: false,
+            }
+          : options,
+      );
+      const loggedInAgent = this.engine.state.getLoggedIn(agentId);
+      const consumedRejectedActionId = suppressionSnapshot
+        ? (
+          suppressionSnapshot.rejectedActionId
+          && prompt.suppressedActionIds.includes(suppressionSnapshot.rejectedActionId)
+            ? suppressionSnapshot.rejectedActionId
+            : null
+        )
+        : (
+          loggedInAgent?.last_rejected_action_id
+          && prompt.suppressedActionIds.includes(loggedInAgent.last_rejected_action_id)
+            ? loggedInAgent.last_rejected_action_id
+            : null
+        );
+      const consumedUsedItemId = suppressionSnapshot
+        ? (
+          suppressionSnapshot.usedItemId
+          && prompt.suppressedItemIds.includes(suppressionSnapshot.usedItemId)
+            ? suppressionSnapshot.usedItemId
+            : null
+        )
+        : (
+          loggedInAgent?.last_used_item_id
+          && prompt.suppressedItemIds.includes(loggedInAgent.last_used_item_id)
+            ? loggedInAgent.last_used_item_id
+            : null
+        );
+      return {
+        choicesText: prompt.text,
+        consumedRejectedActionId,
+        consumedUsedItemId,
+        suppressedActionIds: prompt.suppressedActionIds,
+        suppressedItemIds: prompt.suppressedItemIds,
+      };
     } catch (error) {
-      if (error instanceof WorldError) {
-        console.warn(`Choices text skipped for agent ${agentId}: ${error.code} - ${error.message}`);
-      } else {
-        console.error(`Failed to build choices text for agent ${agentId}.`, error);
+      if (!(error instanceof WorldError)) {
+        throw error;
       }
-      return '';
+      console.warn(`Choices text skipped for agent ${agentId}: ${error.code} - ${error.message}`);
+      return {
+        choicesText: '',
+        consumedRejectedActionId: null,
+        consumedUsedItemId: null,
+        suppressedActionIds: [],
+        suppressedItemIds: [],
+      };
     }
   }
 
@@ -924,11 +1148,20 @@ export class DiscordEventHandler {
       return;
     }
 
-    const choicesText = this.getChoicesText(agentId);
-    await this.sendToAgentClearingServerEvent(
-      agentId,
-      formatMapInfoMessage(this.getWorldContext(agentId), buildMapSummaryText(this.engine.config.map), this.skillName, choicesText),
-    );
+    const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
+    let consumedRejectedActionId: string | null = null;
+    let consumedUsedItemId: string | null = null;
+    await this.sendToAgentClearingServerEventBuilt(agentId, () => {
+      const choicesPrompt = this.getChoicesPrompt(agentId, { excludeInfoCommands: ['get_map'] }, suppressionSnapshot);
+      consumedRejectedActionId = choicesPrompt.consumedRejectedActionId;
+      consumedUsedItemId = choicesPrompt.consumedUsedItemId;
+      return formatMapInfoMessage(
+        this.getWorldContext(agentId),
+        buildMapSummaryText(this.engine.config.map),
+        this.skillName,
+        choicesPrompt.choicesText,
+      );
+    }, () => this.clearChoicesPromptSuppressionsIfCurrent(agentId, consumedRejectedActionId, consumedUsedItemId));
   }
 
   private async handleWorldAgentsInfoRequested(agentId: string): Promise<void> {
@@ -946,11 +1179,15 @@ export class DiscordEventHandler {
       return lines.length > 0 ? lines.join('\n') : '他にログイン中のエージェントはいません。';
     })();
 
-    const choicesText = this.getChoicesText(agentId);
-    await this.sendToAgentClearingServerEvent(
-      agentId,
-      formatWorldAgentsInfoMessage(this.getWorldContext(agentId), agentsText, this.skillName, choicesText),
-    );
+    const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
+    let consumedRejectedActionId: string | null = null;
+    let consumedUsedItemId: string | null = null;
+    await this.sendToAgentClearingServerEventBuilt(agentId, () => {
+      const choicesPrompt = this.getChoicesPrompt(agentId, { excludeInfoCommands: ['get_world_agents'] }, suppressionSnapshot);
+      consumedRejectedActionId = choicesPrompt.consumedRejectedActionId;
+      consumedUsedItemId = choicesPrompt.consumedUsedItemId;
+      return formatWorldAgentsInfoMessage(this.getWorldContext(agentId), agentsText, this.skillName, choicesPrompt.choicesText);
+    }, () => this.clearChoicesPromptSuppressionsIfCurrent(agentId, consumedRejectedActionId, consumedUsedItemId));
   }
 
   private async handlePerceptionRequested(agentId: string): Promise<void> {
@@ -958,13 +1195,16 @@ export class DiscordEventHandler {
       return;
     }
 
-    const perceptionText = this.getPerceptionText(agentId);
-
-    const choicesText = this.getChoicesText(agentId);
-    await this.sendToAgentClearingServerEvent(
-      agentId,
-      formatPerceptionInfoMessage(this.getWorldContext(agentId), perceptionText, this.skillName, choicesText),
-    );
+    const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
+    let consumedRejectedActionId: string | null = null;
+    let consumedUsedItemId: string | null = null;
+    await this.sendToAgentClearingServerEventBuilt(agentId, () => {
+      const perceptionText = this.getPerceptionText(agentId);
+      const choicesPrompt = this.getChoicesPrompt(agentId, undefined, suppressionSnapshot);
+      consumedRejectedActionId = choicesPrompt.consumedRejectedActionId;
+      consumedUsedItemId = choicesPrompt.consumedUsedItemId;
+      return formatPerceptionInfoMessage(this.getWorldContext(agentId), perceptionText, this.skillName, choicesPrompt.choicesText);
+    }, () => this.clearChoicesPromptSuppressionsIfCurrent(agentId, consumedRejectedActionId, consumedUsedItemId));
   }
 
   private async handleAvailableActionsRequested(agentId: string): Promise<void> {
@@ -972,15 +1212,23 @@ export class DiscordEventHandler {
       return;
     }
 
-    const lines = getAvailableActionSources(this.engine, agentId).map(
-      (source) => `- action: ${formatActionSourceLine(source, this.engine.config.items ?? [])}`,
-    );
-    const actionsText = lines.length > 0 ? `実行可能なアクション:\n${lines.join('\n')}` : '実行可能なアクションはありません。';
-    const choicesText = this.getChoicesText(agentId);
-    await this.sendToAgentClearingServerEvent(
-      agentId,
-      formatAvailableActionsInfoMessage(this.getWorldContext(agentId), actionsText, this.skillName, choicesText),
-    );
+    const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
+    let consumedRejectedActionId: string | null = null;
+    let consumedUsedItemId: string | null = null;
+    await this.sendToAgentClearingServerEventBuilt(agentId, () => {
+      const rejectedActionId = suppressionSnapshot.rejectedActionId;
+      const availableActionSources = getAvailableActionSourcesWithOptions(this.engine, agentId, {
+        excluded_action_ids: rejectedActionId ? [rejectedActionId] : [],
+      });
+      const lines = availableActionSources.map(
+        (source) => `- action: ${formatActionSourceLine(source, this.engine.config.items ?? [])}`,
+      );
+      const actionsText = lines.length > 0 ? `実行可能なアクション:\n${lines.join('\n')}` : '実行可能なアクションはありません。';
+      const choicesPrompt = this.getChoicesPrompt(agentId, undefined, suppressionSnapshot);
+      consumedRejectedActionId = choicesPrompt.consumedRejectedActionId;
+      consumedUsedItemId = choicesPrompt.consumedUsedItemId;
+      return formatAvailableActionsInfoMessage(this.getWorldContext(agentId), actionsText, this.skillName, choicesPrompt.choicesText);
+    }, () => this.clearChoicesPromptSuppressionsIfCurrent(agentId, consumedRejectedActionId, consumedUsedItemId));
   }
 
   private getAgentName(agentId: string): string {
@@ -1039,15 +1287,43 @@ export class DiscordEventHandler {
   }
 
   private async sendToAgent(agentId: string, content: string): Promise<void> {
-    await this.enqueueAgentMessageDelivery(agentId, async () => {
-      await this.sendToAgentNow(agentId, content);
-    });
+    await this.sendToAgentBuilt(agentId, () => content);
   }
 
   private async sendToAgentClearingServerEvent(agentId: string, content: string): Promise<void> {
+    await this.sendToAgentClearingServerEventBuilt(agentId, () => content);
+  }
+
+  private async sendToAgentBuilt(
+    agentId: string,
+    buildContent: () => string | null,
+    onDelivered?: () => void,
+  ): Promise<void> {
     await this.enqueueAgentMessageDelivery(agentId, async () => {
+      const content = buildContent();
+      if (!content) {
+        return;
+      }
+
+      await this.sendToAgentNow(agentId, content);
+      onDelivered?.();
+    });
+  }
+
+  private async sendToAgentClearingServerEventBuilt(
+    agentId: string,
+    buildContent: () => string | null,
+    onDelivered?: () => void,
+  ): Promise<void> {
+    await this.enqueueAgentMessageDelivery(agentId, async () => {
+      const content = buildContent();
+      if (!content) {
+        return;
+      }
+
       try {
         await this.sendToAgentNow(agentId, content);
+        onDelivered?.();
       } finally {
         clearActiveServerEvent(this.engine, agentId);
       }
@@ -1059,32 +1335,48 @@ export class DiscordEventHandler {
     counterpartName: string,
     reason: ConversationRejectionReason,
   ): Promise<void> {
-    const perceptionText = this.getPerceptionText(agentId);
-    if (!perceptionText) {
-      return;
-    }
-
-    const choicesText = this.getChoicesText(agentId);
-    await this.sendConversationFollowUp(
+    const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
+    let consumedRejectedActionId: string | null = null;
+    let consumedUsedItemId: string | null = null;
+    await this.sendConversationFollowUpBuilt(
       agentId,
-      formatConversationRejectedMessage(
-        this.getWorldContext(agentId),
-        counterpartName,
-        reason,
-        perceptionText,
-        this.skillName,
-        choicesText,
-      ),
+      () => {
+        const perceptionText = this.getPerceptionText(agentId);
+        if (!perceptionText) {
+          return null;
+        }
+
+        const choicesPrompt = this.getChoicesPrompt(agentId, undefined, suppressionSnapshot);
+        consumedRejectedActionId = choicesPrompt.consumedRejectedActionId;
+        consumedUsedItemId = choicesPrompt.consumedUsedItemId;
+        return formatConversationRejectedMessage(
+          this.getWorldContext(agentId),
+          counterpartName,
+          reason,
+          perceptionText,
+          this.skillName,
+          choicesPrompt.choicesText,
+        );
+      },
+      () => this.clearChoicesPromptSuppressionsIfCurrent(agentId, consumedRejectedActionId, consumedUsedItemId),
     );
   }
 
   private async sendConversationFollowUp(agentId: string, content: string): Promise<void> {
+    await this.sendConversationFollowUpBuilt(agentId, () => content);
+  }
+
+  private async sendConversationFollowUpBuilt(
+    agentId: string,
+    buildContent: () => string | null,
+    onDelivered?: () => void,
+  ): Promise<void> {
     if (this.engine.state.getLoggedIn(agentId)?.active_server_event_id != null) {
-      await this.sendToAgentClearingServerEvent(agentId, content);
+      await this.sendToAgentClearingServerEventBuilt(agentId, buildContent, onDelivered);
       return;
     }
 
-    await this.sendToAgent(agentId, content);
+    await this.sendToAgentBuilt(agentId, buildContent, onDelivered);
   }
 
   private async enqueueAgentMessageDelivery(agentId: string, task: () => Promise<void>): Promise<void> {

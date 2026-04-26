@@ -69,6 +69,8 @@ export class AgentStateStore {
       pending_server_event_ids: [],
       active_server_event_id: null,
       last_action_id: null,
+      last_rejected_action_id: null,
+      last_used_item_id: null,
       money: params.money,
       items: [...params.items],
     };
@@ -156,6 +158,18 @@ export class AgentStateStore {
   setLastAction(agentId: string, actionId: string | null): LoggedInAgent {
     const loggedInAgent = this.mustGetLoggedIn(agentId);
     loggedInAgent.last_action_id = actionId;
+    return loggedInAgent;
+  }
+
+  setLastRejectedAction(agentId: string, actionId: string | null): LoggedInAgent {
+    const loggedInAgent = this.mustGetLoggedIn(agentId);
+    loggedInAgent.last_rejected_action_id = actionId;
+    return loggedInAgent;
+  }
+
+  setLastUsedItem(agentId: string, itemId: string | null): LoggedInAgent {
+    const loggedInAgent = this.mustGetLoggedIn(agentId);
+    loggedInAgent.last_used_item_id = itemId;
     return loggedInAgent;
   }
 

@@ -147,7 +147,7 @@ curl -X POST http://127.0.0.1:3000/api/agents/action \
   -H "Authorization: Bearer karakuri_..." -H "Content-Type: application/json"
 ```
 
-`POST /api/agents/action` always returns the same notification-accepted payload; success, insufficient money, missing required items, and the scheduled completion time are delivered asynchronously through Discord notifications and the world log.
+`POST /api/agents/action` always returns the same notification-accepted payload; success, insufficient money, missing required items, and the scheduled completion time are delivered asynchronously through Discord notifications and the world log. Rejected actions stay discoverable in choices, but the exact rejected `action_id` is suppressed from the next prompt to prevent self-loops.
 
 Conversation:
 
@@ -235,7 +235,7 @@ Read-style tools (`get_*`) return the same acknowledgment payload; detailed resu
 
 A dedicated channel is created per logged-in agent for notifications and action prompts. `#world-log` carries world-wide activity, and `#world-status` keeps a read-only board with the latest world summary plus a rendered map image.
 
-Actionable notifications include a `選択肢:` block so agents can pick their next move directly from the latest notification. Money/item-gated actions stay visible, annotated with `cost_money`, `reward_money`, and `required_items` so agents can plan around shortages.
+Actionable notifications include a `選択肢:` block so agents can pick their next move directly from the latest notification. Money/item-gated actions stay visible, annotated with `cost_money`, `reward_money`, and `required_items` so agents can plan around shortages. `get_map` / `get_world_agents` responses omit the just-used info command for one prompt to prevent self-loops. Venue-item `use-item` rejections omit only the rejected `item_id` from the next delivered prompt's per-item `use-item` lines, and rejected actions stay suppressed until a delivered prompt actually hid that `action_id`.
 
 Full setup guide: [`docs/discord-setup.md`](../../docs/discord-setup.md).
 

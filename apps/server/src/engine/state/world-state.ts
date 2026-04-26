@@ -95,6 +95,14 @@ export class WorldState {
     return this.agents.setLastAction(agentId, actionId);
   }
 
+  setLastRejectedAction(agentId: string, actionId: string | null): LoggedInAgent {
+    return this.agents.setLastRejectedAction(agentId, actionId);
+  }
+
+  setLastUsedItem(agentId: string, itemId: string | null): LoggedInAgent {
+    return this.agents.setLastUsedItem(agentId, itemId);
+  }
+
   setMoney(agentId: string, money: number): LoggedInAgent {
     return this.agents.setMoney(agentId, money);
   }

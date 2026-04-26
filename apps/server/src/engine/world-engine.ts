@@ -2,7 +2,6 @@ import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 
 import {
   executeValidatedAction,
-  getAvailableActions as getAvailableActionsForAgent,
   handleActionCompleted,
   validateAction,
 } from '../domain/actions.js';
@@ -45,7 +44,6 @@ import { WorldError } from '../types/api.js';
 import type {
   ActionRequest,
   AdminAgentSummary,
-  AvailableActionsResponse,
   ConversationAcceptRequest,
   ConversationEndRequest,
   ConversationJoinRequest,
@@ -413,6 +411,7 @@ export class WorldEngine {
   executeAction(agentId: string, request: ActionRequest): NotificationAcceptedResponse {
     const result = validateAction(this, agentId, request);
     if (result.rejected) {
+      this.state.setLastRejectedAction(result.agent.agent_id, result.source.action.action_id);
       this.emitEvent({
         type: 'action_rejected',
         agent_id: result.agent.agent_id,
@@ -478,10 +477,6 @@ export class WorldEngine {
   fireServerEvent(request: FireServerEventRequest | string): FireServerEventResponse {
     const description = typeof request === 'string' ? request : request.description;
     return fireRuntimeServerEvent(this, description);
-  }
-
-  getAvailableActions(agentId: string): AvailableActionsResponse {
-    return getAvailableActionsForAgent(this, agentId);
   }
 
   getPerception(agentId: string): PerceptionResponse {

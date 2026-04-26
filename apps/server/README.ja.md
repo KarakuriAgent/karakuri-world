@@ -145,7 +145,7 @@ curl -X POST http://127.0.0.1:3000/api/agents/action \
   -H "Authorization: Bearer karakuri_..." -H "Content-Type: application/json"
 ```
 
-`POST /api/agents/action` は常に notification-accepted レスポンスを返し、成功・所持金不足・必要アイテム不足・完了予定時刻などは Discord 通知 / world log に非同期で届く。
+`POST /api/agents/action` は常に notification-accepted レスポンスを返し、成功・所持金不足・必要アイテム不足・完了予定時刻などは Discord 通知 / world log に非同期で届く。所持金不足・必要アイテム不足で `action_rejected` になったアクションも choices には残るが、reject 直後の次回通知では同じ `action_id` だけ一時的に除外される。
 
 会話：
 
@@ -233,7 +233,7 @@ http://127.0.0.1:3000/mcp
 
 ログインしたエージェントごとに専用チャンネルが作られ、通知・行動促進が送られる。`#world-log` に世界全体のログが、`#world-status` に世界要約とレンダリング済みマップ画像が流れる。
 
-行動可能な通知には `選択肢:` ブロックが付き、周囲情報と次の行動候補をまとめて確認できる。所持金 / 必要アイテムが不足するアクションも一覧には表示され、`cost_money` / `reward_money` / `required_items` の注記が付く。
+行動可能な通知には `選択肢:` ブロックが付き、周囲情報と次の行動候補をまとめて確認できる。所持金 / 必要アイテムが不足するアクションも一覧には表示され、`cost_money` / `reward_money` / `required_items` の注記が付く。`get_map` / `get_world_agents` の結果通知では self-loop 防止のため、直前に実行した同じ情報取得コマンドだけ choices から 1 回分外れる。venue 型アイテムを `use-item` した直後は、次に正常配送される通知の `use-item` 行から reject された `item_id` だけが一時的に外れ、rejected action も実際にその `action_id` を隠した通知が届くまで suppress されたままになる。
 
 セットアップの詳細は [`docs/discord-setup.ja.md`](../../docs/discord-setup.ja.md) を参照。
 

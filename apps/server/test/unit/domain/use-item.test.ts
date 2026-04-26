@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorldEngine } from '../../../src/engine/world-engine.js';
 import type { WorldEvent } from '../../../src/types/event.js';
 import { createTestWorld } from '../../helpers/test-world.js';
+import { buildChoicesText } from '../../../src/domain/choices.js';
 
 async function createLoggedInAgent(engine: WorldEngine, agentName = 'alice') {
   const agent = await engine.registerAgent({ discord_bot_id: `bot-${agentName}` });
@@ -66,6 +67,7 @@ describe('use-item domain', () => {
     expect(engine.state.getLoggedIn(alice.agent_id)?.items).toEqual([{ item_id: 'ticket', quantity: 1 }]);
     // Agent remains idle
     expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('idle');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.last_used_item_id).toBe('ticket');
     // No started event
     expect(events.some((e) => e.type === 'item_use_started')).toBe(false);
   });
@@ -99,6 +101,7 @@ describe('use-item domain', () => {
     // Item consumed
     expect(engine.state.getLoggedIn(alice.agent_id)?.items).toEqual([{ item_id: 'bread', quantity: 1 }]);
     expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('idle');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.last_used_item_id).toBeNull();
   });
 
   it('recovers to idle when item-use completion persistence fails', async () => {
@@ -198,5 +201,28 @@ describe('use-item domain', () => {
       expect(rejected.venue_hints[0]).toContain('Clockwork Workshop');
       expect(rejected.venue_hints[1]).toContain('Gatekeeper');
     }
+  });
+
+  it('keeps use-item available when another usable item exists after a venue rejection', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        items: [
+          { item_id: 'ticket', name: 'チケット', description: 'テスト用チケット', type: 'venue' as const, stackable: false },
+          { item_id: 'bread', name: 'パン', description: '焼きたて', type: 'food' as const, stackable: true, max_stack: 5 },
+        ],
+      },
+    });
+    const alice = await createLoggedInAgent(engine);
+    engine.state.setItems(alice.agent_id, [
+      { item_id: 'ticket', quantity: 1 },
+      { item_id: 'bread', quantity: 1 },
+    ]);
+
+    engine.useItem(alice.agent_id, { item_id: 'ticket' });
+
+    const choicesText = buildChoicesText(engine, alice.agent_id);
+
+    expect(choicesText).toContain('(item_id: bread)');
+    expect(choicesText).not.toContain('(item_id: ticket)');
   });
 });

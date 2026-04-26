@@ -1,15 +1,32 @@
 import type { WorldEngine } from '../engine/world-engine.js';
 import { WorldError } from '../types/api.js';
 import { manhattanDistance } from './map-utils.js';
-import { formatActionSourceLine, getAvailableActionSources } from './actions.js';
+import { formatActionSourceLine, getAvailableActionSourcesWithOptions } from './actions.js';
 import { findConversationByAgent } from './conversation.js';
 import { getAgentCurrentNode } from './movement.js';
 
-export function buildChoicesText(
+export type InfoCommandChoice = 'get_map' | 'get_world_agents';
+
+export interface BuildChoicesTextOptions {
+  forceShowActions?: boolean;
+  excludeInfoCommands?: readonly InfoCommandChoice[];
+  excludedActionIds?: readonly string[];
+  excludedItemIds?: readonly string[];
+  includeStoredRejectedAction?: boolean;
+  includeStoredUsedItem?: boolean;
+}
+
+export interface BuiltChoicesPrompt {
+  text: string;
+  suppressedActionIds: string[];
+  suppressedItemIds: string[];
+}
+
+export function buildChoicesPrompt(
   engine: WorldEngine,
   agentId: string,
-  options: { forceShowActions?: boolean } = {},
-): string {
+  options: BuildChoicesTextOptions = {},
+): BuiltChoicesPrompt {
   const agent = engine.state.getLoggedIn(agentId);
   if (!agent) {
     throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
@@ -21,10 +38,22 @@ export function buildChoicesText(
   const canStartConversation = agent.state === 'idle' && agent.pending_conversation_id === null;
   const canJoinConversation = agent.pending_conversation_id === null
     && (agent.state === 'idle' || (options.forceShowActions && agent.state === 'in_action'));
+  const rejectedActionIds = new Set(options.excludedActionIds ?? []);
+  if (options.includeStoredRejectedAction !== false && agent.last_rejected_action_id) {
+    rejectedActionIds.add(agent.last_rejected_action_id);
+  }
+  const availableActionSources = canStartInterruptibleCommand
+    ? getAvailableActionSourcesWithOptions(engine, agentId)
+    : [];
+  const suppressedActionIds = availableActionSources
+    .map((source) => source.action.action_id)
+    .filter((actionId) => rejectedActionIds.has(actionId));
   const actionLines = canStartInterruptibleCommand
-    ? getAvailableActionSources(engine, agentId).map(
-        (source) => `- action: ${formatActionSourceLine(source, engine.config.items ?? [])}`,
-      )
+    ? availableActionSources
+        .filter((source) => !rejectedActionIds.has(source.action.action_id))
+        .map(
+          (source) => `- action: ${formatActionSourceLine(source, engine.config.items ?? [])}`,
+        )
     : [];
   const conversationStartLines = canStartConversation
     ? engine.state
@@ -68,10 +97,18 @@ export function buildChoicesText(
 
   const conversationLines = [...conversationStartLines, ...conversationJoinLines];
 
-  const hasItems = canStartInterruptibleCommand && agent.items.some((item) => item.quantity > 0);
-  const useItemLine = hasItems
-    ? ['- use-item: アイテムを使用する (item_id: アイテムID)']
+  const excludedItemIds = new Set(options.excludedItemIds ?? []);
+  if (options.includeStoredUsedItem !== false && agent.last_used_item_id) {
+    excludedItemIds.add(agent.last_used_item_id);
+  }
+  const itemNames = new Map((engine.config.items ?? []).map((item) => [item.item_id, item.name]));
+  const availableItemIds = canStartInterruptibleCommand
+    ? [...new Set(agent.items.filter((item) => item.quantity > 0).map((item) => item.item_id))].sort((left, right) => left.localeCompare(right))
     : [];
+  const suppressedItemIds = availableItemIds.filter((itemId) => excludedItemIds.has(itemId));
+  const useItemLine = availableItemIds
+    .filter((itemId) => !excludedItemIds.has(itemId))
+    .map((itemId) => `- use-item: ${(itemNames.get(itemId) ?? itemId)} を使用する (item_id: ${itemId})`);
 
   const commandLines = canStartInterruptibleCommand
     ? [
@@ -83,11 +120,30 @@ export function buildChoicesText(
       ]
     : [];
 
+  const excludedInfoCommands = new Set(options.excludeInfoCommands ?? []);
+  const infoLines = [
+    { id: 'get_map' as const, line: '- get_map: マップ全体の情報を取得する' },
+    { id: 'get_world_agents' as const, line: '- get_world_agents: 全エージェントの位置と状態を取得する' },
+  ]
+    .filter(({ id }) => !excludedInfoCommands.has(id))
+    .map(({ line }) => line);
+
   const lines = [
     ...commandLines,
-    '- get_map: マップ全体の情報を取得する',
-    '- get_world_agents: 全エージェントの位置と状態を取得する',
+    ...infoLines,
   ];
 
-  return `選択肢:\n${lines.join('\n')}`;
+  return {
+    text: `選択肢:\n${lines.join('\n')}`,
+    suppressedActionIds,
+    suppressedItemIds,
+  };
+}
+
+export function buildChoicesText(
+  engine: WorldEngine,
+  agentId: string,
+  options: BuildChoicesTextOptions = {},
+): string {
+  return buildChoicesPrompt(engine, agentId, options).text;
 }

@@ -27,6 +27,37 @@ describe('choices domain', () => {
     expect(text).toContain('- get_world_agents: 全エージェントの位置と状態を取得する');
   });
 
+  it('can exclude only the requested info command from choices', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+
+    const mapExcluded = buildChoicesText(engine, alice.agent_id, { excludeInfoCommands: ['get_map'] });
+    expect(mapExcluded).not.toContain('- get_map: マップ全体の情報を取得する');
+    expect(mapExcluded).toContain('- get_world_agents: 全エージェントの位置と状態を取得する');
+
+    const agentsExcluded = buildChoicesText(engine, alice.agent_id, { excludeInfoCommands: ['get_world_agents'] });
+    expect(agentsExcluded).toContain('- get_map: マップ全体の情報を取得する');
+    expect(agentsExcluded).not.toContain('- get_world_agents: 全エージェントの位置と状態を取得する');
+  });
+
+  it('applies info-command exclusion together with forced action choices', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.state.setState(alice.agent_id, 'in_action');
+
+    const text = buildChoicesText(engine, alice.agent_id, {
+      forceShowActions: true,
+      excludeInfoCommands: ['get_map'],
+    });
+
+    expect(text).toContain('- action:');
+    expect(text).not.toContain('- get_map: マップ全体の情報を取得する');
+    expect(text).toContain('- get_world_agents: 全エージェントの位置と状態を取得する');
+  });
+
   it('throws not_logged_in for unknown agent', async () => {
     const { engine } = createTestWorld();
 
@@ -152,5 +183,115 @@ describe('choices domain', () => {
     const text = buildChoicesText(engine, carol.agent_id, { forceShowActions: true });
 
     expect(text).toContain('- conversation_join: alice と bob の会話に参加する');
+  });
+
+  it('keeps money- and item-gated actions visible in choices', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        economy: { initial_money: 100 },
+        items: [{ item_id: 'flower', name: '花束', description: '花', type: 'general' as const, stackable: true }],
+        map: {
+          ...createTestWorld().config.map,
+          npcs: [
+            {
+              npc_id: 'npc-gatekeeper',
+              name: 'Gatekeeper',
+              description: 'Watches the town gate.',
+              node_id: '1-2',
+              actions: [
+                {
+                  action_id: 'expensive-greeting',
+                  name: 'Expensive greeting',
+                  description: 'Offer a costly greeting.',
+                  duration_ms: 1200,
+                  cost_money: 500,
+                },
+                {
+                  action_id: 'offer-flower',
+                  name: 'Offer a flower',
+                  description: 'Give flowers.',
+                  duration_ms: 600,
+                  required_items: [{ item_id: 'flower', quantity: 1 }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.setNode(alice.agent_id, '1-1');
+
+    const text = buildChoicesText(engine, alice.agent_id);
+
+    expect(text).toContain('expensive-greeting');
+    expect(text).toContain('offer-flower');
+  });
+
+  it('omits the last attempted action from choices', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.state.setLastAction(alice.agent_id, 'greet-gatekeeper');
+
+    const text = buildChoicesText(engine, alice.agent_id);
+
+    expect(text).not.toContain('greet-gatekeeper');
+  });
+
+  it('does not consume rejected-action suppression while building choices text', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.state.setLastRejectedAction(alice.agent_id, 'greet-gatekeeper');
+
+    const firstText = buildChoicesText(engine, alice.agent_id);
+    const secondText = buildChoicesText(engine, alice.agent_id);
+
+    expect(firstText).not.toContain('greet-gatekeeper');
+    expect(secondText).not.toContain('greet-gatekeeper');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.last_rejected_action_id).toBe('greet-gatekeeper');
+  });
+
+  it('hides use-item when only the last rejected item remains', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        items: [{ item_id: 'ticket', name: 'チケット', description: 'チケット', type: 'venue' as const, stackable: false }],
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.setItems(alice.agent_id, [{ item_id: 'ticket', quantity: 1 }]);
+    engine.state.setLastUsedItem(alice.agent_id, 'ticket');
+
+    const text = buildChoicesText(engine, alice.agent_id);
+
+    expect(text).not.toContain('- use-item:');
+  });
+
+  it('keeps use-item visible when another usable item remains', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        items: [
+          { item_id: 'ticket', name: 'チケット', description: 'チケット', type: 'venue' as const, stackable: false },
+          { item_id: 'apple', name: 'りんご', description: 'りんご', type: 'food' as const, stackable: true },
+        ],
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.setItems(alice.agent_id, [
+      { item_id: 'ticket', quantity: 1 },
+      { item_id: 'apple', quantity: 1 },
+    ]);
+    engine.state.setLastUsedItem(alice.agent_id, 'ticket');
+
+    const text = buildChoicesText(engine, alice.agent_id);
+
+    expect(text).toContain('(item_id: apple)');
+    expect(text).not.toContain('(item_id: ticket)');
   });
 });
