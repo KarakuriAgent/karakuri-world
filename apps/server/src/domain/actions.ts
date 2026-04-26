@@ -1,11 +1,5 @@
 import type { WorldEngine } from '../engine/world-engine.js';
-import type {
-  ActionRequest,
-  AvailableActionSummary,
-  FixedDurationAvailableActionSummary,
-  NotificationAcceptedResponse,
-  RangeDurationAvailableActionSummary,
-} from '../types/api.js';
+import type { ActionRequest, NotificationAcceptedResponse } from '../types/api.js';
 import { WorldError, createNotificationAcceptedResponse } from '../types/api.js';
 import type { AgentItem, LoggedInAgent } from '../types/agent.js';
 import type { ActionConfig, BuildingConfig, ItemConfig, NpcConfig } from '../types/data-model.js';
@@ -58,20 +52,6 @@ function toAgentItems(items: ActionConfig['required_items'] | undefined): AgentI
   return items?.map((item) => ({ item_id: item.item_id, quantity: item.quantity }));
 }
 
-function mapActionDurationFields(
-  action: ActionConfig,
-): Pick<FixedDurationAvailableActionSummary, 'duration_ms'>
-  | Pick<RangeDurationAvailableActionSummary, 'min_duration_minutes' | 'max_duration_minutes'> {
-  if (action.duration_ms !== undefined) {
-    return { duration_ms: action.duration_ms };
-  }
-
-  return {
-    min_duration_minutes: action.min_duration_minutes,
-    max_duration_minutes: action.max_duration_minutes,
-  };
-}
-
 function resolveDurationMs(action: ActionConfig, durationMinutes?: number): number {
   if (action.duration_ms !== undefined) {
     return action.duration_ms;
@@ -94,23 +74,6 @@ function resolveDurationMs(action: ActionConfig, durationMinutes?: number): numb
   }
 
   return durationMinutes * 60_000;
-}
-
-function mapActionSource(source: ActionSource): AvailableActionSummary {
-  return {
-    action_id: source.action.action_id,
-    name: source.action.name,
-    description: source.action.description,
-    ...mapActionDurationFields(source.action),
-    cost_money: source.action.cost_money,
-    reward_money: source.action.reward_money,
-    required_items: toAgentItems(source.action.required_items),
-    source: {
-      type: source.type,
-      id: source.id,
-      name: source.name,
-    },
-  };
 }
 
 function formatRequiredItems(items: ReadonlyArray<AgentItem> | undefined, itemConfigs: ReadonlyArray<ItemConfig>): string {
@@ -161,6 +124,23 @@ export function getAvailableActionSources(engine: WorldEngine, agentId: string):
     throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
   }
 
+  return getAvailableActionSourcesWithOptions(engine, agentId);
+}
+
+export interface GetAvailableActionSourcesOptions {
+  excluded_action_ids?: readonly string[];
+}
+
+export function getAvailableActionSourcesWithOptions(
+  engine: WorldEngine,
+  agentId: string,
+  options: GetAvailableActionSourcesOptions = {},
+): ActionSource[] {
+  const agent = engine.state.getLoggedIn(agentId);
+  if (!agent) {
+    throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
+  }
+
   const now = new Date();
   const sources: ActionSource[] = [];
   const currentNodeId = getAgentCurrentNode(engine, agent);
@@ -193,13 +173,17 @@ export function getAvailableActionSources(engine: WorldEngine, agentId: string):
       ),
   );
 
+  const excludedActionIds = new Set(options.excluded_action_ids ?? []);
   return sources
-    .filter((source) => source.action.action_id !== agent.last_action_id)
+    .filter(
+      (source) =>
+        source.action.action_id !== agent.last_action_id
+        && !excludedActionIds.has(source.action.action_id),
+    )
     .sort((left, right) => left.action.action_id.localeCompare(right.action.action_id));
 }
 
 function lookupActionById(engine: WorldEngine, actionId: string): ActionSource | null {
-
   const buildingAction = engine.config.map.buildings
     .flatMap((building: BuildingConfig) =>
       building.actions.map((action) => ({
@@ -226,12 +210,6 @@ function lookupActionById(engine: WorldEngine, actionId: string): ActionSource |
       )
       .find((source) => source.action.action_id === actionId) ?? null
   );
-}
-
-export function getAvailableActions(engine: WorldEngine, agentId: string): { actions: AvailableActionSummary[] } {
-  return {
-    actions: getAvailableActionSources(engine, agentId).map(mapActionSource),
-  };
 }
 
 export function validateAction(

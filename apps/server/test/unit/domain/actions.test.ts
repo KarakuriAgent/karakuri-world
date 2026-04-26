@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { WorldEngine } from '../../../src/engine/world-engine.js';
-import { formatActionSourceLine, getAvailableActionSources } from '../../../src/domain/actions.js';
+import { formatActionSourceLine, getAvailableActionSources, getAvailableActionSourcesWithOptions } from '../../../src/domain/actions.js';
 import { WorldError } from '../../../src/types/api.js';
 import type { NodeId } from '../../../src/types/data-model.js';
 import type { WorldEvent } from '../../../src/types/event.js';
@@ -16,7 +16,7 @@ async function createLoggedInAgent(engine: WorldEngine, agentName = 'alice') {
 }
 
 function getAvailableActionIds(engine: WorldEngine, agentId: string): string[] {
-  return engine.getAvailableActions(agentId).actions.map((action) => action.action_id);
+  return getAvailableActionSources(engine, agentId).map((source) => source.action.action_id);
 }
 
 function executeAndCompleteAction(engine: WorldEngine, agentId: string, actionId: string): void {
@@ -58,30 +58,28 @@ describe('actions domain', () => {
     await engine.loginAgent(alice.agent_id);
     engine.state.setNode(alice.agent_id, '2-4');
 
-    expect(engine.getAvailableActions(alice.agent_id).actions).toEqual([
-      {
-        action_id: 'long-nap',
-        name: 'Long nap',
-        description: 'Take a nap for as long as needed.',
-        min_duration_minutes: 1,
-        max_duration_minutes: 5,
-        source: {
-          type: 'building',
-          id: 'building-workshop',
-          name: 'Clockwork Workshop',
-        },
-      },
-      {
-        action_id: 'polish-gears',
-        name: 'Gears polishing',
-        description: 'Carefully polish the workshop gears.',
-        duration_ms: 1500,
-        source: {
-          type: 'building',
-          id: 'building-workshop',
-          name: 'Clockwork Workshop',
-        },
-      },
+    expect(getAvailableActionSources(engine, alice.agent_id)).toEqual([
+      expect.objectContaining({
+        type: 'building',
+        id: 'building-workshop',
+        name: 'Clockwork Workshop',
+        action: expect.objectContaining({
+          action_id: 'long-nap',
+          name: 'Long nap',
+          min_duration_minutes: 1,
+          max_duration_minutes: 5,
+        }),
+      }),
+      expect.objectContaining({
+        type: 'building',
+        id: 'building-workshop',
+        name: 'Clockwork Workshop',
+        action: expect.objectContaining({
+          action_id: 'polish-gears',
+          name: 'Gears polishing',
+          duration_ms: 1500,
+        }),
+      }),
     ]);
 
     const response = engine.executeAction(alice.agent_id, { action_id: 'polish-gears' });
@@ -219,7 +217,7 @@ describe('actions domain', () => {
     await engine.loginAgent(alice.agent_id);
     engine.state.setNode(alice.agent_id, '1-1');
 
-    expect(engine.getAvailableActions(alice.agent_id).actions[0]?.action_id).toBe('greet-gatekeeper');
+    expect(getAvailableActionSources(engine, alice.agent_id)[0]?.action.action_id).toBe('greet-gatekeeper');
     expect(() => engine.executeAction(alice.agent_id, { action_id: 'missing-action' })).toThrowError(WorldError);
 
     engine.state.setNode(alice.agent_id, '3-4');
@@ -385,6 +383,11 @@ describe('actions domain', () => {
     expect(response.ok).toBe(true);
     expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('idle');
     expect(engine.state.getLoggedIn(alice.agent_id)?.money).toBe(100);
+    expect(engine.state.getLoggedIn(alice.agent_id)).toMatchObject({
+      last_action_id: null,
+      last_rejected_action_id: 'greet-gatekeeper',
+    });
+    expect(getAvailableActionIds(engine, alice.agent_id)).toEqual(['greet-gatekeeper']);
     expect(events.some((e) => e.type === 'action_rejected')).toBe(true);
   });
 
@@ -423,7 +426,58 @@ describe('actions domain', () => {
     const response = engine.executeAction(alice.agent_id, { action_id: 'offer-flower' });
     expect(response.ok).toBe(true);
     expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('idle');
+    expect(engine.state.getLoggedIn(alice.agent_id)).toMatchObject({
+      last_action_id: null,
+      last_rejected_action_id: 'offer-flower',
+    });
+    expect(getAvailableActionIds(engine, alice.agent_id)).toEqual(['offer-flower']);
     expect(events.some((e) => e.type === 'action_rejected')).toBe(true);
+  });
+
+  it('keeps rejected actions visible at the domain layer (suppression lives in choices)', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        economy: { initial_money: 100 },
+        map: {
+          ...createTestWorld().config.map,
+          npcs: [
+            {
+              npc_id: 'npc-gatekeeper',
+              name: 'Gatekeeper',
+              description: 'Watches the town gate.',
+              node_id: '1-2',
+              actions: [
+                {
+                  action_id: 'greet-gatekeeper',
+                  name: 'Greet the gatekeeper',
+                  description: 'Offer a greeting.',
+                  duration_ms: 1200,
+                },
+                {
+                  action_id: 'expensive-greeting',
+                  name: 'Expensive greeting',
+                  description: 'Offer a costly greeting.',
+                  duration_ms: 1200,
+                  cost_money: 500,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    const alice = await createLoggedInAgent(engine);
+    engine.state.setNode(alice.agent_id, '1-1');
+
+    expect(engine.executeAction(alice.agent_id, { action_id: 'expensive-greeting' }).ok).toBe(true);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.last_rejected_action_id).toBe('expensive-greeting');
+
+    expect(getAvailableActionIds(engine, alice.agent_id)).toEqual(['expensive-greeting', 'greet-gatekeeper']);
+    expect(
+      getAvailableActionSourcesWithOptions(engine, alice.agent_id, {
+        excluded_action_ids: ['expensive-greeting'],
+      }).map((source) => source.action.action_id),
+    ).toEqual(['greet-gatekeeper']);
   });
 
   it('deducts cost_money on action start and grants reward_money on completion', async () => {

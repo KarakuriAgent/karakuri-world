@@ -29,7 +29,11 @@ export interface LoggedInAgent {
   current_conversation_id: string | null;
   pending_server_event_ids: string[];
   active_server_event_id: string | null;
+  /** 通常のクールダウン対象となる直前の action_id */
   last_action_id: string | null;
+  /** reject 後の次回 choices だけで一時除外する action_id */
+  last_rejected_action_id: string | null;
+  last_used_item_id: string | null;
   money: number;
   items: AgentItem[];
 }

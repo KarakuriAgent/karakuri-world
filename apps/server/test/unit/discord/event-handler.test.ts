@@ -10,6 +10,7 @@ class RecordingDiscordBot {
   readonly agentMessages: Array<{ channelId: string; content: string }> = [];
   readonly worldLogMessages: string[] = [];
   readonly worldLogAgentMessages: Array<{ content: string; username: string }> = [];
+  readonly errorReports: string[] = [];
   readonly threadMessages = new Map<string, string[]>();
   readonly threadAgentMessages = new Map<string, Array<{ content: string; username: string }>>();
   readonly renamedThreads = new Map<string, string>();
@@ -84,6 +85,10 @@ class RecordingDiscordBot {
   }
 
   async close(): Promise<void> {}
+
+  async sendErrorReport(content: string): Promise<void> {
+    this.errorReports.push(content);
+  }
 }
 
 function createDeferred<T>() {
@@ -883,7 +888,7 @@ describe('DiscordEventHandler', () => {
     const alice = await registerAgent(engine, 'Alice');
     await engine.loginAgent(alice.agent_id);
     await vi.waitFor(() => {
-      expect(bot.worldLogMessages).toHaveLength(1);
+      expect(bot.agentMessages).toHaveLength(1);
     });
     bot.agentMessages.length = 0;
     bot.worldLogMessages.length = 0;
@@ -917,7 +922,7 @@ describe('DiscordEventHandler', () => {
     const alice = await registerAgent(engine, 'Alice');
     await engine.loginAgent(alice.agent_id);
     await vi.waitFor(() => {
-      expect(bot.worldLogMessages).toHaveLength(1);
+      expect(bot.agentMessages).toHaveLength(1);
     });
     bot.agentMessages.length = 0;
     bot.worldLogMessages.length = 0;
@@ -987,6 +992,67 @@ describe('DiscordEventHandler', () => {
     handler.dispose();
   });
 
+  it('propagates rejected-action suppression to a server-event prompt and clears it on delivery', async () => {
+    const baseMap = createTestWorld().config.map;
+    const { engine } = createTestWorld({
+      config: {
+        economy: { initial_money: 100 },
+        map: {
+          ...baseMap,
+          npcs: [
+            {
+              ...baseMap.npcs[0]!,
+              actions: [
+                ...baseMap.npcs[0]!.actions,
+                {
+                  action_id: 'expensive-greeting',
+                  name: 'Expensive greeting',
+                  description: 'Offer a costly greeting.',
+                  duration_ms: 1200,
+                  cost_money: 500,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = await registerAgent(engine, 'Alice');
+    await engine.loginAgent(alice.agent_id);
+    engine.state.setNode(alice.agent_id, '1-1');
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(1);
+    });
+    bot.agentMessages.length = 0;
+
+    engine.executeAction(alice.agent_id, { action_id: 'expensive-greeting' });
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(1);
+    });
+    expect(engine.state.getLoggedIn(alice.agent_id)?.last_rejected_action_id).toBeNull();
+    bot.agentMessages.length = 0;
+
+    engine.executeAction(alice.agent_id, { action_id: 'expensive-greeting' });
+    expect(engine.state.getLoggedIn(alice.agent_id)?.last_rejected_action_id).toBe('expensive-greeting');
+
+    engine.fireServerEvent('Sudden gust!');
+
+    await vi.waitFor(() => {
+      const eventPrompt = bot.agentMessages.find((message) => message.content.includes('【サーバーイベント】'));
+      expect(eventPrompt).toBeDefined();
+    });
+
+    const eventPrompt = bot.agentMessages.find((message) => message.content.includes('【サーバーイベント】'))!;
+    expect(eventPrompt.content).not.toContain('expensive-greeting');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.last_rejected_action_id).toBeNull();
+
+    handler.dispose();
+  });
+
   it('clears active server events after info notifications are delivered', async () => {
     const { engine } = createTestWorld();
     const bot = new RecordingDiscordBot();
@@ -996,7 +1062,7 @@ describe('DiscordEventHandler', () => {
     const alice = await registerAgent(engine, 'Alice');
     await engine.loginAgent(alice.agent_id);
     await vi.waitFor(() => {
-      expect(bot.worldLogMessages).toHaveLength(1);
+      expect(bot.agentMessages).toHaveLength(1);
     });
     bot.agentMessages.length = 0;
 
@@ -1041,7 +1107,7 @@ describe('DiscordEventHandler', () => {
     const alice = await registerAgent(engine, 'Alice');
     await engine.loginAgent(alice.agent_id);
     await vi.waitFor(() => {
-      expect(bot.worldLogMessages).toHaveLength(1);
+      expect(bot.agentMessages).toHaveLength(1);
     });
     bot.agentMessages.length = 0;
 
@@ -1078,7 +1144,7 @@ describe('DiscordEventHandler', () => {
     const alice = await registerAgent(engine, 'Alice');
     await engine.loginAgent(alice.agent_id);
     await vi.waitFor(() => {
-      expect(bot.worldLogMessages).toHaveLength(1);
+      expect(bot.agentMessages).toHaveLength(1);
     });
     bot.agentMessages.length = 0;
 
@@ -1167,7 +1233,7 @@ describe('DiscordEventHandler', () => {
     const alice = await registerAgent(engine, 'Alice');
     await engine.loginAgent(alice.agent_id);
     await vi.waitFor(() => {
-      expect(bot.worldLogMessages).toHaveLength(1);
+      expect(bot.agentMessages).toHaveLength(1);
     });
     bot.agentMessages.length = 0;
 
@@ -1710,14 +1776,722 @@ describe('DiscordEventHandler', () => {
 
     expect(bot.agentMessages[0]?.content).toContain('マップ: 3行 × 5列');
     expect(bot.agentMessages[0]?.content).toContain('選択肢:');
+    expect(bot.agentMessages[0]?.content).not.toContain('- get_map: マップ全体の情報を取得する');
+    expect(bot.agentMessages[0]?.content).toContain('- get_world_agents: 全エージェントの位置と状態を取得する');
     expect(bot.agentMessages[1]?.content).toContain(`Bob (${bob.agent_id}) - 位置: 1-2 - 状態: idle`);
     expect(bot.agentMessages[1]?.content).not.toContain(`Alice (${alice.agent_id})`);
     expect(bot.agentMessages[1]?.content).toContain('選択肢:');
+    expect(bot.agentMessages[1]?.content).toContain('- get_map: マップ全体の情報を取得する');
+    expect(bot.agentMessages[1]?.content).not.toContain('- get_world_agents: 全エージェントの位置と状態を取得する');
     expect(bot.agentMessages[2]?.content).toContain('近くのノード:');
     expect(bot.agentMessages[2]?.content).toContain('選択肢:');
     expect(bot.agentMessages[3]?.content).toContain('実行可能なアクション:');
     expect(bot.agentMessages[3]?.content).toContain('Greet the gatekeeper');
 
+    handler.dispose();
+  });
+
+  it('hides use-item only on the venue rejection prompt', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        items: [
+          { item_id: 'ticket', name: 'チケット', description: 'テスト用チケット', type: 'venue' as const, stackable: false },
+          { item_id: 'bread', name: 'パン', description: '焼きたて', type: 'food' as const, stackable: true, max_stack: 5 },
+        ],
+        map: {
+          ...createTestWorld().config.map,
+          buildings: [
+            {
+              ...createTestWorld().config.map.buildings[0],
+              actions: [
+                ...createTestWorld().config.map.buildings[0].actions,
+                {
+                  action_id: 'use-ticket',
+                  name: 'Use ticket',
+                  description: 'Use the ticket.',
+                  duration_ms: 500,
+                  required_items: [{ item_id: 'ticket', quantity: 1 }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = await registerAgent(engine, 'Alice');
+    await engine.loginAgent(alice.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.worldLogMessages).toHaveLength(1);
+    });
+    bot.agentMessages.length = 0;
+
+    engine.state.setItems(alice.agent_id, [
+      { item_id: 'ticket', quantity: 1 },
+      { item_id: 'bread', quantity: 1 },
+    ]);
+    engine.useItem(alice.agent_id, { item_id: 'ticket' });
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(1);
+    });
+
+    expect(bot.agentMessages[0]?.content).toContain('(item_id: bread)');
+    expect(bot.agentMessages[0]?.content).not.toContain('(item_id: ticket)');
+
+    engine.emitEvent({ type: 'perception_requested', agent_id: alice.agent_id });
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(2);
+    });
+
+    expect(bot.agentMessages[1]?.content).toContain('(item_id: bread)');
+    expect(bot.agentMessages[1]?.content).toContain('(item_id: ticket)');
+
+    handler.dispose();
+  });
+
+  it('keeps use-item suppressed for prompts queued before the venue rejection delivery completes', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        items: [
+          { item_id: 'ticket', name: 'チケット', description: 'テスト用チケット', type: 'venue' as const, stackable: false },
+        ],
+      },
+    });
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = await registerAgent(engine, 'Alice');
+    await engine.loginAgent(alice.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(1);
+    });
+    bot.agentMessages.length = 0;
+
+    const firstDelivery = createDeferred<void>();
+    let sendCount = 0;
+    bot.sendAgentMessageOverride = async (channelId, content) => {
+      sendCount += 1;
+      if (sendCount === 1) {
+        bot.agentMessages.push({ channelId, content });
+        await firstDelivery.promise;
+        return;
+      }
+
+      bot.agentMessages.push({ channelId, content });
+    };
+
+    engine.state.setItems(alice.agent_id, [{ item_id: 'ticket', quantity: 1 }]);
+    engine.useItem(alice.agent_id, { item_id: 'ticket' });
+
+    await vi.waitFor(() => {
+      expect(sendCount).toBe(1);
+      expect(bot.agentMessages[0]?.content).not.toContain('- use-item:');
+    });
+
+    engine.emitEvent({ type: 'perception_requested', agent_id: alice.agent_id });
+
+    firstDelivery.resolve();
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(2);
+    });
+
+    expect(bot.agentMessages[1]?.content).not.toContain('(item_id: ticket)');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.last_used_item_id).toBeNull();
+
+    handler.dispose();
+  });
+
+  it('keeps rejected actions suppressed for prompts queued before the rejection prompt is delivered', async () => {
+    const baseMap = createTestWorld().config.map;
+    const { engine } = createTestWorld({
+      config: {
+        economy: { initial_money: 100 },
+        map: {
+          ...baseMap,
+          npcs: [
+            {
+              ...baseMap.npcs[0]!,
+              actions: [
+                ...baseMap.npcs[0]!.actions,
+                {
+                  action_id: 'expensive-greeting',
+                  name: 'Expensive greeting',
+                  description: 'Offer a costly greeting.',
+                  duration_ms: 1200,
+                  cost_money: 500,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = await registerAgent(engine, 'Alice');
+    await engine.loginAgent(alice.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(1);
+    });
+    bot.agentMessages.length = 0;
+
+    const firstDelivery = createDeferred<void>();
+    let sendCount = 0;
+    bot.sendAgentMessageOverride = async (channelId, content) => {
+      sendCount += 1;
+      bot.agentMessages.push({ channelId, content });
+      if (sendCount === 1) {
+        await firstDelivery.promise;
+      }
+    };
+
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.executeAction(alice.agent_id, { action_id: 'expensive-greeting' });
+
+    await vi.waitFor(() => {
+      expect(sendCount).toBe(1);
+      expect(bot.agentMessages[0]?.content).not.toContain('expensive-greeting');
+      expect(engine.state.getLoggedIn(alice.agent_id)?.last_rejected_action_id).toBe('expensive-greeting');
+    });
+
+    engine.emitEvent({ type: 'perception_requested', agent_id: alice.agent_id });
+
+    firstDelivery.resolve();
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(2);
+    });
+
+    expect(bot.agentMessages[1]?.content).not.toContain('action_id: expensive-greeting');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.last_rejected_action_id).toBeNull();
+
+    handler.dispose();
+  });
+
+  it('keeps rejected-action suppression until a later prompt is delivered after a Discord failure', async () => {
+    const baseMap = createTestWorld().config.map;
+    const { engine } = createTestWorld({
+      config: {
+        economy: { initial_money: 100 },
+        map: {
+          ...baseMap,
+          npcs: [
+            {
+              ...baseMap.npcs[0]!,
+              actions: [
+                ...baseMap.npcs[0]!.actions,
+                {
+                  action_id: 'expensive-greeting',
+                  name: 'Expensive greeting',
+                  description: 'Offer a costly greeting.',
+                  duration_ms: 1200,
+                  cost_money: 500,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = await registerAgent(engine, 'Alice');
+    await engine.loginAgent(alice.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(1);
+    });
+    bot.agentMessages.length = 0;
+
+    let sendCount = 0;
+    bot.sendAgentMessageOverride = async (channelId, content) => {
+      sendCount += 1;
+      if (sendCount === 1) {
+        throw new Error('discord send failed');
+      }
+
+      bot.agentMessages.push({ channelId, content });
+    };
+
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.executeAction(alice.agent_id, { action_id: 'expensive-greeting' });
+
+    await vi.waitFor(() => {
+      expect(sendCount).toBe(1);
+      expect(engine.state.getLoggedIn(alice.agent_id)?.last_rejected_action_id).toBe('expensive-greeting');
+    });
+
+    engine.emitEvent({ type: 'perception_requested', agent_id: alice.agent_id });
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(1);
+    });
+
+    expect(bot.agentMessages[0]?.content).not.toContain('expensive-greeting');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.last_rejected_action_id).toBeNull();
+
+    consoleErrorSpy.mockRestore();
+    handler.dispose();
+  });
+
+  it('applies rejected-action suppression to available-actions requests after a Discord failure', async () => {
+    const baseMap = createTestWorld().config.map;
+    const { engine } = createTestWorld({
+      config: {
+        economy: { initial_money: 100 },
+        map: {
+          ...baseMap,
+          npcs: [
+            {
+              ...baseMap.npcs[0]!,
+              actions: [
+                ...baseMap.npcs[0]!.actions,
+                {
+                  action_id: 'expensive-greeting',
+                  name: 'Expensive greeting',
+                  description: 'Offer a costly greeting.',
+                  duration_ms: 1200,
+                  cost_money: 500,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = await registerAgent(engine, 'Alice');
+    await engine.loginAgent(alice.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(1);
+    });
+    bot.agentMessages.length = 0;
+
+    let sendCount = 0;
+    bot.sendAgentMessageOverride = async (channelId, content) => {
+      sendCount += 1;
+      if (sendCount === 1) {
+        throw new Error('discord send failed');
+      }
+
+      bot.agentMessages.push({ channelId, content });
+    };
+
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.executeAction(alice.agent_id, { action_id: 'expensive-greeting' });
+
+    await vi.waitFor(() => {
+      expect(sendCount).toBe(1);
+      expect(engine.state.getLoggedIn(alice.agent_id)?.last_rejected_action_id).toBe('expensive-greeting');
+    });
+
+    engine.emitEvent({ type: 'available_actions_requested', agent_id: alice.agent_id });
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(1);
+    });
+
+    expect(bot.agentMessages[0]?.content).toContain('実行可能なアクション:');
+    expect(bot.agentMessages[0]?.content).not.toContain('expensive-greeting');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.last_rejected_action_id).toBeNull();
+
+    consoleErrorSpy.mockRestore();
+    handler.dispose();
+  });
+
+  it('does not clear rejected-action suppression after a prompt with no action choices', async () => {
+    const baseMap = createTestWorld().config.map;
+    const { engine } = createTestWorld({
+      config: {
+        economy: { initial_money: 100 },
+        map: {
+          ...baseMap,
+          npcs: [
+            {
+              ...baseMap.npcs[0]!,
+              actions: [
+                ...baseMap.npcs[0]!.actions,
+                {
+                  action_id: 'expensive-greeting',
+                  name: 'Expensive greeting',
+                  description: 'Offer a costly greeting.',
+                  duration_ms: 1200,
+                  cost_money: 500,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = await registerAgent(engine, 'Alice');
+    await engine.loginAgent(alice.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(1);
+    });
+    bot.agentMessages.length = 0;
+
+    let sendCount = 0;
+    bot.sendAgentMessageOverride = async (channelId, content) => {
+      sendCount += 1;
+      if (sendCount === 1) {
+        throw new Error('discord send failed');
+      }
+
+      bot.agentMessages.push({ channelId, content });
+    };
+
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.executeAction(alice.agent_id, { action_id: 'expensive-greeting' });
+
+    await vi.waitFor(() => {
+      expect(sendCount).toBe(1);
+      expect(engine.state.getLoggedIn(alice.agent_id)?.last_rejected_action_id).toBe('expensive-greeting');
+    });
+
+    engine.state.setState(alice.agent_id, 'moving');
+    engine.emitEvent({ type: 'perception_requested', agent_id: alice.agent_id });
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(1);
+    });
+
+    expect(bot.agentMessages[0]?.content).not.toContain('- action:');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.last_rejected_action_id).toBe('expensive-greeting');
+
+    engine.state.setState(alice.agent_id, 'idle');
+    engine.emitEvent({ type: 'available_actions_requested', agent_id: alice.agent_id });
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(2);
+    });
+
+    expect(bot.agentMessages[1]?.content).toContain('実行可能なアクション:');
+    expect(bot.agentMessages[1]?.content).not.toContain('expensive-greeting');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.last_rejected_action_id).toBeNull();
+
+    consoleErrorSpy.mockRestore();
+    handler.dispose();
+  });
+
+  it('keeps rejected-action suppression prompt-scoped across queued backlog', async () => {
+    const baseMap = createTestWorld().config.map;
+    const { engine } = createTestWorld({
+      config: {
+        economy: { initial_money: 100 },
+        map: {
+          ...baseMap,
+          npcs: [
+            {
+              ...baseMap.npcs[0]!,
+              actions: [
+                ...baseMap.npcs[0]!.actions,
+                {
+                  action_id: 'expensive-greeting',
+                  name: 'Expensive greeting',
+                  description: 'Offer a costly greeting.',
+                  duration_ms: 1200,
+                  cost_money: 500,
+                },
+                {
+                  action_id: 'very-expensive-greeting',
+                  name: 'Very expensive greeting',
+                  description: 'Offer a very costly greeting.',
+                  duration_ms: 1200,
+                  cost_money: 800,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = await registerAgent(engine, 'Alice');
+    await engine.loginAgent(alice.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(1);
+    });
+    bot.agentMessages.length = 0;
+
+    const blockedPriorPrompt = createDeferred<void>();
+    const blockedFirstRejectPrompt = createDeferred<void>();
+    let sendCount = 0;
+    bot.sendAgentMessageOverride = async (channelId, content) => {
+      sendCount += 1;
+      bot.agentMessages.push({ channelId, content });
+      if (sendCount === 1) {
+        await blockedPriorPrompt.promise;
+      }
+      if (sendCount === 2) {
+        await blockedFirstRejectPrompt.promise;
+      }
+    };
+
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.emitEvent({ type: 'perception_requested', agent_id: alice.agent_id });
+
+    await vi.waitFor(() => {
+      expect(sendCount).toBe(1);
+    });
+
+    engine.executeAction(alice.agent_id, { action_id: 'expensive-greeting' });
+    engine.executeAction(alice.agent_id, { action_id: 'very-expensive-greeting' });
+
+    await vi.waitFor(() => {
+      expect(engine.state.getLoggedIn(alice.agent_id)?.last_rejected_action_id).toBe('very-expensive-greeting');
+    });
+
+    blockedPriorPrompt.resolve();
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(2);
+    });
+
+    expect(bot.agentMessages[1]?.content).toContain('「Expensive greeting」を実行できませんでした。');
+    expect(bot.agentMessages[1]?.content).not.toContain('action_id: expensive-greeting');
+    expect(bot.agentMessages[1]?.content).toContain('action_id: very-expensive-greeting');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.last_rejected_action_id).toBe('very-expensive-greeting');
+
+    blockedFirstRejectPrompt.resolve();
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(3);
+      expect(engine.state.getLoggedIn(alice.agent_id)?.last_rejected_action_id).toBeNull();
+    });
+
+    expect(bot.agentMessages[2]?.content).toContain('「Very expensive greeting」を実行できませんでした。');
+    expect(bot.agentMessages[2]?.content).toContain('action_id: expensive-greeting');
+    expect(bot.agentMessages[2]?.content).not.toContain('action_id: very-expensive-greeting');
+
+    handler.dispose();
+  });
+
+  it('keeps venue-item suppression until a later prompt is delivered after a Discord failure', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        items: [
+          { item_id: 'ticket', name: 'チケット', description: 'テスト用チケット', type: 'venue' as const, stackable: false },
+        ],
+      },
+    });
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = await registerAgent(engine, 'Alice');
+    await engine.loginAgent(alice.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(1);
+    });
+    bot.agentMessages.length = 0;
+
+    let sendCount = 0;
+    bot.sendAgentMessageOverride = async (channelId, content) => {
+      sendCount += 1;
+      if (sendCount === 1) {
+        throw new Error('discord send failed');
+      }
+
+      bot.agentMessages.push({ channelId, content });
+    };
+
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    engine.state.setItems(alice.agent_id, [{ item_id: 'ticket', quantity: 1 }]);
+    engine.useItem(alice.agent_id, { item_id: 'ticket' });
+
+    await vi.waitFor(() => {
+      expect(sendCount).toBe(1);
+      expect(engine.state.getLoggedIn(alice.agent_id)?.last_used_item_id).toBe('ticket');
+    });
+
+    engine.emitEvent({ type: 'perception_requested', agent_id: alice.agent_id });
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(1);
+    });
+
+    expect(bot.agentMessages[0]?.content).not.toContain('- use-item:');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.last_used_item_id).toBeNull();
+
+    consoleErrorSpy.mockRestore();
+    handler.dispose();
+  });
+
+  it('keeps venue-item suppression prompt-scoped across queued backlog', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        items: [
+          { item_id: 'ticket', name: 'チケット', description: 'テスト用チケット', type: 'venue' as const, stackable: false },
+          { item_id: 'pass', name: 'パス', description: 'テスト用パス', type: 'venue' as const, stackable: false },
+        ],
+      },
+    });
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = await registerAgent(engine, 'Alice');
+    await engine.loginAgent(alice.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(1);
+    });
+    bot.agentMessages.length = 0;
+
+    const blockedPriorPrompt = createDeferred<void>();
+    const blockedFirstRejectPrompt = createDeferred<void>();
+    let sendCount = 0;
+    bot.sendAgentMessageOverride = async (channelId, content) => {
+      sendCount += 1;
+      bot.agentMessages.push({ channelId, content });
+      if (sendCount === 1) {
+        await blockedPriorPrompt.promise;
+      }
+      if (sendCount === 2) {
+        await blockedFirstRejectPrompt.promise;
+      }
+    };
+
+    engine.state.setItems(alice.agent_id, [
+      { item_id: 'ticket', quantity: 1 },
+      { item_id: 'pass', quantity: 1 },
+    ]);
+    engine.emitEvent({ type: 'perception_requested', agent_id: alice.agent_id });
+
+    await vi.waitFor(() => {
+      expect(sendCount).toBe(1);
+    });
+
+    engine.useItem(alice.agent_id, { item_id: 'ticket' });
+    engine.useItem(alice.agent_id, { item_id: 'pass' });
+
+    await vi.waitFor(() => {
+      expect(engine.state.getLoggedIn(alice.agent_id)?.last_used_item_id).toBe('pass');
+    });
+
+    blockedPriorPrompt.resolve();
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(2);
+    });
+
+    expect(bot.agentMessages[1]?.content).toContain('ここでは「チケット」を利用できません。');
+    expect(bot.agentMessages[1]?.content).not.toContain('(item_id: ticket)');
+    expect(bot.agentMessages[1]?.content).toContain('(item_id: pass)');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.last_used_item_id).toBe('pass');
+
+    blockedFirstRejectPrompt.resolve();
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(3);
+      expect(engine.state.getLoggedIn(alice.agent_id)?.last_used_item_id).toBeNull();
+    });
+
+    expect(bot.agentMessages[2]?.content).toContain('ここでは「パス」を利用できません。');
+    expect(bot.agentMessages[2]?.content).toContain('(item_id: ticket)');
+    expect(bot.agentMessages[2]?.content).not.toContain('(item_id: pass)');
+
+    handler.dispose();
+  });
+
+  it('clears rejected-action suppression after delivering a venue rejection prompt', async () => {
+    const baseMap = createTestWorld().config.map;
+    const { engine } = createTestWorld({
+      config: {
+        economy: { initial_money: 100 },
+        items: [
+          { item_id: 'ticket', name: 'チケット', description: 'テスト用チケット', type: 'venue' as const, stackable: false },
+        ],
+        map: {
+          ...baseMap,
+          npcs: [
+            {
+              ...baseMap.npcs[0]!,
+              actions: [
+                ...baseMap.npcs[0]!.actions,
+                {
+                  action_id: 'expensive-greeting',
+                  name: 'Expensive greeting',
+                  description: 'Offer a costly greeting.',
+                  duration_ms: 1200,
+                  cost_money: 500,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = await registerAgent(engine, 'Alice');
+    await engine.loginAgent(alice.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(1);
+    });
+    bot.agentMessages.length = 0;
+
+    let sendCount = 0;
+    bot.sendAgentMessageOverride = async (channelId, content) => {
+      sendCount += 1;
+      if (sendCount === 1) {
+        throw new Error('discord send failed');
+      }
+
+      bot.agentMessages.push({ channelId, content });
+    };
+
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.executeAction(alice.agent_id, { action_id: 'expensive-greeting' });
+
+    await vi.waitFor(() => {
+      expect(sendCount).toBe(1);
+      expect(engine.state.getLoggedIn(alice.agent_id)?.last_rejected_action_id).toBe('expensive-greeting');
+    });
+
+    engine.state.setItems(alice.agent_id, [{ item_id: 'ticket', quantity: 1 }]);
+    engine.useItem(alice.agent_id, { item_id: 'ticket' });
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(1);
+    });
+
+    expect(bot.agentMessages[0]?.content).not.toContain('expensive-greeting');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.last_rejected_action_id).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.last_used_item_id).toBeNull();
+
+    consoleErrorSpy.mockRestore();
     handler.dispose();
   });
 

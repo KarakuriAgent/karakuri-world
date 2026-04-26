@@ -171,38 +171,6 @@ export interface FireServerEventRequest {
   description: string;
 }
 
-interface AvailableActionSummaryBase {
-  action_id: string;
-  name: string;
-  description: string;
-  cost_money?: number;
-  reward_money?: number;
-  required_items?: AgentItem[];
-  source: {
-    type: 'building' | 'npc';
-    id: string;
-    name: string;
-  };
-}
-
-export interface FixedDurationAvailableActionSummary extends AvailableActionSummaryBase {
-  duration_ms: number;
-  min_duration_minutes?: never;
-  max_duration_minutes?: never;
-}
-
-export interface RangeDurationAvailableActionSummary extends AvailableActionSummaryBase {
-  duration_ms?: never;
-  min_duration_minutes: number;
-  max_duration_minutes: number;
-}
-
-export type AvailableActionSummary = FixedDurationAvailableActionSummary | RangeDurationAvailableActionSummary;
-
-export interface AvailableActionsResponse {
-  actions: AvailableActionSummary[];
-}
-
 export interface PerceptionNode {
   node_id: NodeId;
   type: NodeType;

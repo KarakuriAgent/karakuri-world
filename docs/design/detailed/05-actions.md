@@ -50,7 +50,7 @@ interface ActionValidationError {
 
 ### 2.1 利用可能アクション一覧の取得
 
-エージェントの現在位置で実行条件を満たすアクションの候補一覧は API/MCP で再取得を依頼する。この一覧はエージェントの状態（`idle` / `moving` 等）に関わらず、位置条件のみでフィルタリングされ、詳細結果は Discord 通知の `選択肢` ブロックおよび `get_available_actions` 通知で返る。実際にアクションを実行できるかどうかは、アクション実行リクエスト時の状態バリデーション（セクション1.3）で判定する。
+エージェントの現在位置で実行条件を満たすアクションの候補一覧は API/MCP で再取得を依頼する。この一覧はエージェントの状態（`idle` / `moving` 等）に関わらず、位置条件のみでフィルタリングされ、詳細結果は Discord 通知の `選択肢` ブロックおよび `get_available_actions` 通知で返る。実際にアクションを実行できるかどうかは、アクション実行リクエスト時の状態バリデーション（セクション1.3）で判定する。`cost_money` / `required_items` の不足は候補一覧からは隠さず、reject 直後の 1 回だけ当該 `action_id` を choices から外して self-loop を防ぐ。
 
 API/MCP の即時レスポンス:
 
@@ -92,7 +92,7 @@ interface NotificationAcceptedResponse {
 
 バリデーション（状態チェック、アクション存在チェック、実行条件チェック）通過後、実効所要時間 `duration_ms` を解決する（固定時間アクションは `ActionConfig.duration_ms`、可変時間アクションは `duration_minutes * 60_000`）。`duration_minutes` の検証（必須チェック・範囲チェック）もこの段階で行い、所持金・必要アイテムチェックより先に確定させる。
 
-続いて `cost_money` / `required_items` を検証し、不足している場合は API レスポンス自体は `NotificationAcceptedResponse` のまま受理しつつ、詳細結果は `action_rejected` イベントと後続通知で返す。利用可能アクション一覧には不足中の `required_items` 依存アクションも表示し、実行時にのみ拒否判定する。
+続いて `cost_money` / `required_items` を検証し、不足している場合は API レスポンス自体は `NotificationAcceptedResponse` のまま受理しつつ、詳細結果は `action_rejected` イベントと後続通知で返す。利用可能アクション一覧には不足中の `required_items` 依存アクションも表示し、実行時にのみ拒否判定する。reject 後は該当 `action_id` を「次に正常配送される choices 付き通知」1 回分だけ除外し、その通知の配送失敗時は除外を保持する。
 
 実行処理:
 
@@ -268,7 +268,7 @@ interface ItemUseValidationError {
 }
 ```
 
-`venue` 型は API エラーにせず、受理応答を返したうえで `item_use_venue_rejected` 通知により「汎用使用できない」ことと候補場所を伝える。アイテムは消費されず、状態遷移も発生しない。
+`venue` 型は API エラーにせず、受理応答を返したうえで `item_use_venue_rejected` 通知により「汎用使用できない」ことと候補場所を伝える。アイテムは消費されず、状態遷移も発生しない。choices では `use-item` 自体を恒久的には隠さず、次に正常配送される choices 付き通知 1 回分だけ、reject された `item_id` を個別の `use-item` 行から除外する。
 
 ### 6.3 処理フロー
 
@@ -280,7 +280,7 @@ interface ItemUseValidationError {
 2. 状態を変えず、`item_use_venue_rejected` イベントを発行する
 3. `NotificationAcceptedResponse` を返す
 
-この分岐では `item_use` タイマーを生成しない。エージェントは通知に示された場所へ移動し、通常の `POST /api/agents/action` で該当アクションを実行する。
+この分岐では `item_use` タイマーを生成しない。エージェントは通知に示された場所へ移動し、通常の `POST /api/agents/action` で該当アクションを実行する。除外対象と同じ `item_id` しか残っていない場合は次の 1 通だけ `use-item` 行が消えるが、別の使用可能アイテムを持っている場合はその `item_id` だけを列挙した `use-item` 行が残り、reject された `item_id` はその 1 通だけ表示されない。
 
 #### 6.3.2 通常アイテムの使用開始
 

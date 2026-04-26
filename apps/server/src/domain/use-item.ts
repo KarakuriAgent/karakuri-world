@@ -81,6 +81,7 @@ export function executeValidatedUseItem(
 ): NotificationAcceptedResponse {
   if (validated.item_type === 'venue') {
     const venueHints = resolveVenueHints(engine, validated.item_id);
+    engine.state.setLastUsedItem(validated.agent_id, validated.item_id);
     engine.emitEvent({
       type: 'item_use_venue_rejected',
       agent_id: validated.agent_id,

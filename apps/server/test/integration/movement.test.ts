@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { MapConfig } from '../../src/types/data-model.js';
 import { createApp } from '../../src/api/app.js';
+import { getAvailableActionSources } from '../../src/domain/actions.js';
 import { createTestMapConfig } from '../helpers/test-map.js';
 import { createTestWorld } from '../helpers/test-world.js';
 
@@ -72,9 +73,9 @@ describe('movement integration', () => {
         state: 'moving',
       }),
     ]);
-    expect(engine.getAvailableActions(alice.agent_id).actions).toEqual([
+    expect(getAvailableActionSources(engine, alice.agent_id)).toEqual([
       expect.objectContaining({
-        action_id: 'ask-courier',
+        action: expect.objectContaining({ action_id: 'ask-courier' }),
       }),
     ]);
 
