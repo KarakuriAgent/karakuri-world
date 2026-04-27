@@ -3,6 +3,7 @@ import type { WaitRequest, WaitResponse } from '../types/api.js';
 import { WorldError } from '../types/api.js';
 import type { LoggedInAgent } from '../types/agent.js';
 import type { WaitTimer } from '../types/timer.js';
+import { requireActionableAgent } from './agent-guards.js';
 import { cancelIdleReminder, startIdleReminder } from './idle-reminder.js';
 
 export const WAIT_UNIT_MS = 600000;
@@ -12,14 +13,7 @@ export function validateWait(engine: WorldEngine, agentId: string, request: Wait
   agent: LoggedInAgent;
   duration_ms: number;
 } {
-  const agent = engine.state.getLoggedIn(agentId);
-  if (!agent) {
-    throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
-  }
-
-  if (agent.active_server_event_id === null && (agent.state !== 'idle' || agent.pending_conversation_id)) {
-    throw new WorldError(409, 'state_conflict', 'Agent cannot wait in the current state.');
-  }
+  const agent = requireActionableAgent(engine, agentId, { activityLabel: 'wait' });
 
   if (!Number.isInteger(request.duration) || request.duration < 1 || request.duration > MAX_WAIT_DURATION) {
     throw new WorldError(400, 'invalid_request', `duration must be an integer between 1 and ${MAX_WAIT_DURATION}.`);
@@ -49,6 +43,7 @@ export function executeValidatedWait(engine: WorldEngine, agent: LoggedInAgent, 
     duration_ms: durationMs,
     fires_at: completesAt,
   });
+  engine.state.clearExcludedInfoCommands(agent.agent_id);
 
   engine.emitEvent({
     type: 'wait_started',

@@ -8,6 +8,7 @@ export type ApiErrorCode =
   | 'not_logged_in'
   | 'invalid_request'
   | 'state_conflict'
+  | 'info_already_consumed'
   | 'out_of_bounds'
   | 'impassable_node'
   | 'same_node'

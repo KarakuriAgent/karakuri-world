@@ -1053,7 +1053,9 @@ describe('DiscordEventHandler', () => {
     handler.dispose();
   });
 
-  it('clears active server events after info notifications are delivered', async () => {
+  it('keeps active server events open across info notifications until an executable command closes them', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
     const { engine } = createTestWorld();
     const bot = new RecordingDiscordBot();
     const handler = new DiscordEventHandler(engine, bot as never);
@@ -1073,24 +1075,21 @@ describe('DiscordEventHandler', () => {
       'available_actions_requested',
     ];
 
-    for (const infoEvent of infoEvents) {
-      const fired = engine.fireServerEvent('Dark clouds gather.');
+    bot.agentMessages.length = 0;
+    engine.state.setActiveServerEvent(alice.agent_id, 'server-event-1');
 
-      await vi.waitFor(() => {
-        expect(bot.agentMessages.some((message) => message.content.includes('【サーバーイベント】'))).toBe(true);
-      });
-      expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBe(fired.server_event_id);
-
-      bot.agentMessages.length = 0;
+    for (const [index, infoEvent] of infoEvents.entries()) {
       engine.emitEvent({ type: infoEvent, agent_id: alice.agent_id });
 
       await vi.waitFor(() => {
-        expect(bot.agentMessages).toHaveLength(1);
+        expect(bot.agentMessages.length).toBeGreaterThanOrEqual(index + 1);
       });
-      expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
-
-      bot.agentMessages.length = 0;
+      expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBe('server-event-1');
     }
+
+    engine.executeWait(alice.agent_id, { duration: 1 });
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
+    vi.advanceTimersByTime(600000);
 
     handler.dispose();
   });
@@ -1776,17 +1775,29 @@ describe('DiscordEventHandler', () => {
 
     expect(bot.agentMessages[0]?.content).toContain('マップ: 3行 × 5列');
     expect(bot.agentMessages[0]?.content).toContain('選択肢:');
+    expect(bot.agentMessages[0]?.content).toContain('- get_available_actions: 現在位置で実行可能なアクションを取得する');
+    expect(bot.agentMessages[0]?.content).toContain('- get_perception: 周囲の情報を取得する');
     expect(bot.agentMessages[0]?.content).not.toContain('- get_map: マップ全体の情報を取得する');
     expect(bot.agentMessages[0]?.content).toContain('- get_world_agents: 全エージェントの位置と状態を取得する');
     expect(bot.agentMessages[1]?.content).toContain(`Bob (${bob.agent_id}) - 位置: 1-2 - 状態: idle`);
     expect(bot.agentMessages[1]?.content).not.toContain(`Alice (${alice.agent_id})`);
     expect(bot.agentMessages[1]?.content).toContain('選択肢:');
+    expect(bot.agentMessages[1]?.content).toContain('- get_available_actions: 現在位置で実行可能なアクションを取得する');
+    expect(bot.agentMessages[1]?.content).toContain('- get_perception: 周囲の情報を取得する');
     expect(bot.agentMessages[1]?.content).toContain('- get_map: マップ全体の情報を取得する');
     expect(bot.agentMessages[1]?.content).not.toContain('- get_world_agents: 全エージェントの位置と状態を取得する');
     expect(bot.agentMessages[2]?.content).toContain('近くのノード:');
     expect(bot.agentMessages[2]?.content).toContain('選択肢:');
+    expect(bot.agentMessages[2]?.content).toContain('- get_available_actions: 現在位置で実行可能なアクションを取得する');
+    expect(bot.agentMessages[2]?.content).not.toContain('- get_perception: 周囲の情報を取得する');
+    expect(bot.agentMessages[2]?.content).toContain('- get_map: マップ全体の情報を取得する');
+    expect(bot.agentMessages[2]?.content).toContain('- get_world_agents: 全エージェントの位置と状態を取得する');
     expect(bot.agentMessages[3]?.content).toContain('実行可能なアクション:');
     expect(bot.agentMessages[3]?.content).toContain('Greet the gatekeeper');
+    expect(bot.agentMessages[3]?.content).not.toContain('- get_available_actions: 現在位置で実行可能なアクションを取得する');
+    expect(bot.agentMessages[3]?.content).toContain('- get_perception: 周囲の情報を取得する');
+    expect(bot.agentMessages[3]?.content).toContain('- get_map: マップ全体の情報を取得する');
+    expect(bot.agentMessages[3]?.content).toContain('- get_world_agents: 全エージェントの位置と状態を取得する');
 
     handler.dispose();
   });

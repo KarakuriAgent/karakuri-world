@@ -4,6 +4,7 @@ import { WorldError, createNotificationAcceptedResponse } from '../types/api.js'
 import type { AgentItem, LoggedInAgent } from '../types/agent.js';
 import type { ActionConfig, BuildingConfig, ItemConfig, NpcConfig } from '../types/data-model.js';
 import type { ActionTimer } from '../types/timer.js';
+import { requireActionableAgent } from './agent-guards.js';
 import { cancelIdleReminder, startIdleReminder } from './idle-reminder.js';
 import { consumeItems, grantItems, hasRequiredItems } from './inventory.js';
 import { findAdjacentNpcs, findBuildingByInteriorNode } from './map-utils.js';
@@ -32,20 +33,7 @@ function summarizeAgentItems(items: ReadonlyArray<AgentItem> | undefined): strin
 }
 
 function requireActionReadyAgent(engine: WorldEngine, agentId: string): LoggedInAgent {
-  const agent = engine.state.getLoggedIn(agentId);
-  if (!agent) {
-    throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
-  }
-
-  if (agent.active_server_event_id !== null) {
-    return agent;
-  }
-
-  if (agent.state !== 'idle' || agent.pending_conversation_id) {
-    throw new WorldError(409, 'state_conflict', 'Agent cannot execute an action in the current state.');
-  }
-
-  return agent;
+  return requireActionableAgent(engine, agentId, { activityLabel: 'execute an action' });
 }
 
 function toAgentItems(items: ActionConfig['required_items'] | undefined): AgentItem[] | undefined {
@@ -119,11 +107,6 @@ function isNpcAvailable(engine: WorldEngine, npc: NpcConfig, now: Date): boolean
 }
 
 export function getAvailableActionSources(engine: WorldEngine, agentId: string): ActionSource[] {
-  const agent = engine.state.getLoggedIn(agentId);
-  if (!agent) {
-    throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
-  }
-
   return getAvailableActionSourcesWithOptions(engine, agentId);
 }
 
@@ -235,7 +218,7 @@ export function validateAction(
     throw new WorldError(400, 'action_not_found', `Unknown action: ${request.action_id}`);
   }
 
-  const availableAction = getAvailableActionSources(engine, agentId).find(
+  const availableAction = getAvailableActionSourcesWithOptions(engine, agentId).find(
     (candidate) => candidate.action.action_id === request.action_id,
   );
   if (!availableAction) {
@@ -309,6 +292,7 @@ export function executeValidatedAction(
     duration_ms: durationMs,
     fires_at: completesAt,
   });
+  engine.state.clearExcludedInfoCommands(agent.agent_id);
   engine.state.setLastAction(agent.agent_id, source.action.action_id);
 
   engine.emitEvent({

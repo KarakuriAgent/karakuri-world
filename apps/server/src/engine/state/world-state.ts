@@ -1,4 +1,5 @@
 import type { AgentItem, AgentRegistration, AgentState, LoggedInAgent } from '../../types/agent.js';
+import type { InfoCommandChoice } from '../../types/choices.js';
 import type { NodeId } from '../../types/data-model.js';
 import { AgentStateStore, type LoginAgentParams } from './agent-state.js';
 import { ConversationStateStore } from './conversation-state.js';
@@ -101,6 +102,18 @@ export class WorldState {
 
   setLastUsedItem(agentId: string, itemId: string | null): LoggedInAgent {
     return this.agents.setLastUsedItem(agentId, itemId);
+  }
+
+  addExcludedInfoCommand(agentId: string, command: InfoCommandChoice): void {
+    this.agents.addExcludedInfoCommand(agentId, command);
+  }
+
+  clearExcludedInfoCommands(agentId: string): void {
+    this.agents.clearExcludedInfoCommands(agentId);
+  }
+
+  getExcludedInfoCommands(agentId: string): ReadonlySet<InfoCommandChoice> {
+    return this.agents.getExcludedInfoCommands(agentId);
   }
 
   setMoney(agentId: string, money: number): LoggedInAgent {

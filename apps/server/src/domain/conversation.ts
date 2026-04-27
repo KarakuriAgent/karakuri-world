@@ -695,6 +695,8 @@ export function startConversation(
 
   engine.state.conversations.set(conversation);
   cancelIdleReminder(engine, initiator.agent_id);
+  engine.state.clearExcludedInfoCommands(initiator.agent_id);
+  clearActiveServerEvent(engine, initiator.agent_id);
   engine.state.setPendingConversation(initiator.agent_id, conversation.conversation_id);
   engine.state.setPendingConversation(target.agent_id, conversation.conversation_id);
   engine.timerManager.create({
@@ -752,6 +754,10 @@ export function acceptConversation(engine: WorldEngine, agentId: string, request
 
   cancelIdleReminder(engine, initiator.agent_id);
   cancelIdleReminder(engine, target.agent_id);
+  engine.state.clearExcludedInfoCommands(initiator.agent_id);
+  engine.state.clearExcludedInfoCommands(target.agent_id);
+  clearActiveServerEvent(engine, initiator.agent_id);
+  clearActiveServerEvent(engine, target.agent_id);
   engine.state.setPendingConversation(initiator.agent_id, null);
   engine.state.setPendingConversation(target.agent_id, null);
   engine.state.setCurrentConversation(initiator.agent_id, conversation.conversation_id);
@@ -821,10 +827,14 @@ export function rejectConversation(engine: WorldEngine, agentId: string): OkResp
   const target = engine.state.getLoggedIn(agentId);
   if (initiator) {
     engine.state.setPendingConversation(initiator.agent_id, null);
+    engine.state.clearExcludedInfoCommands(initiator.agent_id);
+    clearActiveServerEvent(engine, initiator.agent_id);
     startIdleReminder(engine, initiator.agent_id);
   }
   if (target) {
     engine.state.setPendingConversation(target.agent_id, null);
+    engine.state.clearExcludedInfoCommands(target.agent_id);
+    clearActiveServerEvent(engine, target.agent_id);
   }
 
   engine.emitEvent({
@@ -845,6 +855,7 @@ export function handleAcceptTimeout(engine: WorldEngine, timer: ConversationAcce
   }
 
   for (const agentId of timer.agent_ids) {
+    engine.state.clearExcludedInfoCommands(agentId);
     clearActiveServerEvent(engine, agentId);
   }
 
@@ -880,6 +891,8 @@ export function speak(engine: WorldEngine, agentId: string, request: Conversatio
   const nextSpeakerAgentId = conversation.status === 'closing'
     ? resolveClosingNextSpeaker(conversation, agentId, request.next_speaker_agent_id)
     : resolveNextSpeaker(conversation, agentId, request.next_speaker_agent_id);
+  engine.state.clearExcludedInfoCommands(agentId);
+  clearActiveServerEvent(engine, agentId);
   engine.timerManager.cancel(turnTimer.timer_id);
   const listeners = getOtherParticipants(conversation, agentId);
   const turn = conversation.current_turn + 1;
@@ -917,6 +930,8 @@ export function endConversationByAgent(engine: WorldEngine, agentId: string, req
   const conversation = requireActiveConversation(engine, agentId, ['active']);
   const turnTimer = ensureTurn(engine, conversation, agentId);
   const message = ensureMessage(request.message);
+  engine.state.clearExcludedInfoCommands(agentId);
+  clearActiveServerEvent(engine, agentId);
 
   if (conversation.participant_agent_ids.length <= 2) {
     engine.timerManager.cancel(turnTimer.timer_id);
@@ -1038,6 +1053,8 @@ export function joinConversation(engine: WorldEngine, agentId: string, request: 
   }
 
   cancelIdleReminder(engine, agentId);
+  engine.state.clearExcludedInfoCommands(agentId);
+  clearActiveServerEvent(engine, agentId);
   conversation.pending_participant_agent_ids.push(agentId);
   engine.state.setCurrentConversation(agentId, conversation.conversation_id);
   engine.state.setState(agentId, 'in_conversation');
@@ -1049,6 +1066,8 @@ export function stayInConversation(engine: WorldEngine, agentId: string): OkResp
   if (!conversation.inactive_check_pending_agent_ids.includes(agentId)) {
     throw new WorldError(409, 'state_conflict', 'Agent is not awaiting an inactive-check response.');
   }
+  engine.state.clearExcludedInfoCommands(agentId);
+  clearActiveServerEvent(engine, agentId);
   conversation.inactive_check_pending_agent_ids = conversation.inactive_check_pending_agent_ids.filter((id) => id !== agentId);
   conversation.last_spoken_turns[agentId] = conversation.current_turn;
   resumeAfterInactiveCheck(engine, conversation);
@@ -1062,6 +1081,8 @@ export function leaveConversation(engine: WorldEngine, agentId: string, request:
   }
   const agent = requireLoggedInAgent(engine, agentId);
   const message = request.message?.trim() || undefined;
+  engine.state.clearExcludedInfoCommands(agentId);
+  clearActiveServerEvent(engine, agentId);
   removeParticipant(conversation, agentId);
   cleanupParticipant(engine, conversation, agentId);
   engine.emitEvent({
@@ -1349,9 +1370,11 @@ export function cancelPendingConversation(engine: WorldEngine, agentId: string):
   const target = engine.state.getLoggedIn(targetAgentId);
   if (initiator) {
     engine.state.setPendingConversation(initiator.agent_id, null);
+    engine.state.clearExcludedInfoCommands(initiator.agent_id);
   }
   if (target) {
     engine.state.setPendingConversation(target.agent_id, null);
+    engine.state.clearExcludedInfoCommands(target.agent_id);
   }
 
   if (targetAgentId === agentId) {

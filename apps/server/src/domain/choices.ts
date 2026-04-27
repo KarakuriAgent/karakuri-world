@@ -1,11 +1,10 @@
 import type { WorldEngine } from '../engine/world-engine.js';
 import { WorldError } from '../types/api.js';
+import type { InfoCommandChoice } from '../types/choices.js';
 import { manhattanDistance } from './map-utils.js';
 import { formatActionSourceLine, getAvailableActionSourcesWithOptions } from './actions.js';
 import { findConversationByAgent } from './conversation.js';
 import { getAgentCurrentNode } from './movement.js';
-
-export type InfoCommandChoice = 'get_map' | 'get_world_agents';
 
 export interface BuildChoicesTextOptions {
   forceShowActions?: boolean;
@@ -34,10 +33,12 @@ export function buildChoicesPrompt(
 
   const now = Date.now();
   const currentNodeId = getAgentCurrentNode(engine, agent, now);
-  const canStartInterruptibleCommand = options.forceShowActions || (agent.state === 'idle' && agent.pending_conversation_id === null);
+  const canStartInterruptibleCommand = options.forceShowActions
+    || agent.active_server_event_id !== null
+    || (agent.state === 'idle' && agent.pending_conversation_id === null);
   const canStartConversation = agent.state === 'idle' && agent.pending_conversation_id === null;
   const canJoinConversation = agent.pending_conversation_id === null
-    && (agent.state === 'idle' || (options.forceShowActions && agent.state === 'in_action'));
+    && (agent.state === 'idle' || (canStartInterruptibleCommand && agent.state === 'in_action'));
   const rejectedActionIds = new Set(options.excludedActionIds ?? []);
   if (options.includeStoredRejectedAction !== false && agent.last_rejected_action_id) {
     rejectedActionIds.add(agent.last_rejected_action_id);
@@ -120,11 +121,17 @@ export function buildChoicesPrompt(
       ]
     : [];
 
-  const excludedInfoCommands = new Set(options.excludeInfoCommands ?? []);
+  const excludedInfoCommands = new Set([
+    ...engine.state.getExcludedInfoCommands(agent.agent_id),
+    ...(options.excludeInfoCommands ?? []),
+  ]);
   const infoLines = [
+    { id: 'get_available_actions' as const, line: '- get_available_actions: 現在位置で実行可能なアクションを取得する' },
+    { id: 'get_perception' as const, line: '- get_perception: 周囲の情報を取得する' },
     { id: 'get_map' as const, line: '- get_map: マップ全体の情報を取得する' },
     { id: 'get_world_agents' as const, line: '- get_world_agents: 全エージェントの位置と状態を取得する' },
   ]
+    .filter(() => canStartInterruptibleCommand)
     .filter(({ id }) => !excludedInfoCommands.has(id))
     .map(({ line }) => line);
 

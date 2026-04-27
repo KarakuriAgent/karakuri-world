@@ -84,6 +84,33 @@ describe('MCP tools', () => {
     expect(requestedEventType).toBe('perception_requested');
   });
 
+  it('returns 409 errors for state-conflicting or already-consumed info tools', async () => {
+    const { engine } = createTestWorld();
+    const agent = await engine.registerAgent({ discord_bot_id: 'bot-alice', });
+    await engine.loginAgent(agent.agent_id);
+    const definitions = createMcpToolDefinitions(engine, agent.agent_id);
+
+    for (const name of ['get_available_actions', 'get_perception', 'get_map', 'get_world_agents']) {
+      const tool = definitions.find((definition) => definition.name === name);
+      expect(tool).toBeDefined();
+
+      engine.state.setState(agent.agent_id, 'moving');
+      const blocked = await tool!.execute({});
+      expect(blocked.isError).toBe(true);
+      expect(parseToolText(blocked)).toEqual(expect.objectContaining({ error: 'state_conflict' }));
+
+      engine.state.setState(agent.agent_id, 'idle');
+      const accepted = await tool!.execute({});
+      expect(accepted.isError).not.toBe(true);
+
+      const consumed = await tool!.execute({});
+      expect(consumed.isError).toBe(true);
+      expect(parseToolText(consumed)).toEqual(expect.objectContaining({ error: 'info_already_consumed' }));
+
+      engine.state.clearExcludedInfoCommands(agent.agent_id);
+    }
+  });
+
   it('accepts target_node_id for move and returns movement responses', async () => {
     const { engine } = createTestWorld({
       config: {

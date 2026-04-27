@@ -3,6 +3,7 @@ import type { NotificationAcceptedResponse, UseItemRequest } from '../types/api.
 import { WorldError, createNotificationAcceptedResponse } from '../types/api.js';
 import type { ItemType } from '../types/data-model.js';
 import type { ItemUseTimer } from '../types/timer.js';
+import { requireActionableAgent } from './agent-guards.js';
 import { cancelIdleReminder, startIdleReminder } from './idle-reminder.js';
 import { consumeItems } from './inventory.js';
 
@@ -51,14 +52,7 @@ export function validateUseItem(
   agentId: string,
   request: UseItemRequest,
 ): ValidatedUseItem {
-  const agent = engine.state.getLoggedIn(agentId);
-  if (!agent) {
-    throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
-  }
-
-  if (agent.active_server_event_id === null && (agent.state !== 'idle' || agent.pending_conversation_id)) {
-    throw new WorldError(409, 'state_conflict', 'Agent cannot use items in the current state.');
-  }
+  const agent = requireActionableAgent(engine, agentId, { activityLabel: 'use items' });
 
   const held = agent.items.find((item) => item.item_id === request.item_id && item.quantity > 0);
   if (!held) {
@@ -80,6 +74,7 @@ export function executeValidatedUseItem(
   validated: ValidatedUseItem,
 ): NotificationAcceptedResponse {
   if (validated.item_type === 'venue') {
+    engine.state.clearExcludedInfoCommands(validated.agent_id);
     const venueHints = resolveVenueHints(engine, validated.item_id);
     engine.state.setLastUsedItem(validated.agent_id, validated.item_id);
     engine.emitEvent({
@@ -108,6 +103,7 @@ export function executeValidatedUseItem(
     item_type: validated.item_type,
     fires_at: completesAt,
   });
+  engine.state.clearExcludedInfoCommands(validated.agent_id);
 
   engine.emitEvent({
     type: 'item_use_started',

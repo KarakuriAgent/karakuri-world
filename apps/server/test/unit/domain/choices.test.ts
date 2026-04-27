@@ -21,8 +21,8 @@ describe('choices domain', () => {
     expect(text).toContain('- move: ノードIDを指定して移動する (target_node_id: ノードID)');
     expect(text).toContain('- wait: その場で待機する (duration: 1〜6、10分単位)');
     expect(text).toContain(`- conversation_start: bob に話しかける (target_agent_id: ${bob.agent_id}, message: 最初のメッセージ)`);
-    expect(text).not.toContain('get_perception');
-    expect(text).not.toContain('get_available_actions');
+    expect(text).toContain('- get_perception: 周囲の情報を取得する');
+    expect(text).toContain('- get_available_actions: 現在位置で実行可能なアクションを取得する');
     expect(text).toContain('- get_map: マップ全体の情報を取得する');
     expect(text).toContain('- get_world_agents: 全エージェントの位置と状態を取得する');
   });
@@ -34,9 +34,13 @@ describe('choices domain', () => {
 
     const mapExcluded = buildChoicesText(engine, alice.agent_id, { excludeInfoCommands: ['get_map'] });
     expect(mapExcluded).not.toContain('- get_map: マップ全体の情報を取得する');
+    expect(mapExcluded).toContain('- get_perception: 周囲の情報を取得する');
+    expect(mapExcluded).toContain('- get_available_actions: 現在位置で実行可能なアクションを取得する');
     expect(mapExcluded).toContain('- get_world_agents: 全エージェントの位置と状態を取得する');
 
     const agentsExcluded = buildChoicesText(engine, alice.agent_id, { excludeInfoCommands: ['get_world_agents'] });
+    expect(agentsExcluded).toContain('- get_perception: 周囲の情報を取得する');
+    expect(agentsExcluded).toContain('- get_available_actions: 現在位置で実行可能なアクションを取得する');
     expect(agentsExcluded).toContain('- get_map: マップ全体の情報を取得する');
     expect(agentsExcluded).not.toContain('- get_world_agents: 全エージェントの位置と状態を取得する');
   });
@@ -54,7 +58,23 @@ describe('choices domain', () => {
     });
 
     expect(text).toContain('- action:');
+    expect(text).toContain('- get_perception: 周囲の情報を取得する');
+    expect(text).toContain('- get_available_actions: 現在位置で実行可能なアクションを取得する');
     expect(text).not.toContain('- get_map: マップ全体の情報を取得する');
+    expect(text).toContain('- get_world_agents: 全エージェントの位置と状態を取得する');
+  });
+
+  it('merges stored info exclusions with explicit exclusions', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.addExcludedInfoCommand(alice.agent_id, 'get_perception');
+
+    const text = buildChoicesText(engine, alice.agent_id, { excludeInfoCommands: ['get_map'] });
+
+    expect(text).not.toContain('- get_perception: 周囲の情報を取得する');
+    expect(text).not.toContain('- get_map: マップ全体の情報を取得する');
+    expect(text).toContain('- get_available_actions: 現在位置で実行可能なアクションを取得する');
     expect(text).toContain('- get_world_agents: 全エージェントの位置と状態を取得する');
   });
 
@@ -114,8 +134,7 @@ describe('choices domain', () => {
     expect(text).not.toContain('- move:');
     expect(text).not.toContain('- wait:');
     expect(text).not.toContain('conversation_start: bob');
-    expect(text).toContain('- get_map: マップ全体の情報を取得する');
-    expect(text).toContain('- get_world_agents: 全エージェントの位置と状態を取得する');
+    expect(text).toBe('選択肢:\n');
   });
 
   it('omits state-conflicting commands while a conversation is pending', async () => {
@@ -135,8 +154,7 @@ describe('choices domain', () => {
     expect(text).not.toContain('- move:');
     expect(text).not.toContain('- wait:');
     expect(text).not.toContain('conversation_start: bob');
-    expect(text).toContain('- get_map: マップ全体の情報を取得する');
-    expect(text).toContain('- get_world_agents: 全エージェントの位置と状態を取得する');
+    expect(text).toBe('選択肢:\n');
   });
 
   it.each(['in_action', 'in_conversation'] as const)(
@@ -158,6 +176,10 @@ describe('choices domain', () => {
       expect(text).toContain('- move: ノードIDを指定して移動する (target_node_id: ノードID)');
       expect(text).toContain('- wait: その場で待機する (duration: 1〜6、10分単位)');
       expect(text).not.toContain('conversation_start: bob');
+      expect(text).toContain('- get_perception: 周囲の情報を取得する');
+      expect(text).toContain('- get_available_actions: 現在位置で実行可能なアクションを取得する');
+      expect(text).toContain('- get_map: マップ全体の情報を取得する');
+      expect(text).toContain('- get_world_agents: 全エージェントの位置と状態を取得する');
     },
   );
 

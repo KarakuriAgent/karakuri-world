@@ -1,4 +1,5 @@
 import type { AgentItem, AgentRegistration, AgentState, LoggedInAgent } from '../../types/agent.js';
+import type { InfoCommandChoice } from '../../types/choices.js';
 import type { NodeId } from '../../types/data-model.js';
 
 export interface LoginAgentParams {
@@ -13,6 +14,7 @@ export class AgentStateStore {
   private readonly registrations = new Map<string, AgentRegistration>();
   private readonly registrationsByApiKey = new Map<string, AgentRegistration>();
   private readonly loggedInAgents = new Map<string, LoggedInAgent>();
+  private readonly excludedInfoCommandsByAgent = new Map<string, Set<InfoCommandChoice>>();
 
   constructor(initialRegistrations: AgentRegistration[] = []) {
     for (const registration of initialRegistrations) {
@@ -35,6 +37,7 @@ export class AgentStateStore {
     this.registrations.delete(agentId);
     this.registrationsByApiKey.delete(registration.api_key);
     this.loggedInAgents.delete(agentId);
+    this.excludedInfoCommandsByAgent.delete(agentId);
     return registration;
   }
 
@@ -83,6 +86,7 @@ export class AgentStateStore {
     const loggedInAgent = this.loggedInAgents.get(agentId) ?? null;
     if (loggedInAgent) {
       this.loggedInAgents.delete(agentId);
+      this.excludedInfoCommandsByAgent.delete(agentId);
     }
     return loggedInAgent;
   }
@@ -171,6 +175,21 @@ export class AgentStateStore {
     const loggedInAgent = this.mustGetLoggedIn(agentId);
     loggedInAgent.last_used_item_id = itemId;
     return loggedInAgent;
+  }
+
+  addExcludedInfoCommand(agentId: string, command: InfoCommandChoice): void {
+    this.mustGetLoggedIn(agentId);
+    const excluded = this.excludedInfoCommandsByAgent.get(agentId) ?? new Set<InfoCommandChoice>();
+    excluded.add(command);
+    this.excludedInfoCommandsByAgent.set(agentId, excluded);
+  }
+
+  clearExcludedInfoCommands(agentId: string): void {
+    this.excludedInfoCommandsByAgent.delete(agentId);
+  }
+
+  getExcludedInfoCommands(agentId: string): ReadonlySet<InfoCommandChoice> {
+    return this.excludedInfoCommandsByAgent.get(agentId) ?? new Set<InfoCommandChoice>();
   }
 
   setMoney(agentId: string, money: number): LoggedInAgent {

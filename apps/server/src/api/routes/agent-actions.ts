@@ -1,6 +1,7 @@
 import type { Hono } from 'hono';
 import { z } from 'zod';
 
+import { requireInfoCommandReadyAgent } from '../../domain/agent-guards.js';
 import type { WorldEngine } from '../../engine/world-engine.js';
 import { createNotificationAcceptedResponse } from '../../types/api.js';
 import type { NodeId } from '../../types/data-model.js';
@@ -29,6 +30,8 @@ const waitSchema = z.object({
 export function registerAgentActionRoutes(app: Hono<ApiEnv>, engine: WorldEngine): void {
   app.get('/api/agents/actions', agentAuth(engine), requireLoggedIn(engine), (c) => {
     const agentId = c.get('agentId') as string;
+    requireInfoCommandReadyAgent(engine, agentId, 'get_available_actions');
+    engine.state.addExcludedInfoCommand(agentId, 'get_available_actions');
     engine.emitEvent({ type: 'available_actions_requested', agent_id: agentId });
     return c.json(createNotificationAcceptedResponse());
   });

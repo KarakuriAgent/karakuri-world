@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { WorldEngine } from '../../../src/engine/world-engine.js';
-import { formatActionSourceLine, getAvailableActionSources, getAvailableActionSourcesWithOptions } from '../../../src/domain/actions.js';
+import { formatActionSourceLine, getAvailableActionSourcesWithOptions } from '../../../src/domain/actions.js';
 import { WorldError } from '../../../src/types/api.js';
 import type { NodeId } from '../../../src/types/data-model.js';
 import type { WorldEvent } from '../../../src/types/event.js';
@@ -16,7 +16,7 @@ async function createLoggedInAgent(engine: WorldEngine, agentName = 'alice') {
 }
 
 function getAvailableActionIds(engine: WorldEngine, agentId: string): string[] {
-  return getAvailableActionSources(engine, agentId).map((source) => source.action.action_id);
+  return getAvailableActionSourcesWithOptions(engine, agentId).map((source) => source.action.action_id);
 }
 
 function executeAndCompleteAction(engine: WorldEngine, agentId: string, actionId: string): void {
@@ -58,7 +58,7 @@ describe('actions domain', () => {
     await engine.loginAgent(alice.agent_id);
     engine.state.setNode(alice.agent_id, '2-4');
 
-    expect(getAvailableActionSources(engine, alice.agent_id)).toEqual([
+    expect(getAvailableActionSourcesWithOptions(engine, alice.agent_id)).toEqual([
       expect.objectContaining({
         type: 'building',
         id: 'building-workshop',
@@ -206,7 +206,7 @@ describe('actions domain', () => {
     const alice = await createLoggedInAgent(engine);
     engine.state.setNode(alice.agent_id, '2-4');
 
-    const source = getAvailableActionSources(engine, alice.agent_id).find((candidate) => candidate.action.action_id === 'long-nap');
+    const source = getAvailableActionSourcesWithOptions(engine, alice.agent_id).find((candidate) => candidate.action.action_id === 'long-nap');
     expect(source).toBeDefined();
     expect(formatActionSourceLine(source!)).toContain('1〜5分, duration_minutes: 分数を指定');
   });
@@ -217,7 +217,7 @@ describe('actions domain', () => {
     await engine.loginAgent(alice.agent_id);
     engine.state.setNode(alice.agent_id, '1-1');
 
-    expect(getAvailableActionSources(engine, alice.agent_id)[0]?.action.action_id).toBe('greet-gatekeeper');
+    expect(getAvailableActionSourcesWithOptions(engine, alice.agent_id)[0]?.action.action_id).toBe('greet-gatekeeper');
     expect(() => engine.executeAction(alice.agent_id, { action_id: 'missing-action' })).toThrowError(WorldError);
 
     engine.state.setNode(alice.agent_id, '3-4');
