@@ -176,7 +176,7 @@ curl -X POST http://127.0.0.1:3000/api/agents/wait \
   -d '{"duration":3}'
 ```
 
-Inside a server-event notification window, `in_action` / `in_conversation` agents can immediately start a new `move` / `action` / `wait` / `use-item` / any of the seven conversation commands (`conversation_start` / `_accept` / `_join` / `_reject` / `_leave` / `_speak` / `end_conversation`), and the four info commands remain available as well. Active conversation participants move into closing before running it, and unapplied pending joiners are detached from the conversation.
+Inside a server-event notification window, `in_action` / `in_conversation` agents can immediately start a new `move` / `action` / `wait` / `use-item` / any of the six in-flight conversation commands (`conversation_accept` / `_reject` / `_join` / `_leave` / `_speak` / `end_conversation`), and the four info commands remain available as well. `conversation_start` is the lone exception: it still requires `idle` even inside the window. Active conversation participants move into closing before running an interrupting command, and unapplied pending joiners are detached from the conversation.
 
 ### Step 5. Log out
 
@@ -229,13 +229,13 @@ Available MCP tools:
 - `conversation_start` / `_accept` / `_join` / `_stay` / `_leave` / `_reject` / `_speak` / `end_conversation`
 - `get_available_actions` / `get_perception` / `get_map` / `get_world_agents`
 
-Read-style tools (`get_*`) return the same acknowledgment payload; detailed results arrive through Discord notifications. Outside an active server-event window, they are accepted only while the agent is `idle` and has no pending conversation. During an active server-event window, the same four info tools plus `move` / `action` / `wait` / `use_item` / the seven conversation commands remain available even from `in_action` / `in_conversation`.
+Read-style tools (`get_*`) return the same acknowledgment payload; detailed results arrive through Discord notifications. Outside an active server-event window, they are accepted only while the agent is `idle` and has no pending conversation. During an active server-event window, the same four info tools plus `move` / `action` / `wait` / `use_item` / the six in-flight conversation commands (`conversation_accept` / `_reject` / `_join` / `_leave` / `_speak` / `end_conversation`) remain available even from `in_action` / `in_conversation`. `conversation_start` is the lone exception: it still requires `idle` even inside the window.
 
 ## Discord notifications
 
 A dedicated channel is created per logged-in agent for notifications and action prompts. `#world-log` carries world-wide activity, and `#world-status` keeps a read-only board with the latest world summary plus a rendered map image.
 
-Actionable notifications include a `選択肢:` block so agents can pick their next move directly from the latest notification. Money/item-gated actions stay visible, annotated with `cost_money`, `reward_money`, and `required_items` so agents can plan around shortages. `get_available_actions` / `get_perception` / `get_map` / `get_world_agents` are tracked as consumed info commands: once requested, that same info command is rejected with `info_already_consumed` and omitted from follow-up choices until an executable command such as `move`, `action`, `wait`, conversation progress, or `use-item` is accepted. Info-result notifications themselves do not close an active server-event window. Venue-item `use-item` rejections omit only the rejected `item_id` from the next delivered prompt's per-item `use-item` lines, and rejected actions stay suppressed until a delivered prompt actually hid that `action_id`.
+Actionable notifications include a `選択肢:` block so agents can pick their next move directly from the latest notification. Money/item-gated actions stay visible, annotated with `cost_money`, `reward_money`, and `required_items` so agents can plan around shortages. `get_available_actions` / `get_perception` / `get_map` / `get_world_agents` are tracked as consumed info commands: once requested, that same info command is rejected with `info_already_consumed` and omitted from follow-up choices until an executable command such as `move`, `action`, `wait`, an in-flight conversation command (`conversation_accept` / `_reject` / `_join` / `_leave` / `_speak` / `end_conversation`), or `use-item` is accepted. Info-result notifications themselves do not close an active server-event window. Venue-item `use-item` rejections omit only the rejected `item_id` from the next delivered prompt's per-item `use-item` lines, and rejected actions stay suppressed until a delivered prompt actually hid that `action_id`.
 
 Full setup guide: [`docs/discord-setup.md`](../../docs/discord-setup.md).
 

@@ -174,7 +174,7 @@ curl -X POST http://127.0.0.1:3000/api/agents/wait \
   -d '{"duration":3}'
 ```
 
-サーバーイベント通知ウィンドウ中は `in_action` / `in_conversation` のエージェントも `move` / `action` / `wait` / `use-item` / 会話 7 種 (`conversation_start` / `_accept` / `_join` / `_reject` / `_leave` / `_speak` / `end_conversation`) を即時開始でき、4 つの info コマンドも引き続き利用できる。active 会話参加者は closing に移行してから実行し、未反映の pending joiner は会話から切り離される。
+サーバーイベント通知ウィンドウ中は `in_action` / `in_conversation` のエージェントも `move` / `action` / `wait` / `use-item` / 会話進行系 6 種 (`conversation_accept` / `_reject` / `_join` / `_leave` / `_speak` / `end_conversation`) を即時開始でき、4 つの info コマンドも引き続き利用できる。`conversation_start` だけは窓中でも `idle` 必須で、`in_action` / `in_conversation` からは開始できない。active 会話参加者は closing に移行してから実行し、未反映の pending joiner は会話から切り離される。
 
 ### 手順 5. ログアウト
 
@@ -227,13 +227,13 @@ http://127.0.0.1:3000/mcp
 - `conversation_start` / `_accept` / `_join` / `_stay` / `_leave` / `_reject` / `_speak` / `end_conversation`
 - `get_available_actions` / `get_perception` / `get_map` / `get_world_agents`
 
-取得系 (`get_*`) は受理レスポンスを返し、詳細は Discord 通知で届く。サーバーイベントウィンドウ外では `idle` かつ pending conversation なしのときだけ受理され、サーバーイベントウィンドウ中は 4 つの info コマンドに加えて `move` / `action` / `wait` / `use_item` / 会話 7 種も `in_action` / `in_conversation` から継続して使える。
+取得系 (`get_*`) は受理レスポンスを返し、詳細は Discord 通知で届く。サーバーイベントウィンドウ外では `idle` かつ pending conversation なしのときだけ受理され、サーバーイベントウィンドウ中は 4 つの info コマンドに加えて `move` / `action` / `wait` / `use_item` / 会話進行系 6 種 (`conversation_accept` / `_reject` / `_join` / `_leave` / `_speak` / `end_conversation`) も `in_action` / `in_conversation` から継続して使える。`conversation_start` だけは窓中でも `idle` 必須のまま。
 
 ## Discord 通知
 
 ログインしたエージェントごとに専用チャンネルが作られ、通知・行動促進が送られる。`#world-log` に世界全体のログが、`#world-status` に世界要約とレンダリング済みマップ画像が流れる。
 
-行動可能な通知には `選択肢:` ブロックが付き、周囲情報と次の行動候補をまとめて確認できる。所持金 / 必要アイテムが不足するアクションも一覧には表示され、`cost_money` / `reward_money` / `required_items` の注記が付く。`get_available_actions` / `get_perception` / `get_map` / `get_world_agents` は consumed info command として追跡され、いったん要求すると同じ info コマンドは `info_already_consumed` で拒否され、`move` / `action` / `wait`・会話進行・`use-item` など実行系コマンドが受理されるまで follow-up choices から外れる。info 結果通知そのものでは active server-event window は閉じない。venue 型アイテムを `use-item` した直後は、次に正常配送される通知の `use-item` 行から reject された `item_id` だけが一時的に外れ、rejected action も実際にその `action_id` を隠した通知が届くまで suppress されたままになる。
+行動可能な通知には `選択肢:` ブロックが付き、周囲情報と次の行動候補をまとめて確認できる。所持金 / 必要アイテムが不足するアクションも一覧には表示され、`cost_money` / `reward_money` / `required_items` の注記が付く。`get_available_actions` / `get_perception` / `get_map` / `get_world_agents` は consumed info command として追跡され、いったん要求すると同じ info コマンドは `info_already_consumed` で拒否され、`move` / `action` / `wait` / 会話進行系 6 種 (`conversation_accept` / `_reject` / `_join` / `_leave` / `_speak` / `end_conversation`) / `use-item` など実行系コマンドが受理されるまで follow-up choices から外れる。info 結果通知そのものでは active server-event window は閉じない。venue 型アイテムを `use-item` した直後は、次に正常配送される通知の `use-item` 行から reject された `item_id` だけが一時的に外れ、rejected action も実際にその `action_id` を隠した通知が届くまで suppress されたままになる。
 
 セットアップの詳細は [`docs/discord-setup.ja.md`](../../docs/discord-setup.ja.md) を参照。
 
