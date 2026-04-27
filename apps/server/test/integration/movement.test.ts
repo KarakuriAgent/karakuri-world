@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { MapConfig } from '../../src/types/data-model.js';
 import { createApp } from '../../src/api/app.js';
-import { getAvailableActionSources } from '../../src/domain/actions.js';
+import { getAvailableActionSourcesWithOptions } from '../../src/domain/actions.js';
+import { getPerceptionData } from '../../src/domain/perception.js';
 import { createTestMapConfig } from '../helpers/test-map.js';
 import { createTestWorld } from '../helpers/test-world.js';
 
@@ -65,15 +66,15 @@ describe('movement integration', () => {
     const move = engine.move(alice.agent_id, { target_node_id: '1-1' });
     vi.advanceTimersByTime(1000);
 
-    expect(engine.getPerception(alice.agent_id).current_node.node_id).toBe('2-1');
-    expect(engine.getWorldAgents().agents).toEqual([
+    expect(getPerceptionData(engine, alice.agent_id).current_node.node_id).toBe('2-1');
+    expect(engine.getSnapshot().agents).toEqual([
       expect.objectContaining({
         agent_id: alice.agent_id,
         node_id: '2-1',
         state: 'moving',
       }),
     ]);
-    expect(getAvailableActionSources(engine, alice.agent_id)).toEqual([
+    expect(getAvailableActionSourcesWithOptions(engine, alice.agent_id)).toEqual([
       expect.objectContaining({
         action: expect.objectContaining({ action_id: 'ask-courier' }),
       }),

@@ -4,29 +4,13 @@ import { WorldError } from '../types/api.js';
 import type { LoggedInAgent } from '../types/agent.js';
 import type { NodeId } from '../types/data-model.js';
 import type { MovementTimer } from '../types/timer.js';
+import { requireActionableAgent } from './agent-guards.js';
 import { cancelIdleReminder, startIdleReminder } from './idle-reminder.js';
 import { findPath, getNodeConfig, isNodeWithinBounds, isPassable } from './map-utils.js';
 import { handlePendingServerEvents } from './server-events.js';
 
 function requireMoveReadyAgent(engine: WorldEngine, agentId: string): LoggedInAgent {
-  const agent = engine.state.getLoggedIn(agentId);
-  if (!agent) {
-    throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
-  }
-
-  if (agent.active_server_event_id !== null) {
-    return agent;
-  }
-
-  if (agent.state !== 'idle') {
-    throw new WorldError(409, 'state_conflict', 'Agent cannot move in the current state.');
-  }
-
-  if (agent.pending_conversation_id) {
-    throw new WorldError(409, 'state_conflict', 'Agent cannot move while a conversation request is pending.');
-  }
-
-  return agent;
+  return requireActionableAgent(engine, agentId, { activityLabel: 'move' });
 }
 
 export function validateMove(engine: WorldEngine, agentId: string, request: MoveRequest): {
@@ -85,6 +69,7 @@ export function executeValidatedMove(
     path: [...path],
     fires_at: arrivesAt,
   });
+  engine.state.clearExcludedInfoCommands(agent.agent_id);
 
   engine.emitEvent({
     type: 'movement_started',

@@ -412,6 +412,7 @@ export class WorldEngine {
     const result = validateAction(this, agentId, request);
     if (result.rejected) {
       this.state.setLastRejectedAction(result.agent.agent_id, result.source.action.action_id);
+      this.state.clearExcludedInfoCommands(result.agent.agent_id);
       this.emitEvent({
         type: 'action_rejected',
         agent_id: result.agent.agent_id,
@@ -420,6 +421,7 @@ export class WorldEngine {
         action_name: result.source.action.name,
         rejection_reason: result.rejection_reason,
       });
+      handleServerEventInterruption(this, agentId);
       return { ok: true, message: '正常に受け付けました。結果が通知されるまで待機してください。' };
     }
 
@@ -435,9 +437,6 @@ export class WorldEngine {
 
   useItem(agentId: string, request: UseItemRequest): NotificationAcceptedResponse {
     const validated = validateUseItem(this, agentId, request);
-    if (validated.item_type === 'venue') {
-      return executeValidatedUseItem(this, validated);
-    }
     handleServerEventInterruption(this, agentId);
     return executeValidatedUseItem(this, validated);
   }

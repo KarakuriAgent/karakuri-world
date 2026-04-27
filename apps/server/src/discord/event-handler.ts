@@ -1,7 +1,7 @@
 import { formatActionSourceLine, getAvailableActionSourcesWithOptions } from '../domain/actions.js';
 import { buildChoicesPrompt, type BuildChoicesTextOptions } from '../domain/choices.js';
 import { buildMapSummaryText } from '../domain/map-summary.js';
-import { buildPerceptionText } from '../domain/perception.js';
+import { buildPerceptionText, getPerceptionData } from '../domain/perception.js';
 import { clearActiveServerEvent } from '../domain/server-events.js';
 import type { WorldEngine } from '../engine/world-engine.js';
 import { WorldError } from '../types/api.js';
@@ -483,12 +483,12 @@ export class DiscordEventHandler {
   }
 
   private async handleMovementStarted(agentId: string, toNodeId: NodeId, arrivesAt: number): Promise<void> {
-    const label = this.engine.getMap().nodes[toNodeId]?.label;
+    const label = this.engine.config.map.nodes[toNodeId]?.label;
     await this.sendWorldLogForAgent(agentId, formatWorldLogMovementStarted(toNodeId, arrivesAt, this.engine.config.timezone, label));
   }
 
   private async handleMovementCompleted(agentId: string, _agentName: string, toNodeId: NodeId): Promise<void> {
-    const label = this.engine.getMap().nodes[toNodeId]?.label;
+    const label = this.engine.config.map.nodes[toNodeId]?.label;
     const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
     let consumedRejectedActionId: string | null = null;
     let consumedUsedItemId: string | null = null;
@@ -1029,7 +1029,7 @@ export class DiscordEventHandler {
       return '';
     }
 
-    return buildPerceptionText(this.engine.getPerception(agentId));
+    return buildPerceptionText(getPerceptionData(this.engine, agentId));
   }
 
   private clearRejectedActionIfCurrent(agentId: string, actionId: string | null): void {
@@ -1151,7 +1151,9 @@ export class DiscordEventHandler {
     const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
     let consumedRejectedActionId: string | null = null;
     let consumedUsedItemId: string | null = null;
-    await this.sendToAgentClearingServerEventBuilt(agentId, () => {
+    await this.sendToAgentBuilt(agentId, () => {
+      // 通常は入口 (REST/MCP) で addExcludedInfoCommand 済みのため store 経由でも除外されるが、
+      // 入口を経ない直接 emit に対する保険として excludeInfoCommands を併記する。
       const choicesPrompt = this.getChoicesPrompt(agentId, { excludeInfoCommands: ['get_map'] }, suppressionSnapshot);
       consumedRejectedActionId = choicesPrompt.consumedRejectedActionId;
       consumedUsedItemId = choicesPrompt.consumedUsedItemId;
@@ -1171,7 +1173,7 @@ export class DiscordEventHandler {
 
     const agentsText = (() => {
       const lines = this.engine
-        .getWorldAgents()
+        .getSnapshot()
         .agents
         .filter((agent) => agent.agent_id !== agentId)
         .sort((left, right) => left.agent_id.localeCompare(right.agent_id))
@@ -1182,7 +1184,7 @@ export class DiscordEventHandler {
     const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
     let consumedRejectedActionId: string | null = null;
     let consumedUsedItemId: string | null = null;
-    await this.sendToAgentClearingServerEventBuilt(agentId, () => {
+    await this.sendToAgentBuilt(agentId, () => {
       const choicesPrompt = this.getChoicesPrompt(agentId, { excludeInfoCommands: ['get_world_agents'] }, suppressionSnapshot);
       consumedRejectedActionId = choicesPrompt.consumedRejectedActionId;
       consumedUsedItemId = choicesPrompt.consumedUsedItemId;
@@ -1198,9 +1200,9 @@ export class DiscordEventHandler {
     const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
     let consumedRejectedActionId: string | null = null;
     let consumedUsedItemId: string | null = null;
-    await this.sendToAgentClearingServerEventBuilt(agentId, () => {
+    await this.sendToAgentBuilt(agentId, () => {
       const perceptionText = this.getPerceptionText(agentId);
-      const choicesPrompt = this.getChoicesPrompt(agentId, undefined, suppressionSnapshot);
+      const choicesPrompt = this.getChoicesPrompt(agentId, { excludeInfoCommands: ['get_perception'] }, suppressionSnapshot);
       consumedRejectedActionId = choicesPrompt.consumedRejectedActionId;
       consumedUsedItemId = choicesPrompt.consumedUsedItemId;
       return formatPerceptionInfoMessage(this.getWorldContext(agentId), perceptionText, this.skillName, choicesPrompt.choicesText);
@@ -1215,7 +1217,9 @@ export class DiscordEventHandler {
     const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
     let consumedRejectedActionId: string | null = null;
     let consumedUsedItemId: string | null = null;
-    await this.sendToAgentClearingServerEventBuilt(agentId, () => {
+    await this.sendToAgentBuilt(agentId, () => {
+      // actionsText (詳細形式) は formatActionSourceLine による拡張表示のため、
+      // 簡潔な `- action: ...` 形式の choices とは独立して構築する必要がある。
       const rejectedActionId = suppressionSnapshot.rejectedActionId;
       const availableActionSources = getAvailableActionSourcesWithOptions(this.engine, agentId, {
         excluded_action_ids: rejectedActionId ? [rejectedActionId] : [],
@@ -1224,7 +1228,7 @@ export class DiscordEventHandler {
         (source) => `- action: ${formatActionSourceLine(source, this.engine.config.items ?? [])}`,
       );
       const actionsText = lines.length > 0 ? `実行可能なアクション:\n${lines.join('\n')}` : '実行可能なアクションはありません。';
-      const choicesPrompt = this.getChoicesPrompt(agentId, undefined, suppressionSnapshot);
+      const choicesPrompt = this.getChoicesPrompt(agentId, { excludeInfoCommands: ['get_available_actions'] }, suppressionSnapshot);
       consumedRejectedActionId = choicesPrompt.consumedRejectedActionId;
       consumedUsedItemId = choicesPrompt.consumedUsedItemId;
       return formatAvailableActionsInfoMessage(this.getWorldContext(agentId), actionsText, this.skillName, choicesPrompt.choicesText);

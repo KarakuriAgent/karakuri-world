@@ -32,6 +32,48 @@ describe('server event domain', () => {
     expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBe(fired.server_event_id);
   });
 
+  it('resets the excluded info command set when a new server event window opens', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.addExcludedInfoCommand(alice.agent_id, 'get_map');
+    engine.state.addExcludedInfoCommand(alice.agent_id, 'get_perception');
+
+    engine.fireServerEvent('Dark clouds gather.');
+
+    expect(engine.state.getExcludedInfoCommands(alice.agent_id).size).toBe(0);
+  });
+
+  it('resets the excluded info command set when a delayed server event is delivered after movement', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
+
+    engine.move(alice.agent_id, { target_node_id: '3-4' });
+    engine.fireServerEvent('Pending event during travel.');
+    engine.state.addExcludedInfoCommand(alice.agent_id, 'get_map');
+
+    vi.advanceTimersByTime(3000);
+
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).not.toBeNull();
+    expect(engine.state.getExcludedInfoCommands(alice.agent_id).size).toBe(0);
+  });
+
+  it('clears the active server event window when an idle agent moves during it', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
+
+    const fired = engine.fireServerEvent('Dark clouds gather.');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBe(fired.server_event_id);
+
+    engine.move(alice.agent_id, { target_node_id: '3-4' });
+
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
+  });
+
   it('delays delivery while moving and keeps the event window open through arrival', async () => {
     const { engine } = createTestWorld();
     const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
@@ -162,6 +204,78 @@ describe('server event domain', () => {
     expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('in_action');
     expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
     expect(engine.state.getLoggedIn(alice.agent_id)?.last_action_id).toBe('greet-gatekeeper');
+  });
+
+  it('closes the server-event window when an action is rejected after validation', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        economy: { initial_money: 100 },
+        map: {
+          ...createTestWorld().config.map,
+          npcs: [
+            {
+              npc_id: 'npc-gatekeeper',
+              name: 'Gatekeeper',
+              description: 'Watches the town gate.',
+              node_id: '1-2',
+              actions: [
+                {
+                  action_id: 'expensive-greeting',
+                  name: 'Expensive greeting',
+                  description: 'Offer a costly greeting.',
+                  duration_ms: 1200,
+                  cost_money: 500,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.setNode(alice.agent_id, '1-1');
+
+    const fired = engine.fireServerEvent('Dark clouds gather.');
+
+    const response = engine.executeAction(alice.agent_id, { action_id: 'expensive-greeting' });
+
+    expect(response.ok).toBe(true);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('idle');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
+    expect(
+      engine.state.recentServerEvents
+        .list()
+        .find((event) => event.server_event_id === fired.server_event_id)
+        ?.is_active,
+    ).toBe(false);
+  });
+
+  it('closes the server-event window when venue item use is rejected', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        items: [
+          { item_id: 'ticket', name: 'チケット', description: 'テスト用チケット', type: 'venue' as const, stackable: false },
+        ],
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.setItems(alice.agent_id, [{ item_id: 'ticket', quantity: 1 }]);
+
+    const fired = engine.fireServerEvent('Dark clouds gather.');
+
+    const response = engine.useItem(alice.agent_id, { item_id: 'ticket' });
+
+    expect(response.ok).toBe(true);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('idle');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
+    expect(
+      engine.state.recentServerEvents
+        .list()
+        .find((event) => event.server_event_id === fired.server_event_id)
+        ?.is_active,
+    ).toBe(false);
   });
 
   it.each([

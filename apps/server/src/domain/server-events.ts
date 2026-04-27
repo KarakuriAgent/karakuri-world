@@ -43,6 +43,7 @@ export function fireServerEvent(engine: WorldEngine, description: string): FireS
     }
 
     engine.state.setActiveServerEvent(agent.agent_id, serverEvent.server_event_id);
+    engine.state.clearExcludedInfoCommands(agent.agent_id);
     serverEvent.delivered_agent_ids.push(agent.agent_id);
   }
 
@@ -86,6 +87,7 @@ export function handlePendingServerEvents(engine: WorldEngine, agentId: string):
       serverEvent.delivered_agent_ids.sort();
     }
     engine.state.setActiveServerEvent(agentId, serverEventId);
+    engine.state.clearExcludedInfoCommands(agentId);
     deliveredServerEventIds.push(serverEventId);
 
     if (engine.state.recentServerEvents.has(serverEventId)) {
