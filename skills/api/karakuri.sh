@@ -20,16 +20,22 @@ Commands:
   action <action_id> [duration_minutes]          Execute an action
   use-item <item_id>                             Use an item from inventory
   wait <duration>                                 Wait (1-6, in 10-minute units)
+  transfer <target_agent_id> [items_json] [money]
+                                                Start an item/money transfer to a nearby agent
+  transfer-accept <transfer_id>                  Accept a pending transfer offer
+  transfer-reject <transfer_id>                  Reject a pending transfer offer
   conversation-start <target_agent_id> <message> Start a conversation
   conversation-accept <message>                  Accept a conversation and reply
   conversation-reject                            Reject a conversation
   conversation-join <conversation_id>           Join an active conversation on the next turn boundary
   conversation-stay                              Stay after an inactive-check prompt
   conversation-leave [message]                   Leave after an inactive-check prompt
-  conversation-speak <next_speaker_agent_id> <message>
-                                                Speak in a conversation
-  conversation-end <next_speaker_agent_id> <message>
-                                                End/leave a conversation with a farewell message
+  conversation-speak <next_speaker_agent_id> <message> [extra_json]
+                                                Speak in a conversation; optional extra_json adds
+                                                {"transfer": {...}} or {"transfer_response": "accept"|"reject"}
+  conversation-end <next_speaker_agent_id> <message> [extra_json]
+                                                End/leave a conversation; optional extra_json adds
+                                                {"transfer_response": "accept"|"reject"}
   map                                            Request the full map via notification
   world-agents                                   Request all agent states via notification
 EOF
@@ -67,6 +73,27 @@ json_obj() {
 }
 
 do_request() {
+  if [ "${KARAKURI_DRY_RUN:-0}" = "1" ]; then
+    # ドライランモード: curl を呼ばず、リクエスト構造を JSON で stdout に出力する。
+    # テスト (apps/server/test/unit/skills/karakuri-script.test.ts) で payload 正当性を検証するための仕組み
+    local method="GET" url="" body=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        -X) method="$2"; shift 2 ;;
+        -H) shift 2 ;;
+        -d) body="$2"; shift 2 ;;
+        -s|-w) shift ;;
+        *) url="$1"; shift ;;
+      esac
+    done
+    jq -nc \
+      --arg method "$method" \
+      --arg url "$url" \
+      --arg body "$body" \
+      '{method: $method, url: $url, body: ($body | (try fromjson catch null))}'
+    return 0
+  fi
+
   local response code body
   response=$(curl -s -w '\n%{http_code}' "$@")
   code="${response##*$'\n'}"
@@ -88,10 +115,29 @@ do_post() {
 }
 
 build_conversation_payload() {
+  # Args: <next_speaker_agent_id> <message_word> [more_message_words...] [extra_json]
+  # If the last argument starts with '{' and parses as JSON, treat it as extra payload
+  # to merge (e.g. {"transfer":{...}} or {"transfer_response":"accept"}).
   local next_speaker="$1"
   shift
+  local extra_json=""
+  if [ $# -ge 2 ]; then
+    local last="${!#}"
+    if [[ "$last" == \{* ]] && printf '%s' "$last" | jq empty >/dev/null 2>&1; then
+      extra_json="$last"
+      set -- "${@:1:$#-1}"
+    fi
+  fi
   local message="${*}"
-  json_obj message "${message}" next_speaker_agent_id "${next_speaker}"
+  if [ -n "$extra_json" ]; then
+    jq -nc \
+      --arg message "$message" \
+      --arg next_speaker "$next_speaker" \
+      --argjson extra "$extra_json" \
+      '{message: $message, next_speaker_agent_id: $next_speaker} + $extra'
+  else
+    json_obj message "${message}" next_speaker_agent_id "${next_speaker}"
+  fi
 }
 
 command="$1"
@@ -119,6 +165,28 @@ case "${command}" in
   use-item)
     [ $# -lt 1 ] && { echo "Usage: karakuri.sh use-item <item_id>" >&2; exit 1; }
     do_post "/agents/use-item" "$(json_obj item_id "$1")"
+    ;;
+  transfer)
+    [ $# -lt 1 ] && { echo "Usage: karakuri.sh transfer <target_agent_id> [items_json] [money]" >&2; exit 1; }
+    transfer_target="$1"
+    transfer_items_arg="${2:-}"
+    transfer_money_arg="${3:-}"
+    transfer_payload="$(jq -nc \
+      --arg target_agent_id "$transfer_target" \
+      --arg items "$transfer_items_arg" \
+      --arg money "$transfer_money_arg" \
+      '{target_agent_id: $target_agent_id}
+        + (if $items == "" then {} else {items: ($items | fromjson)} end)
+        + (if $money == "" then {} else {money: ($money | tonumber)} end)')"
+    do_post "/agents/transfer" "$transfer_payload"
+    ;;
+  transfer-accept)
+    [ $# -lt 1 ] && { echo "Usage: karakuri.sh transfer-accept <transfer_id>" >&2; exit 1; }
+    do_post "/agents/transfer/accept" "$(json_obj transfer_id "$1")"
+    ;;
+  transfer-reject)
+    [ $# -lt 1 ] && { echo "Usage: karakuri.sh transfer-reject <transfer_id>" >&2; exit 1; }
+    do_post "/agents/transfer/reject" "$(json_obj transfer_id "$1")"
     ;;
   wait)
     [ $# -lt 1 ] && { echo "Usage: karakuri.sh wait <duration>" >&2; exit 1; }
