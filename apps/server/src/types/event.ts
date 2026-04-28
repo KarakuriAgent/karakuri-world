@@ -265,7 +265,9 @@ interface TransferEventBase extends EventBase {
   from_agent_name: string;
   to_agent_id: string;
   to_agent_name: string;
-  items: ReadonlyArray<AgentItem>;
+  /** 譲渡対象のアイテム1種類。money 譲渡時は null。 */
+  item: AgentItem | null;
+  /** 譲渡対象の金額。item 譲渡時は 0。 */
   money: number;
   mode: TransferMode;
 }
@@ -277,8 +279,10 @@ export interface TransferRequestedEvent extends TransferEventBase {
 
 export interface TransferAcceptedEvent extends TransferEventBase {
   type: 'transfer_accepted';
-  items_granted: ReadonlyArray<AgentItem>;
-  items_dropped: ReadonlyArray<AgentItem>;
+  /** receiver に実際に渡ったアイテム。money 譲渡時は null。 */
+  item_granted: AgentItem | null;
+  /** receiver の inventory 不足で sender に戻ったアイテム。通常 null（accept 経路は overflow を別 reject で処理）。 */
+  item_dropped: AgentItem | null;
   money_received: number;
   from_money_balance?: number;
   to_money_balance: number;
@@ -303,7 +307,8 @@ export interface TransferEscrowLostEvent extends TransferEventBase {
   type: 'transfer_escrow_lost';
   reason: 'registration_writeback_failed' | 'startup_recovery_failed' | 'inventory_overflow_on_refund';
   recovery_log_path?: string;
-  dropped?: ReadonlyArray<{ item_id: string; quantity: number }>;
+  /** 受信側の inventory 不足等で escrow が完全に戻せなかった分。 */
+  dropped_item?: { item_id: string; quantity: number } | null;
 }
 
 export interface ServerEventFiredEvent extends EventBase {

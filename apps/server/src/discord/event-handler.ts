@@ -1269,12 +1269,12 @@ export class DiscordEventHandler {
   private async handleTransferRequested(event: Extract<WorldEvent, { type: 'transfer_requested' }>): Promise<void> {
     await this.sendConversationFollowUp(
       event.from_agent_id,
-      formatTransferSentMessage(event.to_agent_name, event.items, event.money),
+      formatTransferSentMessage(event.to_agent_name, event.item, event.money),
     );
     await this.sendConversationFollowUpBuilt(event.to_agent_id, () => formatTransferRequestedMessage(
       this.getWorldContext(event.to_agent_id),
       event.from_agent_name,
-      event.items,
+      event.item,
       event.money,
       event.expires_at,
       this.engine.config.timezone,
@@ -1285,8 +1285,8 @@ export class DiscordEventHandler {
   }
 
   private async handleTransferAccepted(event: Extract<WorldEvent, { type: 'transfer_accepted' }>): Promise<void> {
-    await this.sendConversationFollowUp(event.from_agent_id, formatTransferAcceptedMessage(event.to_agent_name, event.items, event.money, false));
-    await this.sendConversationFollowUp(event.to_agent_id, formatTransferAcceptedMessage(event.from_agent_name, event.items, event.money, true));
+    await this.sendConversationFollowUp(event.from_agent_id, formatTransferAcceptedMessage(event.to_agent_name, event.item, event.money, false));
+    await this.sendConversationFollowUp(event.to_agent_id, formatTransferAcceptedMessage(event.from_agent_name, event.item, event.money, true));
     await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferAccepted(event.to_agent_name, false));
   }
 

@@ -461,15 +461,14 @@ export function formatAvailableActionsInfoMessage(
   return joinSections(formatWorldContextHeader(ctx), actionsText, formatActionPrompt(skillName, choicesText));
 }
 
-function formatTransferSummary(items: ReadonlyArray<{ item_id: string; quantity: number }>, money: number): string {
-  const parts: string[] = [];
+function formatTransferSummary(item: { item_id: string; quantity: number } | null, money: number): string {
+  if (item) {
+    return `${item.item_id}×${item.quantity}`;
+  }
   if (money > 0) {
-    parts.push(`${money.toLocaleString('ja-JP')}円`);
+    return `${money.toLocaleString('ja-JP')}円`;
   }
-  if (items.length > 0) {
-    parts.push(items.map((item) => `${item.item_id}×${item.quantity}`).join('、'));
-  }
-  return parts.join(' + ');
+  return '(空)';
 }
 
 function formatTransferRejectReason(reason: TransferRejectReason): string {
@@ -503,7 +502,7 @@ function formatTransferCancelReason(reason: TransferCancelReason): string {
 export function formatTransferRequestedMessage(
   ctx: WorldContext,
   fromName: string,
-  items: ReadonlyArray<{ item_id: string; quantity: number }>,
+  item: { item_id: string; quantity: number } | null,
   money: number,
   expiresAt: number,
   timezone: string,
@@ -523,20 +522,20 @@ export function formatTransferRequestedMessage(
       ].join('\n');
   return joinSections(
     formatWorldContextHeader(ctx),
-    `${fromName} から ${formatTransferSummary(items, money)} の譲渡提案が届きました。`,
+    `${fromName} から ${formatTransferSummary(item, money)} の譲渡提案が届きました。`,
     `応答期限: ${formatTime(expiresAt, timezone)}`,
     formatActionPrompt(skillName, choices),
   );
 }
 
-export function formatTransferSentMessage(toName: string, items: ReadonlyArray<{ item_id: string; quantity: number }>, money: number): string {
-  return `${toName} に ${formatTransferSummary(items, money)} の譲渡を提案しました。`;
+export function formatTransferSentMessage(toName: string, item: { item_id: string; quantity: number } | null, money: number): string {
+  return `${toName} に ${formatTransferSummary(item, money)} の譲渡を提案しました。`;
 }
 
-export function formatTransferAcceptedMessage(name: string, items: ReadonlyArray<{ item_id: string; quantity: number }>, money: number, received: boolean): string {
+export function formatTransferAcceptedMessage(name: string, item: { item_id: string; quantity: number } | null, money: number, received: boolean): string {
   return received
-    ? `${name} から ${formatTransferSummary(items, money)} を受け取りました。`
-    : `${name} が ${formatTransferSummary(items, money)} の譲渡を受け取りました。`;
+    ? `${name} から ${formatTransferSummary(item, money)} を受け取りました。`
+    : `${name} が ${formatTransferSummary(item, money)} の譲渡を受け取りました。`;
 }
 
 export function formatTransferRejectedMessage(name: string, reason: TransferRejectReason, received: boolean): string {

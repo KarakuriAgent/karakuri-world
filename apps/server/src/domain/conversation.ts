@@ -23,7 +23,7 @@ import type {
 } from '../types/timer.js';
 import { cancelActiveAction } from './actions.js';
 import { cancelIdleReminder, startIdleReminder } from './idle-reminder.js';
-import { acceptTransfer, cancelPendingTransfersForAgent, cancelTransfer, clearTransferState, rejectTransfer, startTransfer } from './transfer.js';
+import { acceptTransfer, cancelPendingTransfersForAgent, cancelTransfer, clearTransferState, rejectTransfer, startTransfer, toTransferPayload } from './transfer.js';
 import { manhattanDistance } from './map-utils.js';
 import { clearActiveServerEvent } from './server-events.js';
 import { cancelActiveItemUse } from './use-item.js';
@@ -1030,8 +1030,7 @@ export function speak(engine: WorldEngine, agentId: string, request: Conversatio
         engine,
         agentId,
         nextSpeakerAgentId,
-        request.transfer.items,
-        request.transfer.money,
+        toTransferPayload(request.transfer),
         'in_conversation',
         conversation.conversation_id,
       );

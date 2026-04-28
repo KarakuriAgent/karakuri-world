@@ -311,7 +311,7 @@ describe('choices domain', () => {
 
     engine.startTransfer(alice.agent_id, {
       target_agent_id: bob.agent_id,
-      items: [{ item_id: 'apple', quantity: 1 }],
+      item: { item_id: 'apple', quantity: 1 },
     });
 
     const text = buildChoicesText(engine, bob.agent_id);
@@ -336,7 +336,7 @@ describe('choices domain', () => {
 
     engine.startTransfer(alice.agent_id, {
       target_agent_id: bob.agent_id,
-      items: [{ item_id: 'apple', quantity: 1 }],
+      item: { item_id: 'apple', quantity: 1 },
     });
     engine.state.setActiveServerEvent(bob.agent_id, 'server-event-1');
 
@@ -389,7 +389,7 @@ describe('choices domain', () => {
       engine.speak(alice.agent_id, {
         message: 'take this',
         next_speaker_agent_id: bob.agent_id,
-        transfer: { items: [{ item_id: 'apple', quantity: 1 }] },
+        transfer: { item: { item_id: 'apple', quantity: 1 } },
       });
 
       const text = buildChoicesText(engine, bob.agent_id);

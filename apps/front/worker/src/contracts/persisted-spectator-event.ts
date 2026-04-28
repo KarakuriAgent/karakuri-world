@@ -104,27 +104,27 @@ export type PersistedSpectatorConversationPendingJoinCancelledEvent = PersistedE
 >;
 export type PersistedSpectatorTransferRequestedEvent = PersistedEventPick<
   'transfer_requested',
-  'type' | 'transfer_id' | 'from_agent_id' | 'from_agent_name' | 'to_agent_id' | 'to_agent_name' | 'items' | 'money' | 'mode' | 'expires_at'
+  'type' | 'transfer_id' | 'from_agent_id' | 'from_agent_name' | 'to_agent_id' | 'to_agent_name' | 'item' | 'money' | 'mode' | 'expires_at'
 >;
 export type PersistedSpectatorTransferAcceptedEvent = PersistedEventPick<
   'transfer_accepted',
-  'type' | 'transfer_id' | 'from_agent_id' | 'from_agent_name' | 'to_agent_id' | 'to_agent_name' | 'items' | 'money' | 'mode' | 'items_granted' | 'items_dropped' | 'money_received' | 'from_money_balance' | 'to_money_balance'
+  'type' | 'transfer_id' | 'from_agent_id' | 'from_agent_name' | 'to_agent_id' | 'to_agent_name' | 'item' | 'money' | 'mode' | 'item_granted' | 'item_dropped' | 'money_received' | 'from_money_balance' | 'to_money_balance'
 >;
 export type PersistedSpectatorTransferRejectedEvent = PersistedEventPick<
   'transfer_rejected',
-  'type' | 'transfer_id' | 'from_agent_id' | 'from_agent_name' | 'to_agent_id' | 'to_agent_name' | 'items' | 'money' | 'mode' | 'reason'
+  'type' | 'transfer_id' | 'from_agent_id' | 'from_agent_name' | 'to_agent_id' | 'to_agent_name' | 'item' | 'money' | 'mode' | 'reason'
 >;
 export type PersistedSpectatorTransferTimeoutEvent = PersistedEventPick<
   'transfer_timeout',
-  'type' | 'transfer_id' | 'from_agent_id' | 'from_agent_name' | 'to_agent_id' | 'to_agent_name' | 'items' | 'money' | 'mode'
+  'type' | 'transfer_id' | 'from_agent_id' | 'from_agent_name' | 'to_agent_id' | 'to_agent_name' | 'item' | 'money' | 'mode'
 >;
 export type PersistedSpectatorTransferCancelledEvent = PersistedEventPick<
   'transfer_cancelled',
-  'type' | 'transfer_id' | 'from_agent_id' | 'from_agent_name' | 'to_agent_id' | 'to_agent_name' | 'items' | 'money' | 'mode' | 'reason'
+  'type' | 'transfer_id' | 'from_agent_id' | 'from_agent_name' | 'to_agent_id' | 'to_agent_name' | 'item' | 'money' | 'mode' | 'reason'
 >;
 export type PersistedSpectatorTransferEscrowLostEvent = PersistedEventPick<
   'transfer_escrow_lost',
-  'type' | 'transfer_id' | 'from_agent_id' | 'from_agent_name' | 'to_agent_id' | 'to_agent_name' | 'items' | 'money' | 'mode' | 'reason' | 'recovery_log_path'
+  'type' | 'transfer_id' | 'from_agent_id' | 'from_agent_name' | 'to_agent_id' | 'to_agent_name' | 'item' | 'money' | 'mode' | 'reason' | 'recovery_log_path'
 >;
 export type PersistedSpectatorServerEventFiredEvent = PersistedEventPick<
   'server_event_fired',
@@ -229,12 +229,12 @@ const PERSISTED_EVENT_FIELDS = {
     'final_speaker_agent_id',
   ],
   conversation_pending_join_cancelled: ['type', 'conversation_id', 'agent_id', 'reason'],
-  transfer_requested: ['type', 'transfer_id', 'from_agent_id', 'from_agent_name', 'to_agent_id', 'to_agent_name', 'items', 'money', 'mode', 'expires_at'],
-  transfer_accepted: ['type', 'transfer_id', 'from_agent_id', 'from_agent_name', 'to_agent_id', 'to_agent_name', 'items', 'money', 'mode', 'items_granted', 'items_dropped', 'money_received', 'from_money_balance', 'to_money_balance'],
-  transfer_rejected: ['type', 'transfer_id', 'from_agent_id', 'from_agent_name', 'to_agent_id', 'to_agent_name', 'items', 'money', 'mode', 'reason'],
-  transfer_timeout: ['type', 'transfer_id', 'from_agent_id', 'from_agent_name', 'to_agent_id', 'to_agent_name', 'items', 'money', 'mode'],
-  transfer_cancelled: ['type', 'transfer_id', 'from_agent_id', 'from_agent_name', 'to_agent_id', 'to_agent_name', 'items', 'money', 'mode', 'reason'],
-  transfer_escrow_lost: ['type', 'transfer_id', 'from_agent_id', 'from_agent_name', 'to_agent_id', 'to_agent_name', 'items', 'money', 'mode', 'reason', 'recovery_log_path'],
+  transfer_requested: ['type', 'transfer_id', 'from_agent_id', 'from_agent_name', 'to_agent_id', 'to_agent_name', 'item', 'money', 'mode', 'expires_at'],
+  transfer_accepted: ['type', 'transfer_id', 'from_agent_id', 'from_agent_name', 'to_agent_id', 'to_agent_name', 'item', 'money', 'mode', 'item_granted', 'item_dropped', 'money_received', 'from_money_balance', 'to_money_balance'],
+  transfer_rejected: ['type', 'transfer_id', 'from_agent_id', 'from_agent_name', 'to_agent_id', 'to_agent_name', 'item', 'money', 'mode', 'reason'],
+  transfer_timeout: ['type', 'transfer_id', 'from_agent_id', 'from_agent_name', 'to_agent_id', 'to_agent_name', 'item', 'money', 'mode'],
+  transfer_cancelled: ['type', 'transfer_id', 'from_agent_id', 'from_agent_name', 'to_agent_id', 'to_agent_name', 'item', 'money', 'mode', 'reason'],
+  transfer_escrow_lost: ['type', 'transfer_id', 'from_agent_id', 'from_agent_name', 'to_agent_id', 'to_agent_name', 'item', 'money', 'mode', 'reason', 'recovery_log_path'],
   server_event_fired: ['type', 'server_event_id', 'description', 'delivered_agent_ids', 'pending_agent_ids', 'delayed'],
 } as const satisfies Record<PersistedSpectatorEventType, readonly string[]>;
 

@@ -124,17 +124,19 @@ export interface WaitResponse {
   completes_at: number;
 }
 
-export interface TransferAttachment {
-  items?: Array<{
-    item_id: string;
-    quantity: number;
-  }>;
-  money?: number;
-}
+/**
+ * 譲渡時の payload。
+ * - `item` を指定する場合: `{ item: { item_id, quantity } }`（quantity は正の整数）
+ * - `money` を指定する場合: `{ money: 正の整数 }`
+ * `item` と `money` は排他で、どちらか一方のみ。
+ */
+export type TransferAttachment =
+  | { item: { item_id: string; quantity: number }; money?: undefined }
+  | { item?: undefined; money: number };
 
-export interface TransferRequest extends TransferAttachment {
+export type TransferRequest = TransferAttachment & {
   target_agent_id: string;
-}
+};
 
 export interface TransferResponseRequest {
   transfer_id: string;

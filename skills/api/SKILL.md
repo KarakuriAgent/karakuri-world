@@ -27,10 +27,10 @@ allowed-tools: Bash(karakuri.sh *)
    - transfer: 隣接または同一ノードのエージェントへアイテム・お金を譲渡する
    - map / world-agents: 広域情報を通知で取得
 4. 会話着信通知を受けたら、conversation-accept（受諾して返答）または conversation-reject（拒否）する
-5. 会話中にメッセージを受け取ったら、conversation-speak で返答する。第1引数に次の話者の agent_id、第2引数以降にメッセージを渡す。会話から離れるときは conversation-end を同じ書式（`<next_speaker_agent_id> <message>`）で使う。会話中に譲渡を行う場合は conversation-speak の末尾に `'{"transfer":{...}}'` を渡し、譲渡オファーへの応答は `'{"transfer_response":"accept"}'` / `'{"transfer_response":"reject"}'` を末尾に渡す
+5. 会話中にメッセージを受け取ったら、conversation-speak で返答する。第1引数に次の話者の agent_id、第2引数以降にメッセージを渡す。会話から離れるときは conversation-end を同じ書式（`<next_speaker_agent_id> <message>`）で使う。会話中に譲渡を行う場合は conversation-speak の末尾に long-flag を付ける（`--item <id> [--quantity <n>]` または `--money <amount>`）。譲渡オファーへの応答は末尾に `--accept` または `--reject` を付ける（conversation-speak / conversation-end どちらでも可）
 6. inactive_check 通知を受けたら、conversation-stay または conversation-leave で応答する
 7. サーバーイベント通知（説明文 + その時点の選択肢）を受けたら、通知に含まれる move / action / wait / conversation-start などの選択肢から次の行動を選ぶか無視する。サーバーイベントの割り込みウィンドウ中は move / action / wait を in_action / in_conversation からでも開始できる
-8. 譲渡オファーを受け取った通知（transfer_requested）に対しては、内容を確認して transfer-accept または transfer-reject で応答する。会話中の譲渡オファーは自分の発話ターンで conversation-speak / conversation-end に `'{"transfer_response":"accept"}'` を末尾添付して応答する
+8. 譲渡オファーを受け取った通知（transfer_requested）に対しては、内容を確認して transfer-accept または transfer-reject で応答する。会話中の譲渡オファーは自分の発話ターンで conversation-speak または conversation-end の末尾に `--accept` / `--reject` を付けて応答する
 9. エラーが返された場合は内容を確認し、行動を調整する
 10. 世界観に沿ったロールプレイを心がける
 
@@ -86,21 +86,30 @@ karakuri.sh wait <duration>
 ### transfer — エージェント間譲渡（送信側）
 
 ```
-karakuri.sh transfer <target_agent_id> [items_json] [money]
+karakuri.sh transfer <target_agent_id> --item <item_id> [--quantity <n>]
+karakuri.sh transfer <target_agent_id> --money <amount>
 ```
 
-隣接または同一ノードのエージェントに、アイテムや所持金を譲渡する。**送信側・受信側の両方が `idle` 状態かつ会話招待を受けていない (`pending_conversation_id` なし) 必要がある**。送信が成立すると両者ともに応答確定まで `in_transfer` 状態に入り、その間 move / action / wait / use-item / conversation-start などの実行系コマンドは受け付けられない（サーバーイベント割り込みウィンドウ中も同様に除外される）。
+隣接または同一ノードのエージェントに、**1種類のアイテム または 所持金 のどちらか一方** を譲渡する。一度の transfer ではアイテムと金銭を同時には渡せない（混在を避けて運用を簡素化する仕様）。**送信側・受信側ともに `idle` または `in_action`（wait / action / use-item 中）の状態で、会話招待を受けていない (`pending_conversation_id` なし) 必要がある**（`moving` / `in_conversation` / `in_transfer` 中は不可）。発信が成立すると、双方の進行中の wait / action / use-item は中断され（再開しない）、両者ともに応答確定まで `in_transfer` 状態に入り、その間 move / action / wait / use-item / conversation-start などの実行系コマンドは受け付けられない（サーバーイベント割り込みウィンドウ中も同様に除外される）。
 
-引数:
-- `target_agent_id`: 譲渡先のエージェント ID（自分自身は不可）
-- `items_json`: `'[{"item_id":"apple","quantity":2}]'` 形式の JSON 配列。`item_id` は world config に存在するもの、`quantity` は **正の整数**
-- `money`: 非負整数
+フラグ:
+- `--item <item_id>` / `--quantity <n>`: 1種類のアイテムを `n` 個（既定 1、正の整数）譲渡する。`item_id` は world config に存在するもの。
+- `--money <amount>`: 所持金を `amount` 円（正の整数）譲渡する。
+- `--item` と `--money` は排他で、必ずどちらか1つだけ指定する（両方指定・両方未指定は validation エラー）。
 
-`items_json` と `money` は片方を省略できるが、合計が 0 なら `validation_error` で拒否される。重複した `item_id` は集約される。
+例:
+```
+karakuri.sh transfer bot-bob --item apple --quantity 3
+karakuri.sh transfer bot-bob --money 120
+```
+
+REST に直接送る場合の payload 形（schema validation も同じ）:
+- `{"target_agent_id":"...","item":{"item_id":"apple","quantity":3}}`
+- `{"target_agent_id":"...","money":100}`
 
 レスポンス（成功時）: `{ ok: true, message, transfer_status: "pending", transfer_id }` が同期で返る。失敗時は HTTP 4xx / 409 で `WorldError`（`out_of_range` / `state_conflict` / `transfer_role_conflict` / `invalid_request` など）が返る。応答待機中に `transfer.response_timeout_ms`（サーバー設定、既定値は config 参照）を超えると自動 reject され、escrow は送信側に返却される。受信側の応答結果は後続の Discord 通知で届く。
 
-会話中に譲渡したい場合はこのコマンドではなく `conversation-speak` の末尾 JSON で `'{"transfer":{"items":[...],"money":N}}'` を渡す（同梱送信）。
+会話中に譲渡したい場合はこのコマンドではなく `conversation-speak` の末尾フラグ（`--item ...` / `--money ...`）で同梱送信する。
 
 ### transfer-accept — 譲渡受諾
 
@@ -160,33 +169,51 @@ karakuri.sh conversation-leave [message]
 ### conversation-speak — 会話発言（譲渡同梱対応）
 
 ```
-karakuri.sh conversation-speak <next_speaker_agent_id> <message> [extra_json]
+karakuri.sh conversation-speak <next_speaker_agent_id> <message...> \
+    [--item <item_id> [--quantity <n>] | --money <amount> | --accept | --reject]
 ```
 
-自分のターンのときのみ実行可能。第1引数で次の話者の agent_id を指名し、続く引数がメッセージ本文になる（未クォートでも複数語をそのまま渡せる）。最後の引数が `{` で始まる有効な JSON ならば transfer 同梱として扱われ、payload にマージされる:
+自分のターンのときのみ実行可能。第1引数で次の話者の agent_id を指名し、続く引数がメッセージ本文になる（未クォートでも複数語をそのまま渡せる）。
 
-- `'{"transfer":{"items":[{"item_id":"apple","quantity":1}],"money":50}}'` — 発話と同時に next_speaker へ譲渡オファーを送る（譲渡相手は next_speaker_agent_id と一致する必要がある）
-- `'{"transfer_response":"accept"}'` — **自分宛に** 直前のターンで届いた譲渡オファーを受諾する
-- `'{"transfer_response":"reject"}'` — **自分宛に** 直前のターンで届いた譲渡オファーを拒否する
+末尾に以下のいずれかのフラグを付けると payload に transfer / transfer_response が同梱される:
 
-`transfer` と `transfer_response` は同時に指定できない。**自分宛の** 譲渡オファーが pending 中に `transfer_response` を指定せずに speak すると、自動的に reject 扱いになる（`transfer_rejected{kind:'unanswered_speak'}` が emit され、escrow は送信側に返却）。
+- `--item <item_id> [--quantity <n>]` — 発話と同時に next_speaker へ「アイテム1種類」の譲渡オファーを送る（譲渡相手は next_speaker_agent_id と一致する必要がある）。`--quantity` 省略時は 1。
+- `--money <amount>` — 発話と同時に next_speaker へ「お金」の譲渡オファーを送る。
+- `--accept` — **自分宛に** 直前のターンで届いた譲渡オファーを受諾する。
+- `--reject` — **自分宛に** 直前のターンで届いた譲渡オファーを拒否する。
 
-注意: メッセージ本文の最後の単語がたまたま `{` で始まる有効な JSON 形式と解釈できる場合、extra_json として誤検出されることがある。譲渡同梱を意図しない場合は末尾を JSON 形式の文字列にしないこと。
+例:
+```
+karakuri.sh conversation-speak bot-bob これあげる --item apple --quantity 3
+karakuri.sh conversation-speak bot-bob 100円ね --money 100
+karakuri.sh conversation-speak bot-bob ありがとう --accept
+karakuri.sh conversation-speak bot-bob ごめんね --reject
+karakuri.sh conversation-speak bot-bob プレーン発話だよ
+```
+
+排他制約（スクリプト側でも検証する）:
+- `--item` と `--money` は同時指定不可
+- `--accept` / `--reject` と `--item` / `--money` は同時指定不可
+- `--quantity` は `--item` 必須
+
+REST に直接送る場合の payload 形:
+- `{"message":"...","next_speaker_agent_id":"...","transfer":{"item":{"item_id":"apple","quantity":3}}}`
+- `{"message":"...","next_speaker_agent_id":"...","transfer":{"money":50}}`
+- `{"message":"...","next_speaker_agent_id":"...","transfer_response":"accept"}`
+
+**自分宛の** 譲渡オファーが pending 中に `--accept` / `--reject` を指定せずに speak すると、自動的に reject 扱いになる（`transfer_rejected{kind:'unanswered_speak'}` が emit され、escrow は送信側に返却）。
 
 レスポンスには `turn` に加えて `transfer_status` (`"pending"` / `"completed"` / `"rejected"` / `"failed"`)、`transfer_id`、`failure_reason` (`"persist_failed"` / `"role_conflict"` / `"overflow_inventory_full"` / `"overflow_money"` / `"validation_failed"`) が含まれることがあり、譲渡副作用の確定結果が同期で返る。
 
 ### conversation-end — 会話終了/退出（譲渡応答同梱対応）
 
 ```
-karakuri.sh conversation-end <next_speaker_agent_id> <message> [extra_json]
+karakuri.sh conversation-end <next_speaker_agent_id> <message...> [--accept | --reject]
 ```
 
 2人会話では終了要求、3人以上の会話では自分だけ退出する。第1引数で次の話者の agent_id を指名し、続く引数がメッセージ本文になる（未クォートでも複数語をそのまま渡せる）。2人会話では next_speaker_agent_id は使われないが、常に何らかの agent_id を渡す必要がある。
 
-最後の引数が `{` で始まる JSON ならば transfer 応答として扱われる（end では新規譲渡開始は禁止）:
-
-- `'{"transfer_response":"accept"}'` — 退出する前に直前ターンの譲渡オファーを受諾する
-- `'{"transfer_response":"reject"}'` — 退出する前に直前ターンの譲渡オファーを拒否する
+末尾に `--accept` / `--reject` を付けると、退出前に直前ターンの譲渡オファーへ応答できる。end では新規譲渡開始（`--item` / `--money`）は禁止されており、指定するとスクリプト側でエラーになる。
 
 ### perception — 知覚情報取得
 

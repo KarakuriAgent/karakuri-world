@@ -76,39 +76,42 @@ describe('karakuri.sh dry-run payloads', () => {
   });
 
   describe('transfer', () => {
-    it('builds payload with target only when items / money omitted', async () => {
-      // 注: validation は server 側 schema で行うので script は payload を組むだけ
-      const result = await runScript('transfer', 'bot-bob');
+    it('--item builds payload with default quantity 1', async () => {
+      const result = await runScript('transfer', 'bot-bob', '--item', 'apple');
       expect(result).toEqual({
         method: 'POST',
         url: `${BASE_URL}/agents/transfer`,
-        body: { target_agent_id: 'bot-bob' },
+        body: {
+          target_agent_id: 'bot-bob',
+          item: { item_id: 'apple', quantity: 1 },
+        },
       });
     });
 
-    it('includes items array when items_json provided', async () => {
-      const result = await runScript('transfer', 'bot-bob', '[{"item_id":"apple","quantity":2}]');
+    it('--item with --quantity overrides quantity', async () => {
+      const result = await runScript('transfer', 'bot-bob', '--item', 'apple', '--quantity', '3');
       expect(result.body).toEqual({
         target_agent_id: 'bot-bob',
-        items: [{ item_id: 'apple', quantity: 2 }],
+        item: { item_id: 'apple', quantity: 3 },
       });
     });
 
-    it('includes money as integer when provided', async () => {
-      const result = await runScript('transfer', 'bot-bob', '', '120');
+    it('--money builds payload with integer money', async () => {
+      const result = await runScript('transfer', 'bot-bob', '--money', '120');
       expect(result.body).toEqual({
         target_agent_id: 'bot-bob',
         money: 120,
       });
     });
 
-    it('combines items and money when both provided', async () => {
-      const result = await runScript('transfer', 'bot-bob', '[{"item_id":"bread","quantity":1}]', '50');
-      expect(result.body).toEqual({
-        target_agent_id: 'bot-bob',
-        items: [{ item_id: 'bread', quantity: 1 }],
-        money: 50,
-      });
+    it('rejects --item and --money used together', async () => {
+      await expect(runScript('transfer', 'bot-bob', '--item', 'apple', '--money', '50'))
+        .rejects.toThrow();
+    });
+
+    it('rejects when neither --item nor --money is given', async () => {
+      await expect(runScript('transfer', 'bot-bob'))
+        .rejects.toThrow();
     });
   });
 
@@ -165,7 +168,7 @@ describe('karakuri.sh dry-run payloads', () => {
   });
 
   describe('conversation-speak', () => {
-    it('builds basic payload without extra_json', async () => {
+    it('builds basic payload without trailing flags', async () => {
       const result = await runScript('conversation-speak', 'bot-bob', 'hello', 'world');
       expect(result).toEqual({
         method: 'POST',
@@ -174,21 +177,38 @@ describe('karakuri.sh dry-run payloads', () => {
       });
     });
 
-    it('merges extra_json transfer attachment when last arg is JSON', async () => {
-      const extra = '{"transfer":{"items":[{"item_id":"apple","quantity":1}],"money":50}}';
-      const result = await runScript('conversation-speak', 'bot-bob', 'これあげる', extra);
+    it('attaches transfer with --item (default quantity)', async () => {
+      const result = await runScript('conversation-speak', 'bot-bob', 'これあげる', '--item', 'apple');
       expect(result.body).toEqual({
         message: 'これあげる',
         next_speaker_agent_id: 'bot-bob',
-        transfer: {
-          items: [{ item_id: 'apple', quantity: 1 }],
-          money: 50,
-        },
+        transfer: { item: { item_id: 'apple', quantity: 1 } },
       });
     });
 
-    it('merges transfer_response accept', async () => {
-      const result = await runScript('conversation-speak', 'bot-alice', 'thanks', '{"transfer_response":"accept"}');
+    it('attaches transfer with --item and --quantity in either order', async () => {
+      const a = await runScript('conversation-speak', 'bot-bob', 'これあげる', '--item', 'apple', '--quantity', '3');
+      const b = await runScript('conversation-speak', 'bot-bob', 'これあげる', '--quantity', '3', '--item', 'apple');
+      const expected = {
+        message: 'これあげる',
+        next_speaker_agent_id: 'bot-bob',
+        transfer: { item: { item_id: 'apple', quantity: 3 } },
+      };
+      expect(a.body).toEqual(expected);
+      expect(b.body).toEqual(expected);
+    });
+
+    it('attaches transfer with --money', async () => {
+      const result = await runScript('conversation-speak', 'bot-bob', 'お金', '--money', '50');
+      expect(result.body).toEqual({
+        message: 'お金',
+        next_speaker_agent_id: 'bot-bob',
+        transfer: { money: 50 },
+      });
+    });
+
+    it('attaches transfer_response with --accept', async () => {
+      const result = await runScript('conversation-speak', 'bot-alice', 'thanks', '--accept');
       expect(result.body).toEqual({
         message: 'thanks',
         next_speaker_agent_id: 'bot-alice',
@@ -196,13 +216,28 @@ describe('karakuri.sh dry-run payloads', () => {
       });
     });
 
-    it('treats single-word message as message even if it starts with {', async () => {
-      // メッセージ 1 単語のみのケースは extra_json 検出をスキップする ($# >= 2 ガード)
-      const result = await runScript('conversation-speak', 'bot-bob', '{hello}');
+    it('attaches transfer_response with --reject', async () => {
+      const result = await runScript('conversation-speak', 'bot-alice', 'no thanks', '--reject');
       expect(result.body).toEqual({
-        message: '{hello}',
-        next_speaker_agent_id: 'bot-bob',
+        message: 'no thanks',
+        next_speaker_agent_id: 'bot-alice',
+        transfer_response: 'reject',
       });
+    });
+
+    it('rejects --item and --money used together', async () => {
+      await expect(runScript('conversation-speak', 'bot-bob', 'mixed', '--item', 'apple', '--money', '10'))
+        .rejects.toThrow();
+    });
+
+    it('rejects --accept combined with --item', async () => {
+      await expect(runScript('conversation-speak', 'bot-bob', 'mixed', '--item', 'apple', '--accept'))
+        .rejects.toThrow();
+    });
+
+    it('rejects --quantity without --item', async () => {
+      await expect(runScript('conversation-speak', 'bot-bob', 'msg', '--quantity', '3'))
+        .rejects.toThrow();
     });
   });
 
@@ -216,13 +251,23 @@ describe('karakuri.sh dry-run payloads', () => {
       });
     });
 
-    it('merges transfer_response on end', async () => {
-      const result = await runScript('conversation-end', 'bot-bob', 'I take it, thanks', '{"transfer_response":"accept"}');
+    it('attaches transfer_response with --accept', async () => {
+      const result = await runScript('conversation-end', 'bot-bob', 'I take it, thanks', '--accept');
       expect(result.body).toEqual({
         message: 'I take it, thanks',
         next_speaker_agent_id: 'bot-bob',
         transfer_response: 'accept',
       });
+    });
+
+    it('rejects --item on conversation-end (cannot open new transfer when ending)', async () => {
+      await expect(runScript('conversation-end', 'bot-bob', 'bye', '--item', 'apple'))
+        .rejects.toThrow();
+    });
+
+    it('rejects --money on conversation-end', async () => {
+      await expect(runScript('conversation-end', 'bot-bob', 'bye', '--money', '50'))
+        .rejects.toThrow();
     });
   });
 

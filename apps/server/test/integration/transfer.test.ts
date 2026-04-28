@@ -58,24 +58,63 @@ describe('transfer API', () => {
     engine.state.setItems(alice.data.agent_id, [{ item_id: 'apple', quantity: 2 }]);
     engine.state.setMoney(alice.data.agent_id, 300);
 
-    const started = await requestJson(app, '/api/agents/transfer', {
+    const startedMoney = await requestJson(app, '/api/agents/transfer', {
       method: 'POST',
       headers: { Authorization: `Bearer ${alice.data.api_key}` },
-      body: JSON.stringify({ target_agent_id: bob.data.agent_id, items: [{ item_id: 'apple', quantity: 1 }], money: 120 }),
+      body: JSON.stringify({ target_agent_id: bob.data.agent_id, money: 120 }),
     });
-    expect(started.response.status).toBe(200);
-    expect(started.data.transfer_status).toBe('pending');
+    expect(startedMoney.response.status).toBe(200);
+    expect(startedMoney.data.transfer_status).toBe('pending');
 
-    const accepted = await requestJson(app, '/api/agents/transfer/accept', {
+    const acceptedMoney = await requestJson(app, '/api/agents/transfer/accept', {
       method: 'POST',
       headers: { Authorization: `Bearer ${bob.data.api_key}` },
-      body: JSON.stringify({ transfer_id: started.data.transfer_id }),
+      body: JSON.stringify({ transfer_id: startedMoney.data.transfer_id }),
     });
-    expect(accepted.response.status).toBe(200);
-    expect(accepted.data.transfer_status).toBe('completed');
+    expect(acceptedMoney.response.status).toBe(200);
+    expect(acceptedMoney.data.transfer_status).toBe('completed');
     expect(engine.state.getLoggedIn(alice.data.agent_id)?.money).toBe(180);
     expect(engine.state.getLoggedIn(bob.data.agent_id)?.money).toBe(120);
+
+    const startedItem = await requestJson(app, '/api/agents/transfer', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${alice.data.api_key}` },
+      body: JSON.stringify({ target_agent_id: bob.data.agent_id, item: { item_id: 'apple', quantity: 1 } }),
+    });
+    expect(startedItem.response.status).toBe(200);
+
+    const acceptedItem = await requestJson(app, '/api/agents/transfer/accept', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${bob.data.api_key}` },
+      body: JSON.stringify({ transfer_id: startedItem.data.transfer_id }),
+    });
+    expect(acceptedItem.response.status).toBe(200);
+    expect(acceptedItem.data.transfer_status).toBe('completed');
     expect(engine.state.getLoggedIn(bob.data.agent_id)?.items).toEqual([{ item_id: 'apple', quantity: 1 }]);
+  });
+
+  it('rejects a transfer payload that mixes item and money', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        items: [{ item_id: 'apple', name: 'りんご', description: 'りんご', type: 'food', stackable: true }],
+      },
+    });
+    const { app } = createApp(engine, { adminKey: ADMIN_KEY, publicBaseUrl: PUBLIC_BASE_URL });
+    const alice = await registerAgent(app, 'bot-alice');
+    const bob = await registerAgent(app, 'bot-bob');
+    await requestJson(app, '/api/agents/login', { method: 'POST', headers: { Authorization: `Bearer ${alice.data.api_key}` } });
+    await requestJson(app, '/api/agents/login', { method: 'POST', headers: { Authorization: `Bearer ${bob.data.api_key}` } });
+    engine.state.setNode(alice.data.agent_id, '1-1');
+    engine.state.setNode(bob.data.agent_id, '1-2');
+    engine.state.setItems(alice.data.agent_id, [{ item_id: 'apple', quantity: 1 }]);
+    engine.state.setMoney(alice.data.agent_id, 200);
+
+    const mixed = await requestJson(app, '/api/agents/transfer', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${alice.data.api_key}` },
+      body: JSON.stringify({ target_agent_id: bob.data.agent_id, item: { item_id: 'apple', quantity: 1 }, money: 50 }),
+    });
+    expect(mixed.response.status).toBe(400);
   });
 
   it('restores persisted sender inventory if transfer timer creation fails', async () => {
@@ -100,8 +139,7 @@ describe('transfer API', () => {
 
     expect(() => engine.startTransfer(alice.agent_id, {
       target_agent_id: bob.agent_id,
-      items: [{ item_id: 'apple', quantity: 1 }],
-      money: 10,
+      item: { item_id: 'apple', quantity: 1 },
     })).toThrow('timer failed');
 
     expect(engine.state.getLoggedIn(alice.agent_id)?.money).toBe(50);
@@ -132,7 +170,7 @@ describe('transfer API', () => {
     const started = await requestJson(app, '/api/agents/transfer', {
       method: 'POST',
       headers: { Authorization: `Bearer ${alice.data.api_key}` },
-      body: JSON.stringify({ target_agent_id: bob.data.agent_id, items: [{ item_id: 'apple', quantity: 1 }] }),
+      body: JSON.stringify({ target_agent_id: bob.data.agent_id, item: { item_id: 'apple', quantity: 1 } }),
     });
 
     expect(started.response.status).toBe(200);
@@ -167,7 +205,7 @@ describe('transfer API', () => {
     const started = await requestJson(app, '/api/agents/transfer', {
       method: 'POST',
       headers: { Authorization: `Bearer ${alice.data.api_key}` },
-      body: JSON.stringify({ target_agent_id: bob.data.agent_id, items: [{ item_id: 'apple', quantity: 1 }] }),
+      body: JSON.stringify({ target_agent_id: bob.data.agent_id, item: { item_id: 'apple', quantity: 1 } }),
     });
     engine.fireServerEvent('Storm warning.');
 
@@ -217,7 +255,7 @@ describe('transfer API', () => {
       body: JSON.stringify({
         message: 'take this',
         next_speaker_agent_id: bob.data.agent_id,
-        transfer: { items: [{ item_id: 'apple', quantity: 1 }] },
+        transfer: { item: { item_id: 'apple', quantity: 1 } },
       }),
     });
     expect(spoke.response.status).toBe(200);
@@ -276,7 +314,7 @@ describe('transfer API', () => {
       body: JSON.stringify({
         message: 'take this',
         next_speaker_agent_id: bob.data.agent_id,
-        transfer: { items: [{ item_id: 'apple', quantity: 1 }] },
+        transfer: { item: { item_id: 'apple', quantity: 1 } },
       }),
     });
 
@@ -287,7 +325,7 @@ describe('transfer API', () => {
       body: JSON.stringify({
         message: 'and take this back',
         next_speaker_agent_id: alice.data.agent_id,
-        transfer: { items: [{ item_id: 'berry', quantity: 1 }] },
+        transfer: { item: { item_id: 'berry', quantity: 1 } },
       }),
     });
 
@@ -332,7 +370,7 @@ describe('transfer API', () => {
       body: JSON.stringify({
         message: 'take this',
         next_speaker_agent_id: bob.data.agent_id,
-        transfer: { items: [{ item_id: 'apple', quantity: 1 }] },
+        transfer: { item: { item_id: 'apple', quantity: 1 } },
       }),
     });
 
@@ -382,7 +420,7 @@ describe('transfer API', () => {
       body: JSON.stringify({
         message: 'take this',
         next_speaker_agent_id: bob.data.agent_id,
-        transfer: { items: [{ item_id: 'apple', quantity: 1 }] },
+        transfer: { item: { item_id: 'apple', quantity: 1 } },
       }),
     });
 
@@ -446,7 +484,7 @@ describe('transfer API', () => {
       body: JSON.stringify({
         message: 'take this',
         next_speaker_agent_id: bob.data.agent_id,
-        transfer: { items: [{ item_id: 'apple', quantity: 1 }] },
+        transfer: { item: { item_id: 'apple', quantity: 1 } },
       }),
     });
 
@@ -500,7 +538,7 @@ describe('transfer API', () => {
       body: JSON.stringify({
         message: 'take this',
         next_speaker_agent_id: bob.data.agent_id,
-        transfer: { items: [{ item_id: 'apple', quantity: 1 }] },
+        transfer: { item: { item_id: 'apple', quantity: 1 } },
       }),
     });
 
@@ -548,7 +586,7 @@ describe('transfer API', () => {
       body: JSON.stringify({
         message: 'take this',
         next_speaker_agent_id: bob.data.agent_id,
-        transfer: { items: [{ item_id: 'apple', quantity: 1 }] },
+        transfer: { item: { item_id: 'apple', quantity: 1 } },
       }),
     });
 
@@ -603,7 +641,7 @@ describe('transfer API', () => {
       body: JSON.stringify({
         message: 'take this',
         next_speaker_agent_id: bob.data.agent_id,
-        transfer: { items: [{ item_id: 'apple', quantity: 1 }] },
+        transfer: { item: { item_id: 'apple', quantity: 1 } },
       }),
     });
 
@@ -661,7 +699,7 @@ describe('transfer API', () => {
       body: JSON.stringify({
         message: 'take this',
         next_speaker_agent_id: bob.data.agent_id,
-        transfer: { items: [{ item_id: 'apple', quantity: 1 }] },
+        transfer: { item: { item_id: 'apple', quantity: 1 } },
       }),
     });
 
@@ -673,5 +711,103 @@ describe('transfer API', () => {
     expect(conversation?.current_turn).toBe(3);
     // alice の inventory は変動なし (escrow 取り込み失敗)
     expect(engine.state.getLoggedIn(alice.data.agent_id)?.items).toEqual([]);
+  });
+
+  it('allows wait-中 sender to start a standalone transfer and cancels the wait timer', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        items: [{ item_id: 'apple', name: 'りんご', description: 'りんご', type: 'food', stackable: true }],
+      },
+    });
+    const { app } = createApp(engine, { adminKey: ADMIN_KEY, publicBaseUrl: PUBLIC_BASE_URL });
+    const alice = await registerAgent(app, 'bot-alice');
+    const bob = await registerAgent(app, 'bot-bob');
+
+    await requestJson(app, '/api/agents/login', { method: 'POST', headers: { Authorization: `Bearer ${alice.data.api_key}` } });
+    await requestJson(app, '/api/agents/login', { method: 'POST', headers: { Authorization: `Bearer ${bob.data.api_key}` } });
+    engine.state.setNode(alice.data.agent_id, '1-1');
+    engine.state.setNode(bob.data.agent_id, '1-2');
+    engine.state.setItems(alice.data.agent_id, [{ item_id: 'apple', quantity: 1 }]);
+
+    engine.executeWait(alice.data.agent_id, { duration: 1 });
+    expect(engine.state.getLoggedIn(alice.data.agent_id)?.state).toBe('in_action');
+
+    const started = await requestJson(app, '/api/agents/transfer', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${alice.data.api_key}` },
+      body: JSON.stringify({ target_agent_id: bob.data.agent_id, item: { item_id: 'apple', quantity: 1 } }),
+    });
+    expect(started.response.status).toBe(200);
+    expect(engine.state.getLoggedIn(alice.data.agent_id)?.state).toBe('in_transfer');
+    expect(engine.timerManager.find((timer) => timer.type === 'wait' && timer.agent_id === alice.data.agent_id)).toBeUndefined();
+  });
+
+  it('allows transfer to a wait-中 receiver and cancels their wait timer', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        items: [{ item_id: 'apple', name: 'りんご', description: 'りんご', type: 'food', stackable: true }],
+      },
+    });
+    const { app } = createApp(engine, { adminKey: ADMIN_KEY, publicBaseUrl: PUBLIC_BASE_URL });
+    const alice = await registerAgent(app, 'bot-alice');
+    const bob = await registerAgent(app, 'bot-bob');
+
+    await requestJson(app, '/api/agents/login', { method: 'POST', headers: { Authorization: `Bearer ${alice.data.api_key}` } });
+    await requestJson(app, '/api/agents/login', { method: 'POST', headers: { Authorization: `Bearer ${bob.data.api_key}` } });
+    engine.state.setNode(alice.data.agent_id, '1-1');
+    engine.state.setNode(bob.data.agent_id, '1-2');
+    engine.state.setItems(alice.data.agent_id, [{ item_id: 'apple', quantity: 1 }]);
+
+    engine.executeWait(bob.data.agent_id, { duration: 1 });
+    expect(engine.state.getLoggedIn(bob.data.agent_id)?.state).toBe('in_action');
+
+    const started = await requestJson(app, '/api/agents/transfer', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${alice.data.api_key}` },
+      body: JSON.stringify({ target_agent_id: bob.data.agent_id, item: { item_id: 'apple', quantity: 1 } }),
+    });
+    expect(started.response.status).toBe(200);
+    expect(engine.state.getLoggedIn(bob.data.agent_id)?.state).toBe('in_transfer');
+    expect(engine.timerManager.find((timer) => timer.type === 'wait' && timer.agent_id === bob.data.agent_id)).toBeUndefined();
+  });
+
+  it('returns both agents to idle (without resuming wait) after a reject from wait-中 state', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        items: [{ item_id: 'apple', name: 'りんご', description: 'りんご', type: 'food', stackable: true }],
+      },
+    });
+    const { app } = createApp(engine, { adminKey: ADMIN_KEY, publicBaseUrl: PUBLIC_BASE_URL });
+    const alice = await registerAgent(app, 'bot-alice');
+    const bob = await registerAgent(app, 'bot-bob');
+
+    await requestJson(app, '/api/agents/login', { method: 'POST', headers: { Authorization: `Bearer ${alice.data.api_key}` } });
+    await requestJson(app, '/api/agents/login', { method: 'POST', headers: { Authorization: `Bearer ${bob.data.api_key}` } });
+    engine.state.setNode(alice.data.agent_id, '1-1');
+    engine.state.setNode(bob.data.agent_id, '1-2');
+    engine.state.setItems(alice.data.agent_id, [{ item_id: 'apple', quantity: 1 }]);
+
+    engine.executeWait(alice.data.agent_id, { duration: 1 });
+    engine.executeWait(bob.data.agent_id, { duration: 1 });
+
+    const started = await requestJson(app, '/api/agents/transfer', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${alice.data.api_key}` },
+      body: JSON.stringify({ target_agent_id: bob.data.agent_id, item: { item_id: 'apple', quantity: 1 } }),
+    });
+    expect(started.response.status).toBe(200);
+
+    const rejected = await requestJson(app, '/api/agents/transfer/reject', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${bob.data.api_key}` },
+      body: JSON.stringify({ transfer_id: started.data.transfer_id }),
+    });
+    expect(rejected.response.status).toBe(200);
+    expect(engine.state.getLoggedIn(alice.data.agent_id)?.state).toBe('idle');
+    expect(engine.state.getLoggedIn(bob.data.agent_id)?.state).toBe('idle');
+    expect(engine.timerManager.find((timer) => timer.type === 'wait' && timer.agent_id === alice.data.agent_id)).toBeUndefined();
+    expect(engine.timerManager.find((timer) => timer.type === 'wait' && timer.agent_id === bob.data.agent_id)).toBeUndefined();
+    // sender に escrow が返却されている
+    expect(engine.state.getLoggedIn(alice.data.agent_id)?.items).toEqual([{ item_id: 'apple', quantity: 1 }]);
   });
 });

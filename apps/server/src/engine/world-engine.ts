@@ -30,6 +30,7 @@ import {
   recoverRefundFailedTransfersForAgent,
   startTransfer as startTransferRequest,
   rejectTransfer as rejectTransferRequest,
+  toTransferPayload,
   validateTransfer,
 } from '../domain/transfer.js';
 import { getNodeConfig, isNodeWithinBounds, isPassable } from '../domain/map-utils.js';
@@ -458,9 +459,10 @@ export class WorldEngine {
   }
 
   startTransfer(agentId: string, request: TransferRequest): TransferActionResponse {
-    validateTransfer(this, agentId, request.target_agent_id, request.items, request.money, 'standalone');
+    const payload = toTransferPayload(request);
+    validateTransfer(this, agentId, request.target_agent_id, payload, 'standalone');
     handleServerEventInterruption(this, agentId);
-    const result = startTransferRequest(this, agentId, request.target_agent_id, request.items, request.money, 'standalone');
+    const result = startTransferRequest(this, agentId, request.target_agent_id, payload, 'standalone');
     return { ok: true, message: '正常に受け付けました。結果が通知されるまで待機してください。', transfer_status: 'pending', transfer_id: result.transfer_id };
   }
 
