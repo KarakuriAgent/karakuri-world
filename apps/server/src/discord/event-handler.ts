@@ -32,6 +32,13 @@ import {
   formatConversationThreadName,
   formatConversationTurnClosingPromptMessage,
   formatConversationTurnPromptMessage,
+  formatTransferAcceptedMessage,
+  formatTransferCancelledMessage,
+  formatTransferEscrowLostMessage,
+  formatTransferRejectedMessage,
+  formatTransferRequestedMessage,
+  formatTransferSentMessage,
+  formatTransferTimeoutMessage,
   formatIdleReminderMessage,
   formatItemUseCompletedMessage,
   formatItemUseVenueRejectedMessage,
@@ -47,6 +54,12 @@ import {
   formatWorldLogConversationMessage,
   formatWorldLogConversationEnded,
   formatWorldLogItemUseCompleted,
+  formatWorldLogTransferAccepted,
+  formatWorldLogTransferCancelled,
+  formatWorldLogTransferEscrowLost,
+  formatWorldLogTransferRejected,
+  formatWorldLogTransferRequested,
+  formatWorldLogTransferTimeout,
   formatWorldLogItemUseStarted,
   formatWorldLogItemUseVenueRejected,
   formatWorldLogMovementStarted,
@@ -234,6 +247,24 @@ export class DiscordEventHandler {
         return;
       case 'conversation_closing':
         await this.handleConversationClosing(event);
+        return;
+      case 'transfer_requested':
+        await this.handleTransferRequested(event);
+        return;
+      case 'transfer_accepted':
+        await this.handleTransferAccepted(event);
+        return;
+      case 'transfer_rejected':
+        await this.handleTransferRejected(event);
+        return;
+      case 'transfer_timeout':
+        await this.handleTransferTimeout(event);
+        return;
+      case 'transfer_cancelled':
+        await this.handleTransferCancelled(event);
+        return;
+      case 'transfer_escrow_lost':
+        await this.handleTransferEscrowLost(event);
         return;
       case 'server_event_fired':
         await this.handleServerEventFired(event);
@@ -1233,6 +1264,53 @@ export class DiscordEventHandler {
       consumedUsedItemId = choicesPrompt.consumedUsedItemId;
       return formatAvailableActionsInfoMessage(this.getWorldContext(agentId), actionsText, this.skillName, choicesPrompt.choicesText);
     }, () => this.clearChoicesPromptSuppressionsIfCurrent(agentId, consumedRejectedActionId, consumedUsedItemId));
+  }
+
+  private async handleTransferRequested(event: Extract<WorldEvent, { type: 'transfer_requested' }>): Promise<void> {
+    await this.sendConversationFollowUp(
+      event.from_agent_id,
+      formatTransferSentMessage(event.to_agent_name, event.items, event.money),
+    );
+    await this.sendConversationFollowUpBuilt(event.to_agent_id, () => formatTransferRequestedMessage(
+      this.getWorldContext(event.to_agent_id),
+      event.from_agent_name,
+      event.items,
+      event.money,
+      event.expires_at,
+      this.engine.config.timezone,
+      this.skillName,
+      event.mode,
+    ));
+    await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferRequested(event.to_agent_name));
+  }
+
+  private async handleTransferAccepted(event: Extract<WorldEvent, { type: 'transfer_accepted' }>): Promise<void> {
+    await this.sendConversationFollowUp(event.from_agent_id, formatTransferAcceptedMessage(event.to_agent_name, event.items, event.money, false));
+    await this.sendConversationFollowUp(event.to_agent_id, formatTransferAcceptedMessage(event.from_agent_name, event.items, event.money, true));
+    await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferAccepted(event.to_agent_name, false));
+  }
+
+  private async handleTransferRejected(event: Extract<WorldEvent, { type: 'transfer_rejected' }>): Promise<void> {
+    await this.sendConversationFollowUp(event.from_agent_id, formatTransferRejectedMessage(event.to_agent_name, event.reason, false));
+    await this.sendConversationFollowUp(event.to_agent_id, formatTransferRejectedMessage(event.from_agent_name, event.reason, true));
+    await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferRejected(event.to_agent_name));
+  }
+
+  private async handleTransferTimeout(event: Extract<WorldEvent, { type: 'transfer_timeout' }>): Promise<void> {
+    await this.sendConversationFollowUp(event.from_agent_id, formatTransferTimeoutMessage(event.to_agent_name, false));
+    await this.sendConversationFollowUp(event.to_agent_id, formatTransferTimeoutMessage(event.from_agent_name, true));
+    await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferTimeout(event.to_agent_name));
+  }
+
+  private async handleTransferCancelled(event: Extract<WorldEvent, { type: 'transfer_cancelled' }>): Promise<void> {
+    await this.sendConversationFollowUp(event.from_agent_id, formatTransferCancelledMessage(event.to_agent_name, event.reason, false));
+    await this.sendConversationFollowUp(event.to_agent_id, formatTransferCancelledMessage(event.from_agent_name, event.reason, true));
+    await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferCancelled(event.to_agent_name));
+  }
+
+  private async handleTransferEscrowLost(event: Extract<WorldEvent, { type: 'transfer_escrow_lost' }>): Promise<void> {
+    await this.sendConversationFollowUp(event.from_agent_id, formatTransferEscrowLostMessage(event.to_agent_name));
+    await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferEscrowLost(event.to_agent_name));
   }
 
   private getAgentName(agentId: string): string {

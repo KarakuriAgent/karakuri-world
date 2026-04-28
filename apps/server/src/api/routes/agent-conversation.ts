@@ -6,6 +6,7 @@ import type { ApiEnv } from '../context.js';
 import { agentAuth } from '../middleware/auth.js';
 import { requireLoggedIn } from '../middleware/logged-in.js';
 import { validateBody, validateOptionalBody } from '../middleware/validate.js';
+import { transferAttachmentSchema } from '../schemas/transfer.js';
 
 const startConversationSchema = z.object({
   target_agent_id: z.string().min(1),
@@ -23,11 +24,18 @@ const joinSchema = z.object({
 const speakSchema = z.object({
   message: z.string().min(1),
   next_speaker_agent_id: z.string().min(1),
+  transfer: transferAttachmentSchema.optional(),
+  transfer_response: z.enum(['accept', 'reject']).optional(),
+}).superRefine((data, ctx) => {
+  if (data.transfer && data.transfer_response) {
+    ctx.addIssue({ code: 'custom', message: 'transfer と transfer_response は同時に指定できません。' });
+  }
 });
 
 const endSchema = z.object({
   message: z.string().min(1),
   next_speaker_agent_id: z.string().min(1),
+  transfer_response: z.enum(['accept', 'reject']).optional(),
 });
 
 const leaveSchema = z.object({

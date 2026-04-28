@@ -41,6 +41,8 @@ function formatAgentStatus(agent: AgentSnapshot, snapshot: WorldSnapshot): strin
       return `- **${agent.agent_name}** - ${location} - 行動中`;
     case 'in_conversation':
       return `- **${agent.agent_name}** - ${location} - 会話中`;
+    case 'in_transfer':
+      return `- **${agent.agent_name}** - ${location} - 譲渡中`;
     case 'idle':
       return `- **${agent.agent_name}** - ${location} - 待機中`;
   }

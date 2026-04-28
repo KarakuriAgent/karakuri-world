@@ -10,6 +10,17 @@ export type ConversationClosureReason =
   | 'ended_by_agent'
   | 'participant_logged_out';
 export type PendingJoinCancelReason = ConversationClosureReason | 'agent_unavailable';
+export type TransferMode = 'standalone' | 'in_conversation';
+export type TransferRejectReason =
+  | { kind: 'rejected_by_receiver' }
+  | { kind: 'unanswered_speak' }
+  | { kind: 'inventory_full'; dropped: ReadonlyArray<AgentItem> };
+export type TransferCancelReason =
+  | 'server_event'
+  | 'sender_logged_out'
+  | 'receiver_logged_out'
+  | 'conversation_closing'
+  | 'error';
 
 export interface AgentItem {
   item_id: string;
@@ -42,6 +53,12 @@ export type EventType =
   | 'conversation_closing'
   | 'conversation_ended'
   | 'conversation_pending_join_cancelled'
+  | 'transfer_requested'
+  | 'transfer_accepted'
+  | 'transfer_rejected'
+  | 'transfer_timeout'
+  | 'transfer_cancelled'
+  | 'transfer_escrow_lost'
   | 'server_event_fired'
   | 'idle_reminder_fired'
   | 'map_info_requested'
@@ -275,6 +292,51 @@ export interface ConversationPendingJoinCancelledEvent extends EventBase {
   reason: PendingJoinCancelReason;
 }
 
+interface TransferEventBase extends EventBase {
+  transfer_id: string;
+  from_agent_id: string;
+  from_agent_name: string;
+  to_agent_id: string;
+  to_agent_name: string;
+  items: ReadonlyArray<AgentItem>;
+  money: number;
+  mode: TransferMode;
+}
+
+export interface TransferRequestedEvent extends TransferEventBase {
+  type: 'transfer_requested';
+  expires_at: number;
+}
+
+export interface TransferAcceptedEvent extends TransferEventBase {
+  type: 'transfer_accepted';
+  items_granted: ReadonlyArray<AgentItem>;
+  items_dropped: ReadonlyArray<AgentItem>;
+  money_received: number;
+  from_money_balance?: number;
+  to_money_balance: number;
+}
+
+export interface TransferRejectedEvent extends TransferEventBase {
+  type: 'transfer_rejected';
+  reason: TransferRejectReason;
+}
+
+export interface TransferTimeoutEvent extends TransferEventBase {
+  type: 'transfer_timeout';
+}
+
+export interface TransferCancelledEvent extends TransferEventBase {
+  type: 'transfer_cancelled';
+  reason: TransferCancelReason;
+}
+
+export interface TransferEscrowLostEvent extends TransferEventBase {
+  type: 'transfer_escrow_lost';
+  reason: 'registration_writeback_failed' | 'startup_recovery_failed';
+  recovery_log_path?: string;
+}
+
 export interface ServerEventFiredEvent extends EventBase {
   type: 'server_event_fired';
   server_event_id: string;
@@ -336,6 +398,12 @@ export type WorldEvent =
   | ConversationClosingEvent
   | ConversationEndedEvent
   | ConversationPendingJoinCancelledEvent
+  | TransferRequestedEvent
+  | TransferAcceptedEvent
+  | TransferRejectedEvent
+  | TransferTimeoutEvent
+  | TransferCancelledEvent
+  | TransferEscrowLostEvent
   | ServerEventFiredEvent
   | IdleReminderFiredEvent
   | MapInfoRequestedEvent

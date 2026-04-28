@@ -23,6 +23,15 @@ import {
   stayInConversation as stayInConversationRequest,
 } from '../domain/conversation.js';
 import { handleIdleReminderFired, startIdleReminder } from '../domain/idle-reminder.js';
+import {
+  acceptTransfer as acceptTransferRequest,
+  cancelPendingTransfersForAgent,
+  handleTransferTimeout,
+  recoverRefundFailedTransfersForAgent,
+  startTransfer as startTransferRequest,
+  rejectTransfer as rejectTransferRequest,
+  validateTransfer,
+} from '../domain/transfer.js';
 import { getNodeConfig, isNodeWithinBounds, isPassable } from '../domain/map-utils.js';
 import {
   cleanupServerEventsForAgent,
@@ -52,6 +61,10 @@ import type {
   ConversationSpeakResponse,
   ConversationStartRequest,
   ConversationStartResponse,
+  TransferActionResponse,
+  TransferRejectRequest,
+  TransferRequest,
+  TransferResponseRequest,
   FireServerEventRequest,
   FireServerEventResponse,
   LoginResponse,
@@ -71,6 +84,7 @@ import type { MapConfig, NodeId, ServerConfig } from '../types/data-model.js';
 import type { WorldEvent } from '../types/event.js';
 import type { WorldSnapshot } from '../types/snapshot.js';
 import type { ActionTimer, ItemUseTimer, WaitTimer } from '../types/timer.js';
+import { mergeItems } from '../domain/inventory.js';
 import { getMapRenderTheme } from '../discord/map-renderer.js';
 import { EventBus } from './event-bus.js';
 import type { AgentHistoryManager } from './agent-history-manager.js';
@@ -111,6 +125,9 @@ function resolveStatusEmoji(params: {
   }
   if (params.state === 'in_conversation') {
     return '💬';
+  }
+  if (params.state === 'in_transfer') {
+    return '🤝';
   }
   if (params.currentActivity?.type === 'wait') {
     return '💤';
@@ -161,6 +178,7 @@ export class WorldEngine {
   private readonly onError?: (message: string) => void;
   private readonly registeringAgentIds = new Set<string>();
   private readonly loggingInAgentIds = new Set<string>();
+  private readonly loggingOutAgentIds = new Set<string>();
   private readonly weatherService: WeatherService | null;
   private readonly snapshotPublisher: SnapshotPublisher | null;
   private readonly agentHistoryManager: AgentHistoryManager | null;
@@ -210,6 +228,9 @@ export class WorldEngine {
     });
     this.timerManager.onFire('idle_reminder', (timer) => {
       handleIdleReminderFired(this, timer);
+    });
+    this.timerManager.onFire('transfer', (timer) => {
+      handleTransferTimeout(this, timer);
     });
   }
 
@@ -293,8 +314,8 @@ export class WorldEngine {
       throw new WorldError(404, 'not_found', `Agent not found: ${agentId}`);
     }
 
-    if (this.loggingInAgentIds.has(agentId)) {
-      throw new WorldError(409, 'state_conflict', `Agent is already logging in: ${agentId}`);
+    if (this.loggingInAgentIds.has(agentId) || this.loggingOutAgentIds.has(agentId)) {
+      throw new WorldError(409, 'state_conflict', `Agent is busy: ${agentId}`);
     }
 
     if (this.state.isLoggedIn(agentId)) {
@@ -352,54 +373,49 @@ export class WorldEngine {
   }
 
   async logoutAgent(agentId: string): Promise<LogoutResponse> {
+    if (this.loggingInAgentIds.has(agentId) || this.loggingOutAgentIds.has(agentId)) {
+      throw new WorldError(409, 'state_conflict', `Agent is busy: ${agentId}`);
+    }
+
     const loggedInAgent = this.state.getLoggedIn(agentId);
     if (!loggedInAgent) {
       throw new WorldError(409, 'state_conflict', `Agent is not logged in: ${agentId}`);
     }
 
-    const leftNodeId = getAgentCurrentNode(this, loggedInAgent);
-    const { cancelledState, cancelledActionName } = this.describeCancelledActivity(loggedInAgent.state, agentId);
+    this.loggingOutAgentIds.add(agentId);
+    try {
+      const leftNodeId = getAgentCurrentNode(this, loggedInAgent);
+      const { cancelledState, cancelledActionName } = this.describeCancelledActivity(loggedInAgent.state, agentId);
 
-    const registration = this.state.getById(agentId);
-    if (registration) {
-      this.persistRegistrations(
-        this.state.list().map((agent) =>
-          agent.agent_id === agentId
-            ? {
-                ...agent,
-                discord_channel_id: loggedInAgent.discord_channel_id,
-                last_node_id: leftNodeId,
-                money: loggedInAgent.money,
-                items: [...loggedInAgent.items],
-              }
-            : agent,
-        ),
-      );
-      registration.discord_channel_id = loggedInAgent.discord_channel_id;
-      registration.last_node_id = leftNodeId;
-      registration.money = loggedInAgent.money;
-      registration.items = [...loggedInAgent.items];
+      cancelPendingConversation(this, agentId);
+      forceEndConversation(this, agentId);
+      cancelPendingTransfersForAgent(this, agentId, {
+        sender: 'sender_logged_out',
+        receiver: 'receiver_logged_out',
+      });
+      // B5: refund_failed の offer が dangling 化するのを防ぐため、registration writeback を再試行
+      recoverRefundFailedTransfersForAgent(this, agentId);
+      this.persistLoggedInAgentState(agentId);
+      this.timerManager.cancelByAgent(agentId);
+      cleanupServerEventsForAgent(this, agentId);
+      this.state.setPendingConversation(agentId, null);
+      this.state.clearPendingServerEvents(agentId);
+      this.state.logout(agentId);
+
+      this.emitEvent({
+        type: 'agent_logged_out',
+        agent_id: loggedInAgent.agent_id,
+        agent_name: loggedInAgent.agent_name,
+        node_id: leftNodeId,
+        discord_channel_id: loggedInAgent.discord_channel_id,
+        cancelled_state: cancelledState,
+        cancelled_action_name: cancelledActionName,
+      });
+
+      return { status: 'ok' };
+    } finally {
+      this.loggingOutAgentIds.delete(agentId);
     }
-
-    cancelPendingConversation(this, agentId);
-    forceEndConversation(this, agentId);
-    this.timerManager.cancelByAgent(agentId);
-    cleanupServerEventsForAgent(this, agentId);
-    this.state.setPendingConversation(agentId, null);
-    this.state.clearPendingServerEvents(agentId);
-    this.state.logout(agentId);
-
-    this.emitEvent({
-      type: 'agent_logged_out',
-      agent_id: loggedInAgent.agent_id,
-      agent_name: loggedInAgent.agent_name,
-      node_id: leftNodeId,
-      discord_channel_id: loggedInAgent.discord_channel_id,
-      cancelled_state: cancelledState,
-      cancelled_action_name: cancelledActionName,
-    });
-
-    return { status: 'ok' };
   }
 
   move(agentId: string, request: MoveRequest): MoveResponse {
@@ -439,6 +455,31 @@ export class WorldEngine {
     const validated = validateUseItem(this, agentId, request);
     handleServerEventInterruption(this, agentId);
     return executeValidatedUseItem(this, validated);
+  }
+
+  startTransfer(agentId: string, request: TransferRequest): TransferActionResponse {
+    validateTransfer(this, agentId, request.target_agent_id, request.items, request.money, 'standalone');
+    handleServerEventInterruption(this, agentId);
+    const result = startTransferRequest(this, agentId, request.target_agent_id, request.items, request.money, 'standalone');
+    return { ok: true, message: '正常に受け付けました。結果が通知されるまで待機してください。', transfer_status: 'pending', transfer_id: result.transfer_id };
+  }
+
+  acceptTransfer(agentId: string, request: TransferResponseRequest): TransferActionResponse {
+    handleServerEventInterruption(this, agentId);
+    const result = acceptTransferRequest(this, request.transfer_id, agentId);
+    if (result.outcome === 'completed') {
+      return { ok: true, message: '正常に受け付けました。結果が通知されるまで待機してください。', transfer_status: 'completed', transfer_id: result.transfer_id };
+    }
+    if (result.outcome === 'rejected') {
+      return { ok: true, message: '正常に受け付けました。結果が通知されるまで待機してください。', transfer_status: 'rejected', transfer_id: result.transfer_id };
+    }
+    return { ok: true, message: '正常に受け付けました。結果が通知されるまで待機してください。', transfer_status: 'failed', failure_reason: result.failure_reason };
+  }
+
+  rejectTransfer(agentId: string, request: TransferRejectRequest): TransferActionResponse {
+    handleServerEventInterruption(this, agentId);
+    const result = rejectTransferRequest(this, request.transfer_id, agentId, { kind: 'rejected_by_receiver' });
+    return { ok: true, message: '正常に受け付けました。結果が通知されるまで待機してください。', transfer_status: 'rejected', transfer_id: result.transfer_id };
   }
 
   startConversation(agentId: string, request: ConversationStartRequest): ConversationStartResponse {
@@ -674,6 +715,28 @@ export class WorldEngine {
     registration.items = [...loggedInAgent.items];
   }
 
+  mergePersistedAgentInventory(agentId: string, items: ReadonlyArray<{ item_id: string; quantity: number }>, money: number): void {
+    const registration = this.state.getById(agentId);
+    if (!registration) {
+      throw new WorldError(404, 'not_found', `Agent not found: ${agentId}`);
+    }
+
+    const nextItems = mergeItems([...(registration.items ?? []).map((item) => ({ ...item })), ...items.map((item) => ({ ...item }))]);
+    const nextMoney = (registration.money ?? 0) + money;
+    const nextRegistrations = this.state.list().map((agent) =>
+      agent.agent_id === agentId
+        ? {
+            ...agent,
+            money: nextMoney,
+            items: nextItems,
+          }
+        : agent,
+    );
+    this.persistRegistrations(nextRegistrations);
+    registration.money = nextMoney;
+    registration.items = nextItems;
+  }
+
   private describeCancelledActivity(
     state: AgentState,
     agentId: string,
@@ -688,6 +751,9 @@ export class WorldEngine {
         return { cancelledState: 'in_action', cancelledActionName: itemUseTimer.item_name };
       }
       return { cancelledState: 'in_action' };
+    }
+    if (state === 'in_transfer') {
+      return { cancelledState: 'in_transfer' };
     }
     return { cancelledState: state };
   }

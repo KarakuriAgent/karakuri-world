@@ -8,6 +8,7 @@ import { registerAgentActionRoutes } from './routes/agent-actions.js';
 import { registerAgentConversationRoutes } from './routes/agent-conversation.js';
 import { registerAgentInfoRoutes } from './routes/agent-info.js';
 import { registerAgentLifecycleRoutes } from './routes/agent-lifecycle.js';
+import { registerAgentTransferRoutes } from './routes/agent-transfer.js';
 import { getShutdownErrorResponse, isRequestAllowedDuringShutdown } from './shutdown.js';
 
 export interface AppOptions {
@@ -39,6 +40,7 @@ export function createApp(engine: WorldEngine, options: AppOptions) {
   registerAdminRoutes(app, engine, options);
   registerAgentLifecycleRoutes(app, engine);
   registerAgentActionRoutes(app, engine);
+  registerAgentTransferRoutes(app, engine);
   registerAgentConversationRoutes(app, engine);
   registerAgentInfoRoutes(app, engine);
 

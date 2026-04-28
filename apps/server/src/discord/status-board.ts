@@ -278,6 +278,7 @@ export class StatusBoard {
       case 'conversation_accept':
       case 'conversation_inactive_check':
       case 'idle_reminder':
+      case 'transfer':
         return null;
     }
   }

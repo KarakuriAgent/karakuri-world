@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { buildChoicesText } from '../../../src/domain/choices.js';
 import { createTestWorld } from '../../helpers/test-world.js';
@@ -21,6 +21,7 @@ describe('choices domain', () => {
     expect(text).toContain('- move: ノードIDを指定して移動する (target_node_id: ノードID)');
     expect(text).toContain('- wait: その場で待機する (duration: 1〜6、10分単位)');
     expect(text).toContain(`- conversation_start: bob に話しかける (target_agent_id: ${bob.agent_id}, message: 最初のメッセージ)`);
+    expect(text).toContain(`- transfer: bob にアイテムや所持金を譲渡する (target_agent_id: ${bob.agent_id}`);
     expect(text).toContain('- get_perception: 周囲の情報を取得する');
     expect(text).toContain('- get_available_actions: 現在位置で実行可能なアクションを取得する');
     expect(text).toContain('- get_map: マップ全体の情報を取得する');
@@ -292,6 +293,113 @@ describe('choices domain', () => {
     const text = buildChoicesText(engine, alice.agent_id);
 
     expect(text).not.toContain('- use-item:');
+  });
+
+  it('shows accept/reject choices for a pending transfer', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        items: [{ item_id: 'apple', name: 'りんご', description: 'りんご', type: 'food' as const, stackable: true }],
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.state.setNode(bob.agent_id, '1-2');
+    engine.state.setItems(alice.agent_id, [{ item_id: 'apple', quantity: 1 }]);
+
+    engine.startTransfer(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      items: [{ item_id: 'apple', quantity: 1 }],
+    });
+
+    const text = buildChoicesText(engine, bob.agent_id);
+
+    expect(text).toContain('- accept_transfer: alice からの譲渡を受け取る');
+    expect(text).toContain('- reject_transfer: alice からの譲渡を断る');
+  });
+
+  it('hides standalone transfer accept/reject choices during an active server-event window', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        items: [{ item_id: 'apple', name: 'りんご', description: 'りんご', type: 'food' as const, stackable: true }],
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.state.setNode(bob.agent_id, '1-2');
+    engine.state.setItems(alice.agent_id, [{ item_id: 'apple', quantity: 1 }]);
+
+    engine.startTransfer(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      items: [{ item_id: 'apple', quantity: 1 }],
+    });
+    engine.state.setActiveServerEvent(bob.agent_id, 'server-event-1');
+
+    const text = buildChoicesText(engine, bob.agent_id);
+
+    expect(text).not.toContain('- accept_transfer:');
+    expect(text).not.toContain('- reject_transfer:');
+  });
+
+  it('does not advertise standalone transfer while only a server-event interrupt window is open', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.state.setNode(bob.agent_id, '1-2');
+    engine.state.setState(alice.agent_id, 'in_action');
+    engine.state.setActiveServerEvent(alice.agent_id, 'server-event-1');
+
+    const text = buildChoicesText(engine, alice.agent_id);
+
+    expect(text).not.toContain('- transfer:');
+    expect(text).toContain('- move: ノードIDを指定して移動する');
+  });
+
+  it('shows conversation transfer response guidance instead of standalone accept/reject choices', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    try {
+      const { engine } = createTestWorld({
+        config: {
+          items: [{ item_id: 'apple', name: 'りんご', description: 'りんご', type: 'food' as const, stackable: true }],
+        },
+      });
+      const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+      const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+      await engine.loginAgent(alice.agent_id);
+      await engine.loginAgent(bob.agent_id);
+      engine.state.setNode(alice.agent_id, '1-1');
+      engine.state.setNode(bob.agent_id, '1-2');
+      engine.state.setItems(alice.agent_id, [{ item_id: 'apple', quantity: 1 }]);
+
+      engine.startConversation(alice.agent_id, {
+        target_agent_id: bob.agent_id,
+        message: 'hello',
+      });
+      engine.acceptConversation(bob.agent_id, { message: 'hi' });
+      vi.advanceTimersByTime(500);
+      engine.speak(alice.agent_id, {
+        message: 'take this',
+        next_speaker_agent_id: bob.agent_id,
+        transfer: { items: [{ item_id: 'apple', quantity: 1 }] },
+      });
+
+      const text = buildChoicesText(engine, bob.agent_id);
+
+      expect(text).toContain('transfer_response: accept または reject');
+      expect(text).not.toContain('- accept_transfer:');
+      expect(text).not.toContain('- reject_transfer:');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('keeps use-item visible when another usable item remains', async () => {

@@ -30,7 +30,7 @@ Two separate steps: **register** (admin API, once) and **log in / out** (agent A
 
 ### Agent states
 
-An agent is always `idle`, `moving`, `in_action`, or `in_conversation`. Normally `move` / `action` / `wait` require `idle`, but an active server-event window temporarily lets `in_action` / `in_conversation` agents interrupt into those commands.
+An agent is always `idle`, `moving`, `in_action`, `in_conversation`, or `in_transfer`. Normally `move` / `action` / `wait` require `idle`, but an active server-event window temporarily lets `in_action` / `in_conversation` / `in_transfer` agents interrupt into those commands. Standalone pending transfers place both sides in `in_transfer` until the receiver accepts, rejects, times out, or the transfer is cancelled. In-conversation transfers keep both agents in `in_conversation` and are settled through `transfer_response` on `conversation_speak` / `end_conversation`.
 
 ### Event-driven world
 

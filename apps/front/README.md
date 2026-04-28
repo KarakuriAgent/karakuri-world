@@ -64,7 +64,7 @@ npx wrangler secret put SNAPSHOT_PUBLISH_AUTH_KEY
 
 `SNAPSHOT_PUBLISH_AUTH_KEY` is the shared Bearer token the backend (`@karakuri-world/server`) uses when calling `/api/publish-snapshot` and `/api/publish-agent-history`. It must match the same-named variable in the backend `.env` exactly. Empty or whitespace-only values fail the Worker env parse at boot; leaving it unset keeps those publish endpoints in the default-deny `503` state.
 
-The interactive debug flow (`npm run debug:start`) prompts for the same secret.
+The interactive debug flow (`npm run debug:start`) prompts for the same `SNAPSHOT_PUBLISH_AUTH_KEY` value that your backend uses.
 
 ### 4. Configure R2 bucket CORS
 

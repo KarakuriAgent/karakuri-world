@@ -2,6 +2,7 @@ import type { LoggedInAgent } from '../types/agent.js';
 import type { InfoCommandChoice } from '../types/choices.js';
 import type { WorldEngine } from '../engine/world-engine.js';
 import { WorldError } from '../types/api.js';
+import { isInTransfer } from './transfer.js';
 
 export function requireActionableAgent(
   engine: WorldEngine,
@@ -17,7 +18,7 @@ export function requireActionableAgent(
     return agent;
   }
 
-  if (agent.state !== 'idle' || agent.pending_conversation_id) {
+  if (agent.state !== 'idle' || agent.pending_conversation_id || isInTransfer(agent)) {
     throw new WorldError(
       409,
       'state_conflict',

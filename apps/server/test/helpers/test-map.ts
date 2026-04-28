@@ -89,6 +89,10 @@ export function createTestConfig(overrides: DeepPartial<ServerConfig> = {}): Ser
     perception: {
       range: 3,
     },
+    transfer: {
+      response_timeout_ms: 3000,
+      in_conversation_response_timeout_ms: 2000,
+    },
     spawn: {
       nodes: ['3-1', '3-2'],
     },
@@ -103,6 +107,7 @@ export function createTestConfig(overrides: DeepPartial<ServerConfig> = {}): Ser
     movement: { ...config.movement, ...overrides.movement },
     conversation: { ...config.conversation, ...overrides.conversation },
     perception: { ...config.perception, ...overrides.perception },
+    transfer: { ...config.transfer, ...overrides.transfer },
     spawn: { ...config.spawn, ...overrides.spawn },
     map: (overrides.map ?? config.map) as MapConfig,
     economy: overrides.economy ?? config.economy,

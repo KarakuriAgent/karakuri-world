@@ -69,6 +69,8 @@ export class AgentStateStore {
       discord_channel_id: params.discord_channel_id,
       pending_conversation_id: null,
       current_conversation_id: null,
+      active_transfer_id: null,
+      pending_transfer_id: null,
       pending_server_event_ids: [],
       active_server_event_id: null,
       last_action_id: null,
@@ -126,6 +128,18 @@ export class AgentStateStore {
   setCurrentConversation(agentId: string, conversationId: string | null): LoggedInAgent {
     const loggedInAgent = this.mustGetLoggedIn(agentId);
     loggedInAgent.current_conversation_id = conversationId;
+    return loggedInAgent;
+  }
+
+  setActiveTransfer(agentId: string, transferId: string | null): LoggedInAgent {
+    const loggedInAgent = this.mustGetLoggedIn(agentId);
+    loggedInAgent.active_transfer_id = transferId;
+    return loggedInAgent;
+  }
+
+  setPendingTransfer(agentId: string, transferId: string | null): LoggedInAgent {
+    const loggedInAgent = this.mustGetLoggedIn(agentId);
+    loggedInAgent.pending_transfer_id = transferId;
     return loggedInAgent;
   }
 

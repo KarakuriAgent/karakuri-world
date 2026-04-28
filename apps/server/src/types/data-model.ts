@@ -103,6 +103,11 @@ export interface PerceptionConfig {
   range: number;
 }
 
+export interface TransferConfig {
+  response_timeout_ms: number;
+  in_conversation_response_timeout_ms: number;
+}
+
 export interface SpawnConfig {
   nodes: NodeId[];
 }
@@ -144,6 +149,7 @@ export interface ServerConfig {
   movement: MovementConfig;
   conversation: ConversationConfig;
   perception: PerceptionConfig;
+  transfer: TransferConfig;
   spawn: SpawnConfig;
   map: MapConfig;
   idle_reminder?: IdleReminderConfig;

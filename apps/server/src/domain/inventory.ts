@@ -7,7 +7,7 @@ export interface InventoryGrantResult {
   items: AgentItem[];
 }
 
-function mergeItems(items: AgentItem[]): AgentItem[] {
+export function mergeItems(items: AgentItem[]): AgentItem[] {
   const quantities = new Map<string, number>();
   for (const item of items) {
     quantities.set(item.item_id, (quantities.get(item.item_id) ?? 0) + item.quantity);

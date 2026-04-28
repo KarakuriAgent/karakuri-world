@@ -543,6 +543,12 @@ export const KNOWN_WORLD_EVENT_TYPES = [
   'conversation_closing',
   'conversation_ended',
   'conversation_pending_join_cancelled',
+  'transfer_requested',
+  'transfer_accepted',
+  'transfer_rejected',
+  'transfer_timeout',
+  'transfer_cancelled',
+  'transfer_escrow_lost',
   'server_event_fired',
 ] as const satisfies readonly PersistedSpectatorEventType[];
 
