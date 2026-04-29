@@ -21,7 +21,8 @@ describe('choices domain', () => {
     expect(text).toContain('- move: ノードIDを指定して移動する (target_node_id: ノードID)');
     expect(text).toContain('- wait: その場で待機する (duration: 1〜6、10分単位)');
     expect(text).toContain(`- conversation_start: bob に話しかける (target_agent_id: ${bob.agent_id}, message: 最初のメッセージ)`);
-    expect(text).toContain(`- transfer: bob にアイテムや所持金を譲渡する (target_agent_id: ${bob.agent_id}`);
+    expect(text).toContain(`- transfer: bob にアイテム1種類を譲渡する (target_agent_id: ${bob.agent_id}, item: { item_id: アイテムID, quantity: 数量 })`);
+    expect(text).toContain(`- transfer: bob にお金を譲渡する (target_agent_id: ${bob.agent_id}, money: 金額)`);
     expect(text).toContain('- get_perception: 周囲の情報を取得する');
     expect(text).toContain('- get_available_actions: 現在位置で実行可能なアクションを取得する');
     expect(text).toContain('- get_map: マップ全体の情報を取得する');
@@ -346,7 +347,7 @@ describe('choices domain', () => {
     expect(text).not.toContain('- reject_transfer:');
   });
 
-  it('does not advertise standalone transfer while only a server-event interrupt window is open', async () => {
+  it('advertises standalone transfer to in_action sender during a server-event interrupt window (in_action allows transfer natively)', async () => {
     const { engine } = createTestWorld();
     const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
     const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
@@ -359,7 +360,9 @@ describe('choices domain', () => {
 
     const text = buildChoicesText(engine, alice.agent_id);
 
-    expect(text).not.toContain('- transfer:');
+    // server-event window 関係なく in_action は transfer を発信できる仕様。
+    expect(text).toContain(`- transfer: bob にアイテム1種類を譲渡する (target_agent_id: ${bob.agent_id}, item: { item_id: アイテムID, quantity: 数量 })`);
+    expect(text).toContain(`- transfer: bob にお金を譲渡する (target_agent_id: ${bob.agent_id}, money: 金額)`);
     expect(text).toContain('- move: ノードIDを指定して移動する');
   });
 

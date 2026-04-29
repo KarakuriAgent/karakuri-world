@@ -37,7 +37,11 @@ export function buildChoicesPrompt(
   const canStartInterruptibleCommand = options.forceShowActions
     || agent.active_server_event_id !== null
     || (agent.state === 'idle' && agent.pending_conversation_id === null && !isInTransfer(agent));
-  const canStartStandaloneTransfer = agent.state === 'idle' && agent.pending_conversation_id === null && !isInTransfer(agent);
+  // standalone transfer は idle / in_action（wait/action/use-item 中）から開始可能。
+  // 進行中の活動は transfer 開始時に中断される（domain/transfer.ts acquireTransferRolesPair 参照）。
+  const canStartStandaloneTransfer = ['idle', 'in_action'].includes(agent.state)
+    && agent.pending_conversation_id === null
+    && !isInTransfer(agent);
   const canStartConversation = agent.state === 'idle' && agent.pending_conversation_id === null && !isInTransfer(agent);
   const canJoinConversation = agent.pending_conversation_id === null
     && (agent.state === 'idle' || (canStartInterruptibleCommand && agent.state === 'in_action'));
@@ -102,10 +106,13 @@ export function buildChoicesPrompt(
     ? engine.state
         .listLoggedIn()
         .filter((candidate) => candidate.agent_id !== agentId)
-        .filter((candidate) => candidate.state === 'idle' && candidate.pending_conversation_id === null && !isInTransfer(candidate))
+        .filter((candidate) => ['idle', 'in_action'].includes(candidate.state) && candidate.pending_conversation_id === null && !isInTransfer(candidate))
         .filter((candidate) => manhattanDistance(currentNodeId, getAgentCurrentNode(engine, candidate, now)) <= 1)
         .sort((left, right) => left.agent_id.localeCompare(right.agent_id))
-        .map((candidate) => `- transfer: ${candidate.agent_name} にアイテムや所持金を譲渡する (target_agent_id: ${candidate.agent_id}, items: [{ item_id: アイテムID, quantity: 数量 }], money: 金額)` )
+        .flatMap((candidate) => [
+          `- transfer: ${candidate.agent_name} にアイテム1種類を譲渡する (target_agent_id: ${candidate.agent_id}, item: { item_id: アイテムID, quantity: 数量 })`,
+          `- transfer: ${candidate.agent_name} にお金を譲渡する (target_agent_id: ${candidate.agent_id}, money: 金額)`,
+        ])
     : [];
   const pendingTransferLines = agent.pending_transfer_id
     ? (() => {

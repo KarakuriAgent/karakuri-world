@@ -121,7 +121,7 @@ export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): 
     },
     {
       name: 'transfer',
-      description: '隣接するエージェントへ所持金やアイテムを譲渡する。受信側は accept / reject で応答する。',
+      description: '隣接するエージェントへ「アイテム1種類 (item: { item_id, quantity })」または「お金 (money: 正の整数)」のどちらか1つを譲渡する。両方同時指定・両方未指定は不可。受信側は accept_transfer / reject_transfer で応答する。',
       inputSchema: transferRequestToolSchema,
       execute: wrapTool(transferRequestToolSchema, async (arguments_) => engine.startTransfer(agentId, arguments_)),
     },

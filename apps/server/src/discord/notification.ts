@@ -79,7 +79,7 @@ function formatConversationChoices(
 ): string {
   const lines = ['選択肢:'];
   if (mode === 'reply') {
-    lines.push('- conversation_speak: 返答する (message: 発言内容, next_speaker_agent_id: 次の話者ID, transfer?: { items, money }, transfer_response?: accept|reject)');
+    lines.push('- conversation_speak: 返答する (message: 発言内容, next_speaker_agent_id: 次の話者ID, transfer?: { item: { item_id, quantity } } または { money: 正の整数 } のどちらか1つ, transfer_response?: accept|reject)');
     lines.push(group
       ? '- end_conversation: 会話から退出する (message: 最後の発言, next_speaker_agent_id: 次の話者ID)'
       : '- end_conversation: 会話を終了する (message: お別れのメッセージ, next_speaker_agent_id: 次の話者ID)');
