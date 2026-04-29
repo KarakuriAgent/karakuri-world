@@ -31,7 +31,6 @@ import {
   startTransfer as startTransferRequest,
   rejectTransfer as rejectTransferRequest,
   toTransferPayload,
-  validateTransfer,
 } from '../domain/transfer.js';
 import { getNodeConfig, isNodeWithinBounds, isPassable } from '../domain/map-utils.js';
 import {
@@ -387,14 +386,21 @@ export class WorldEngine {
       const { cancelledState, cancelledActionName } = this.describeCancelledActivity(loggedInAgent.state, agentId);
 
       cancelPendingConversation(this, agentId);
-      forceEndConversation(this, agentId);
+      forceEndConversation(this, agentId, {
+        sender: 'sender_logged_out',
+        receiver: 'receiver_logged_out',
+      });
+      // forceEndConversation 内でログアウト agent 関連の transfer は既に cancel 済みだが、
+      // 他参加者間の in_conversation transfer や standalone transfer が残っていれば追加で精算する。
       cancelPendingTransfersForAgent(this, agentId, {
         sender: 'sender_logged_out',
         receiver: 'receiver_logged_out',
       });
-      // B5: refund_failed の offer が dangling 化するのを防ぐため、registration writeback を再試行
-      recoverRefundFailedTransfersForAgent(this, agentId);
+      // 先に loggedInAgent.money/items を registration に書き戻してから、
+      // refund_failed escrow を registration に merge する。順序を逆にすると recovered escrow が
+      // stale な loggedInAgent.money/items で上書きされて消失する。
       this.persistLoggedInAgentState(agentId);
+      recoverRefundFailedTransfersForAgent(this, agentId);
       this.timerManager.cancelByAgent(agentId);
       cleanupServerEventsForAgent(this, agentId);
       this.state.setPendingConversation(agentId, null);
@@ -458,8 +464,8 @@ export class WorldEngine {
 
   startTransfer(agentId: string, request: TransferRequest): TransferActionResponse {
     const payload = toTransferPayload(request);
-    validateTransfer(this, agentId, request.target_agent_id, payload, 'standalone');
     handleServerEventInterruption(this, agentId);
+    // 検証は startTransferRequest 内の validateTransfer で行う（move/action と同じ validate→execute パターン）。
     const result = startTransferRequest(this, agentId, request.target_agent_id, payload, 'standalone');
     return { ok: true, message: '正常に受け付けました。結果が通知されるまで待機してください。', transfer_status: 'pending', transfer_id: result.transfer_id };
   }
@@ -481,6 +487,17 @@ export class WorldEngine {
     const transferId = this.requirePendingTransferId(agentId);
     handleServerEventInterruption(this, agentId);
     const result = rejectTransferRequest(this, transferId, agentId, { kind: 'rejected_by_receiver' });
+    // refund_failed の場合は escrow 返却が失敗して offer が refund_failed 状態で残るため、
+    // caller に「受理されたが裏で失敗した」ことを伝えるために failed/persist_failed を返す。
+    if (result.refund_failed) {
+      return {
+        ok: true,
+        message: '正常に受け付けました。結果が通知されるまで待機してください。',
+        transfer_status: 'failed',
+        failure_reason: 'persist_failed',
+        transfer_id: result.transfer_id,
+      };
+    }
     return { ok: true, message: '正常に受け付けました。結果が通知されるまで待機してください。', transfer_status: 'rejected', transfer_id: result.transfer_id };
   }
 
@@ -813,7 +830,7 @@ export class WorldEngine {
     try {
       this.eventBus.emit(fullEvent);
     } catch (error) {
-      console.error('World event handler threw.', error);
+      this.handleEventSideEffectError('event bus emit', fullEvent.type, error);
     }
 
     try {

@@ -107,7 +107,7 @@ REST に直接送る場合の payload 形（schema validation も同じ）:
 - `{"target_agent_id":"...","item":{"item_id":"apple","quantity":3}}`
 - `{"target_agent_id":"...","money":100}`
 
-レスポンス（成功時）: `{ ok: true, message, transfer_status: "pending", transfer_id }` が同期で返る。失敗時は HTTP 4xx / 409 で `WorldError`（`out_of_range` / `state_conflict` / `transfer_role_conflict` / `invalid_request` など）が返る。応答待機中に `transfer.response_timeout_ms`（サーバー設定、既定値は config 参照）を超えると自動 reject され、escrow は送信側に返却される。受信側の応答結果は後続の Discord 通知で届く。
+レスポンスは常に `{ ok: true, message, transfer_status: "pending", transfer_id }` が同期で返る。バリデーション・状態違反・距離超過などはすべて HTTP 4xx / 409 `WorldError`（`out_of_range` / `state_conflict` / `transfer_role_conflict` / `invalid_request` など）として throw され、同期成功 + 後続 reject の二段は存在しない。応答待機中に `transfer.response_timeout_ms`（サーバー設定、既定値は config 参照）を超えると自動 reject され、escrow は送信側に返却される。受信側の応答結果は後続の Discord 通知で届く。
 
 会話中に譲渡したい場合はこのコマンドではなく `conversation-speak` の末尾フラグ（`--item ...` / `--money ...`）で同梱送信する。
 
@@ -117,7 +117,7 @@ REST に直接送る場合の payload 形（schema validation も同じ）:
 karakuri.sh transfer-accept
 ```
 
-受信中の譲渡オファーを受諾する。引数は不要で、受信側エージェントの保留オファーが自動解決される。アイテムと所持金が即座に加算される。レスポンスは `{ ok, message, transfer_status, transfer_id?, failure_reason? }` で、`transfer_status` は `"completed"` / `"rejected"` / `"failed"` のいずれか。`failure_reason` は `"overflow_inventory_full"` / `"overflow_money"` / `"persist_failed"` / `"role_conflict"` / `"validation_failed"` のいずれか。`overflow_inventory_full` の場合は escrow が送信側に返却される（dropped 詳細は通知で届く）。
+受信中の譲渡オファーを受諾する。引数は不要で、受信側エージェントの保留オファーが自動解決される。アイテムと所持金が即座に加算される。レスポンスは `{ ok, message, transfer_status, transfer_id?, failure_reason? }` で、`transfer_status` は `"completed"` / `"rejected"` / `"failed"` のいずれか。同期 `failure_reason` は `"overflow_inventory_full"` / `"overflow_money"` / `"persist_failed"` のいずれか。それ以外の失敗（`transfer_already_settled` / `state_conflict` / `not_target` 等）は HTTP 4xx / 409 の `WorldError` で throw される。`overflow_inventory_full` の場合は escrow が送信側に返却される（dropped 詳細は通知で届く）。
 
 ### transfer-reject — 譲渡拒否
 
@@ -125,7 +125,7 @@ karakuri.sh transfer-accept
 karakuri.sh transfer-reject
 ```
 
-受信中の譲渡オファーを拒否する。引数は不要で、受信側エージェントの保留オファーが自動解決される。escrow は送信側へ返却され、`transfer_status: "rejected"` が同期で返る。refund 失敗時は `transfer_refund_failed` (HTTP 409) が返り、admin 復旧待ちの状態 (`status='refund_failed'`) になる。
+受信中の譲渡オファーを拒否する。引数は不要で、受信側エージェントの保留オファーが自動解決される。レスポンスは `{ ok, message, transfer_status, transfer_id, failure_reason? }`。escrow が正常返却された場合は `transfer_status: "rejected"`、refund persist が失敗した場合は `transfer_status: "failed"` + `failure_reason: "persist_failed"` が同期で返り、offer は `refund_failed` 状態で残る（admin 復旧待ち）。それ以外の失敗（`transfer_already_settled` / `state_conflict` / `not_target` 等）は HTTP 4xx / 409 の `WorldError` で throw される。
 
 ### conversation-start — 会話開始
 

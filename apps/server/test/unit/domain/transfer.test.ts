@@ -221,11 +221,12 @@ describe('transfer/refundEscrow', () => {
       expires_at: 1_000_000,
       mode: 'standalone',
     };
+    // 2 slot 上限のところに 2 個の apple を積んだ後、1 個追加 refund → max_inventory_slots 超過で 1 個 dropped 確定
     engine.state.setItems(alice.agent_id, [{ item_id: 'apple', quantity: 2 }]);
     const result = refundEscrow(engine, offer);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.dropped.length).toBeGreaterThanOrEqual(0);
+      expect(result.dropped).toEqual([{ item_id: 'apple', quantity: 1 }]);
     }
   });
 
@@ -436,6 +437,85 @@ describe('transfer/cancelTransfer is idempotent on refund_failed', () => {
     persistSpy.mockRestore();
     const result = cancelTransfer(engine, start.transfer_id, 'error');
     expect(result.refund_failed).toBe(true);
+  });
+});
+
+describe('transfer/transfer_escrow_lost emission', () => {
+  it('emits transfer_escrow_lost with reason=registration_writeback_failed when refund persist fails', async () => {
+    const { engine, aliceId, bobId } = await setupTwoLoggedInAgents();
+    const events: Array<{ type: string }> = [];
+    engine.eventBus.onAny((event) => events.push(event));
+
+    const start = startTransfer(engine, aliceId, bobId, moneyPayload(100), 'standalone');
+    const persistSpy = vi.spyOn(engine, 'persistLoggedInAgentState').mockImplementation(() => {
+      throw new Error('persist fail');
+    });
+    cancelTransfer(engine, start.transfer_id, 'error');
+    persistSpy.mockRestore();
+
+    const escrowLost = events.find((event) => event.type === 'transfer_escrow_lost') as
+      | { type: string; reason: string; transfer_id: string }
+      | undefined;
+    expect(escrowLost).toBeDefined();
+    expect(escrowLost?.reason).toBe('registration_writeback_failed');
+    expect(escrowLost?.transfer_id).toBe(start.transfer_id);
+  });
+
+  it('emits transfer_escrow_lost with reason=inventory_overflow_on_refund and dropped_item when sender inventory overflows', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        items: [{ item_id: 'apple', name: 'りんご', description: 'りんご', type: 'food', stackable: false, max_stack: 1 }],
+        economy: { max_inventory_slots: 2 },
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.state.setNode(bob.agent_id, '1-2');
+    engine.state.setItems(alice.agent_id, [{ item_id: 'apple', quantity: 1 }]);
+
+    const start = startTransfer(engine, alice.agent_id, bob.agent_id, itemPayload('apple', 1), 'standalone');
+    // sender 側を満杯にしてから refund をトリガーする
+    engine.state.setItems(alice.agent_id, [{ item_id: 'apple', quantity: 2 }]);
+
+    const events: Array<{ type: string }> = [];
+    engine.eventBus.onAny((event) => events.push(event));
+    cancelTransfer(engine, start.transfer_id, 'error');
+
+    const escrowLost = events.find((event) => event.type === 'transfer_escrow_lost') as
+      | { type: string; reason: string; dropped_item?: { item_id: string; quantity: number } | null }
+      | undefined;
+    expect(escrowLost).toBeDefined();
+    expect(escrowLost?.reason).toBe('inventory_overflow_on_refund');
+    expect(escrowLost?.dropped_item).toEqual({ item_id: 'apple', quantity: 1 });
+  });
+
+  it('re-emits transfer_escrow_lost when recoverRefundFailedTransfersForAgent fails again', async () => {
+    const { engine, aliceId, bobId } = await setupTwoLoggedInAgents();
+    const start = startTransfer(engine, aliceId, bobId, moneyPayload(100), 'standalone');
+    const persistSpy = vi.spyOn(engine, 'persistLoggedInAgentState').mockImplementation(() => {
+      throw new Error('persist fail');
+    });
+    cancelTransfer(engine, start.transfer_id, 'error');
+    persistSpy.mockRestore();
+
+    const events: Array<{ type: string }> = [];
+    engine.eventBus.onAny((event) => events.push(event));
+    const mergeSpy = vi.spyOn(engine, 'mergePersistedAgentInventory').mockImplementation(() => {
+      throw new Error('merge fail');
+    });
+    recoverRefundFailedTransfersForAgent(engine, aliceId);
+    mergeSpy.mockRestore();
+
+    const escrowLost = events.find((event) => event.type === 'transfer_escrow_lost') as
+      | { type: string; reason: string }
+      | undefined;
+    expect(escrowLost).toBeDefined();
+    expect(escrowLost?.reason).toBe('registration_writeback_failed');
+    // recovery 失敗時は offer は store に残る
+    expect(engine.state.transfers.has(start.transfer_id)).toBe(true);
   });
 });
 

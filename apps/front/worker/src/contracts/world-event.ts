@@ -341,8 +341,7 @@ export interface TransferCancelledEvent extends TransferEventBase {
 
 export interface TransferEscrowLostEvent extends TransferEventBase {
   type: 'transfer_escrow_lost';
-  reason: 'registration_writeback_failed' | 'startup_recovery_failed' | 'inventory_overflow_on_refund';
-  recovery_log_path?: string;
+  reason: 'registration_writeback_failed' | 'inventory_overflow_on_refund';
   dropped_item?: AgentItem | null;
 }
 

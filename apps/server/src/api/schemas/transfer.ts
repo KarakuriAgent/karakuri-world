@@ -1,6 +1,5 @@
 import { z } from 'zod';
 
-export const safeNonNegativeIntSchema = z.number().int().min(0).safe();
 export const safePositiveIntSchema = z.number().int().min(1).safe();
 
 export const transferItemSchema = z.object({

@@ -565,8 +565,7 @@ const worldEventSchema = z.discriminatedUnion('type', [
   eventBaseSchema.extend({
     type: z.literal('transfer_escrow_lost'),
     ...transferEventFields,
-    reason: z.enum(['registration_writeback_failed', 'startup_recovery_failed', 'inventory_overflow_on_refund']),
-    recovery_log_path: z.string().optional(),
+    reason: z.enum(['registration_writeback_failed', 'inventory_overflow_on_refund']),
     dropped_item: agentItemSchema.nullable().optional(),
   }),
   eventBaseSchema.extend({

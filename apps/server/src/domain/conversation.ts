@@ -15,6 +15,7 @@ import type {
 import { WorldError, type TransferFailureReason } from '../types/api.js';
 import type { LoggedInAgent } from '../types/agent.js';
 import type { ConversationClosureReason, ConversationData, ConversationStatus } from '../types/conversation.js';
+import type { TransferCancelReason } from '../types/transfer.js';
 import type {
   ConversationAcceptTimer,
   ConversationInactiveCheckTimer,
@@ -270,6 +271,25 @@ export function detachPendingJoiner(
   return true;
 }
 
+function cancelInConversationTransfersForConversation(engine: WorldEngine, conversationId: string): void {
+  const offers = [...engine.state.transfers.list()].filter(
+    (offer) => offer.mode === 'in_conversation' && offer.conversation_id === conversationId,
+  );
+  for (const offer of offers) {
+    try {
+      if (offer.status === 'refund_failed') {
+        clearTransferState(engine, offer);
+        continue;
+      }
+      cancelTransfer(engine, offer.transfer_id, 'conversation_closing');
+    } catch (error) {
+      engine.reportError(
+        `cancelInConversationTransfersForConversation failed (transfer_id=${offer.transfer_id}, conversation_id=${conversationId}): ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+}
+
 function endConversation(
   engine: WorldEngine,
   conversationId: string,
@@ -285,13 +305,7 @@ function endConversation(
   const participantAgentIds = getConversationParticipants(conversation);
   discardPendingJoiners(engine, conversation, reason);
   cancelConversationTimers(engine, conversationId);
-  for (const offer of [...engine.state.transfers.list()].filter((offer) => offer.mode === 'in_conversation' && offer.conversation_id === conversationId)) {
-    if (offer.status === 'refund_failed') {
-      clearTransferState(engine, offer);
-      continue;
-    }
-    cancelTransfer(engine, offer.transfer_id, 'conversation_closing');
-  }
+  cancelInConversationTransfersForConversation(engine, conversationId);
   engine.state.conversations.delete(conversationId);
 
   for (const participantId of participantAgentIds) {
@@ -431,9 +445,8 @@ function resolveClosingNextSpeaker(
   );
 }
 
-// R3: WorldError.code → TransferFailureReason マッピング
-// Stage C 内の WorldError を意味的に正しい failure_reason に変換し、
-// 在庫不足 / 距離超過 / ロール競合などを persist_failed に丸めない
+// Stage C 内の WorldError を意味的に正しい failure_reason に変換する。
+// 在庫不足 / 距離超過 / ロール競合などを persist_failed に丸めずそれぞれの理由を返す。
 function mapWorldErrorToTransferFailureReason(error: unknown): TransferFailureReason {
   if (!(error instanceof WorldError)) return 'persist_failed';
   switch (error.code) {
@@ -1064,9 +1077,6 @@ export function endConversationByAgent(engine: WorldEngine, agentId: string, req
 
   const response: ConversationSpeakResponse = { turn: conversation.current_turn + 1 };
 
-  // 多人数自発退出かどうかを Stage C-leave 用に保持 (Stage B で removeParticipant した後だと判定不能)
-  const isMultiPartyLeave = conversation.participant_agent_ids.length > 2;
-
   // Stage C-early: transfer_response を**退出処理の前**に解決する。
   // end_conversation では Stage B で agent state を idle / current_conversation_id=null にするため、
   // 受信側として in_conversation transfer を accept/reject するためには退出前に解決する必要がある。
@@ -1184,28 +1194,29 @@ export function endConversationByAgent(engine: WorldEngine, agentId: string, req
     }
   }
 
-  // Stage C-leave: 退出後の transfer 後処理
-  //   1. 受信側 transfer の auto reject (transfer_response 未指定で pending あったケース、Stage C-early で resolve 未済の分)
-  //   2. 多人数自発退出時のみ、退出 agent が送信側として持つ in_conversation transfer を cancel
-  try {
-    if (!pendingTransferEarlyResolved && agent.pending_transfer_id) {
-      // 退出前は in_conversation だったので、退出後でも acceptTransfer の receiver state は実際の処理時点を見る。
-      // 自動 reject は receiver 側操作だが、in_conversation transfer の receiver は退出済み。
-      // ここでは agent.pending_transfer_id があれば cancelTransfer (reason='conversation_closing') で一括精算する
+  // Stage C-leave: 退出後の transfer 後処理。
+  // 退出 agent が関わる in_conversation transfer は 2 人会話 / 多人数会話どちらでも一律 cancel する
+  // (2 人会話 closing でも sender の active_transfer_id が interval timer 発火まで残る窓があるため)。
+  // 各 cancel ステップは独立に失敗しても残処理が走るように try/catch を分離する。
+  // transitionToSettlingRefund は settling_refund 再入を no-op するため closing 経路と衝突しても二重決済にならない。
+  if (!pendingTransferEarlyResolved && agent.pending_transfer_id) {
+    try {
       const offer = engine.state.transfers.get(agent.pending_transfer_id);
       if (offer) {
         cancelTransfer(engine, offer.transfer_id, 'conversation_closing');
       }
+    } catch (error) {
+      engine.reportError(`End-conversation pending transfer cancel failed (agent_id=${agentId}): ${error instanceof Error ? error.message : String(error)}`);
+      if (!response.transfer_status) {
+        response.transfer_status = 'failed';
+        response.failure_reason = mapWorldErrorToTransferFailureReason(error);
+      }
     }
-    // 問題1: 2 人会話 / 多人数自発退出にかかわらず、退出 agent が関わる in_conversation transfer を cancel
-    // 2 人会話 closing でも beginClosingConversation 経路の interval timer 発火まで sender の
-    // active_transfer_id が残ってしまう窓があるため、Stage C-leave で常に cancel する。
-    // R2 対応で transitionToSettlingRefund が settling_refund 再入を no-op するため、
-    // closing 経路の精算と衝突しても二重決済にならない
-    void isMultiPartyLeave; // 互換のため変数は残す (将来の差別化用)
+  }
+  try {
     cancelPendingTransfersForAgent(engine, agentId, { sender: 'conversation_closing', receiver: 'conversation_closing' });
   } catch (error) {
-    engine.reportError(`End-conversation transfer stage failed: ${error instanceof Error ? error.message : String(error)}`);
+    engine.reportError(`End-conversation cancelPendingTransfersForAgent failed (agent_id=${agentId}): ${error instanceof Error ? error.message : String(error)}`);
     if (!response.transfer_status) {
       response.transfer_status = 'failed';
       response.failure_reason = mapWorldErrorToTransferFailureReason(error);
@@ -1278,8 +1289,8 @@ export function leaveConversation(engine: WorldEngine, agentId: string, request:
   clearActiveServerEvent(engine, agentId);
   removeParticipant(conversation, agentId);
   cleanupParticipant(engine, conversation, agentId);
-  // R6: inactive 退出は会話継続の可能性があるので reason='participant_inactive'
-  // (B6 順序維持: emit conversation_leave 前にも cancel が呼ばれるが、現状の挙動を維持)
+  // inactive 退出は会話自体は継続しうるので、退出 agent の transfer は participant_inactive で精算する
+  // (会話 closing ではない)。emit conversation_leave の前に呼ぶ。
   cancelPendingTransfersForAgent(engine, agentId, { sender: 'participant_inactive', receiver: 'participant_inactive' });
   engine.emitEvent({
     type: 'conversation_leave',
@@ -1305,8 +1316,8 @@ export function handleInactiveCheckTimeout(engine: WorldEngine, timer: Conversat
     const agent = engine.state.getLoggedIn(agentId);
     if (!agent) {
       removeParticipant(conversation, agentId);
-      // logged_out 済みでも transfer が孤立しうるので transfers store 経由で精算
-      // R6: 会話自体は active のままなので reason='participant_inactive' (会話 closing ではなく participant が inactive で退出)
+      // logged_out 済みでも transfer が孤立しうるので transfers store 経由で精算する。
+      // 会話自体は active のままなので reason='participant_inactive' (会話 closing ではなく participant が inactive)。
       cancelPendingTransfersForAgent(engine, agentId, { sender: 'participant_inactive', receiver: 'participant_inactive' });
       continue;
     }
@@ -1320,8 +1331,7 @@ export function handleInactiveCheckTimeout(engine: WorldEngine, timer: Conversat
       reason: 'inactive',
       participant_agent_ids: getConversationParticipants(conversation),
     });
-    // A3 / I9 / R6: 退出する agent の in_conversation transfer を精算する
-    // 会話継続のケースもあるため reason='participant_inactive'。emit conversation_leave の後に呼ぶ
+    // 退出する agent の in_conversation transfer を精算。会話継続中もありうるので participant_inactive。
     cancelPendingTransfersForAgent(engine, agentId, { sender: 'participant_inactive', receiver: 'participant_inactive' });
   }
   conversation.inactive_check_pending_agent_ids = [];
@@ -1468,13 +1478,7 @@ export function beginClosingConversation(
   }
 
   cancelConversationTimers(engine, conversationId);
-  for (const offer of [...engine.state.transfers.list()].filter((offer) => offer.mode === 'in_conversation' && offer.conversation_id === conversationId)) {
-    if (offer.status === 'refund_failed') {
-      clearTransferState(engine, offer);
-      continue;
-    }
-    cancelTransfer(engine, offer.transfer_id, 'conversation_closing');
-  }
+  cancelInConversationTransfersForConversation(engine, conversationId);
   clearInactiveCheckState(engine, conversation);
   discardPendingJoiners(engine, conversation, reason);
   conversation.status = 'closing';
@@ -1637,7 +1641,14 @@ export function cancelPendingConversationForServerEvent(engine: WorldEngine, age
   });
 }
 
-export function forceEndConversation(engine: WorldEngine, agentId: string): void {
+export function forceEndConversation(
+  engine: WorldEngine,
+  agentId: string,
+  transferReasonByRole: { sender: TransferCancelReason; receiver: TransferCancelReason } = {
+    sender: 'conversation_closing',
+    receiver: 'conversation_closing',
+  },
+): void {
   const conversation = findConversationByAgent(engine, agentId, ['active', 'closing']);
   if (!conversation) {
     return;
@@ -1647,7 +1658,7 @@ export function forceEndConversation(engine: WorldEngine, agentId: string): void
     return;
   }
 
-  cancelPendingTransfersForAgent(engine, agentId, { sender: 'conversation_closing', receiver: 'conversation_closing' });
+  cancelPendingTransfersForAgent(engine, agentId, transferReasonByRole);
   const intervalTimer = findIntervalTimer(engine, conversation.conversation_id);
   cancelConversationTimers(engine, conversation.conversation_id);
   const agent = engine.getAgentById(agentId);
@@ -1667,6 +1678,7 @@ export function forceEndConversation(engine: WorldEngine, agentId: string): void
 
   if (conversation.participant_agent_ids.length <= 1) {
     const remainingParticipantIds = getConversationParticipants(conversation);
+    cancelInConversationTransfersForConversation(engine, conversation.conversation_id);
     discardPendingJoiners(engine, conversation, 'participant_logged_out');
     engine.state.conversations.delete(conversation.conversation_id);
     for (const participantId of remainingParticipantIds) {

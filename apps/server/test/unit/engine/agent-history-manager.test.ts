@@ -200,6 +200,41 @@ describe('AgentHistoryManager', () => {
     expect(secondBody.events.map((entry) => entry.event_id)).toEqual(['evt-1']);
   });
 
+  it('routes transfer events to both sender and receiver history', async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
+    const manager = new AgentHistoryManager({
+      workerBaseUrl: new URL('https://relay.example.com'),
+      authKey: 'publish-key',
+      fetchImpl,
+    });
+
+    manager.recordEvent({
+      event_id: 'evt-transfer-1',
+      type: 'transfer_accepted',
+      occurred_at: 100,
+      transfer_id: 'transfer-1',
+      from_agent_id: 'alice',
+      from_agent_name: 'Alice',
+      to_agent_id: 'bob',
+      to_agent_name: 'Bob',
+      item: null,
+      money: 100,
+      mode: 'standalone',
+      item_granted: null,
+      item_dropped: null,
+      money_received: 100,
+      from_money_balance: 0,
+      to_money_balance: 100,
+    });
+
+    expect(manager.getHistory('alice').items.map((entry) => entry.event_id)).toContain('evt-transfer-1');
+    expect(manager.getHistory('bob').items.map((entry) => entry.event_id)).toContain('evt-transfer-1');
+
+    await vi.runAllTimersAsync();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
   it('clears the dispose timeout when an in-flight flush finishes early', async () => {
     vi.useFakeTimers();
     const publish = createDeferred<Response>();

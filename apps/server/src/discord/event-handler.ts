@@ -1327,21 +1327,34 @@ export class DiscordEventHandler {
 
   private async handleTransferRequested(event: Extract<WorldEvent, { type: 'transfer_requested' }>): Promise<void> {
     if (event.mode === 'standalone') {
-      await this.sendConversationFollowUp(
-        event.from_agent_id,
-        formatTransferSentMessage(event.to_agent_name, event.item, event.money),
-      );
-      await this.sendConversationFollowUpBuilt(event.to_agent_id, () => formatTransferRequestedMessage(
-        this.getWorldContext(event.to_agent_id),
-        event.from_agent_name,
-        event.item,
-        event.money,
-        this.skillName,
-      ));
+      // sender / receiver どちらかの通知が失敗しても、もう片方は届けたいので個別に try/catch する。
+      try {
+        await this.sendConversationFollowUp(
+          event.from_agent_id,
+          formatTransferSentMessage(event.to_agent_name, event.item, event.money),
+        );
+      } catch (error) {
+        this.reportError(`transfer_requested sender 通知の配信に失敗 (transfer_id=${event.transfer_id})`, error);
+      }
+      try {
+        await this.sendConversationFollowUpBuilt(event.to_agent_id, () => formatTransferRequestedMessage(
+          this.getWorldContext(event.to_agent_id),
+          event.from_agent_name,
+          event.item,
+          event.money,
+          this.skillName,
+        ));
+      } catch (error) {
+        this.reportError(`transfer_requested receiver 通知の配信に失敗 (transfer_id=${event.transfer_id})`, error);
+      }
     }
     // in_conversation の場合は会話メッセージ通知に inline 統合されるため、独立通知は送らない
     // (handleConversationMessage 側で受信側 pending_transfer_id を見て本文に追記する)。
-    await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferRequested(event.to_agent_name));
+    try {
+      await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferRequested(event.to_agent_name));
+    } catch (error) {
+      this.reportError(`transfer_requested world-log 配信に失敗 (transfer_id=${event.transfer_id})`, error);
+    }
   }
 
   /**
@@ -1370,12 +1383,20 @@ export class DiscordEventHandler {
 
   private async handleTransferAccepted(event: Extract<WorldEvent, { type: 'transfer_accepted' }>): Promise<void> {
     if (event.mode === 'standalone') {
-      await this.sendStandaloneTransferSettlementPrompt(event.from_agent_id, (perceptionText, choicesText) =>
-        formatTransferAcceptedPrompt(this.getWorldContext(event.from_agent_id), event.to_agent_name, event.item, event.money, false, perceptionText, this.skillName, choicesText),
-      );
-      await this.sendStandaloneTransferSettlementPrompt(event.to_agent_id, (perceptionText, choicesText) =>
-        formatTransferAcceptedPrompt(this.getWorldContext(event.to_agent_id), event.from_agent_name, event.item, event.money, true, perceptionText, this.skillName, choicesText),
-      );
+      try {
+        await this.sendStandaloneTransferSettlementPrompt(event.from_agent_id, (perceptionText, choicesText) =>
+          formatTransferAcceptedPrompt(this.getWorldContext(event.from_agent_id), event.to_agent_name, event.item, event.money, false, perceptionText, this.skillName, choicesText),
+        );
+      } catch (error) {
+        this.reportError(`transfer_accepted sender 通知の配信に失敗 (transfer_id=${event.transfer_id})`, error);
+      }
+      try {
+        await this.sendStandaloneTransferSettlementPrompt(event.to_agent_id, (perceptionText, choicesText) =>
+          formatTransferAcceptedPrompt(this.getWorldContext(event.to_agent_id), event.from_agent_name, event.item, event.money, true, perceptionText, this.skillName, choicesText),
+        );
+      } catch (error) {
+        this.reportError(`transfer_accepted receiver 通知の配信に失敗 (transfer_id=${event.transfer_id})`, error);
+      }
     } else if (event.conversation_id) {
       // in_conversation: 独立通知は出さず、送信側 (from_agent_id) の次回 conversation_message
       // 通知本文に「相手が受け取った」旨を inline で添えるため、結果をキャッシュする。
@@ -1386,17 +1407,29 @@ export class DiscordEventHandler {
         outcome: 'accepted',
       });
     }
-    await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferAccepted(event.to_agent_name, false));
+    try {
+      await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferAccepted(event.to_agent_name, false));
+    } catch (error) {
+      this.reportError(`transfer_accepted world-log 配信に失敗 (transfer_id=${event.transfer_id})`, error);
+    }
   }
 
   private async handleTransferRejected(event: Extract<WorldEvent, { type: 'transfer_rejected' }>): Promise<void> {
     if (event.mode === 'standalone') {
-      await this.sendStandaloneTransferSettlementPrompt(event.from_agent_id, (perceptionText, choicesText) =>
-        formatTransferRejectedPrompt(this.getWorldContext(event.from_agent_id), event.to_agent_name, event.reason, false, perceptionText, this.skillName, choicesText),
-      );
-      await this.sendStandaloneTransferSettlementPrompt(event.to_agent_id, (perceptionText, choicesText) =>
-        formatTransferRejectedPrompt(this.getWorldContext(event.to_agent_id), event.from_agent_name, event.reason, true, perceptionText, this.skillName, choicesText),
-      );
+      try {
+        await this.sendStandaloneTransferSettlementPrompt(event.from_agent_id, (perceptionText, choicesText) =>
+          formatTransferRejectedPrompt(this.getWorldContext(event.from_agent_id), event.to_agent_name, event.reason, false, perceptionText, this.skillName, choicesText),
+        );
+      } catch (error) {
+        this.reportError(`transfer_rejected sender 通知の配信に失敗 (transfer_id=${event.transfer_id})`, error);
+      }
+      try {
+        await this.sendStandaloneTransferSettlementPrompt(event.to_agent_id, (perceptionText, choicesText) =>
+          formatTransferRejectedPrompt(this.getWorldContext(event.to_agent_id), event.from_agent_name, event.reason, true, perceptionText, this.skillName, choicesText),
+        );
+      } catch (error) {
+        this.reportError(`transfer_rejected receiver 通知の配信に失敗 (transfer_id=${event.transfer_id})`, error);
+      }
     } else if (event.conversation_id) {
       // in_conversation: 結果を送信側にキャッシュ。reason から inline 表現を選ぶ。
       const outcome: InConversationTransferAnnotation['outcome'] =
@@ -1410,17 +1443,29 @@ export class DiscordEventHandler {
         outcome,
       });
     }
-    await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferRejected(event.to_agent_name));
+    try {
+      await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferRejected(event.to_agent_name));
+    } catch (error) {
+      this.reportError(`transfer_rejected world-log 配信に失敗 (transfer_id=${event.transfer_id})`, error);
+    }
   }
 
   private async handleTransferTimeout(event: Extract<WorldEvent, { type: 'transfer_timeout' }>): Promise<void> {
     if (event.mode === 'standalone') {
-      await this.sendStandaloneTransferSettlementPrompt(event.from_agent_id, (perceptionText, choicesText) =>
-        formatTransferTimeoutPrompt(this.getWorldContext(event.from_agent_id), event.to_agent_name, false, perceptionText, this.skillName, choicesText),
-      );
-      await this.sendStandaloneTransferSettlementPrompt(event.to_agent_id, (perceptionText, choicesText) =>
-        formatTransferTimeoutPrompt(this.getWorldContext(event.to_agent_id), event.from_agent_name, true, perceptionText, this.skillName, choicesText),
-      );
+      try {
+        await this.sendStandaloneTransferSettlementPrompt(event.from_agent_id, (perceptionText, choicesText) =>
+          formatTransferTimeoutPrompt(this.getWorldContext(event.from_agent_id), event.to_agent_name, false, perceptionText, this.skillName, choicesText),
+        );
+      } catch (error) {
+        this.reportError(`transfer_timeout sender 通知の配信に失敗 (transfer_id=${event.transfer_id})`, error);
+      }
+      try {
+        await this.sendStandaloneTransferSettlementPrompt(event.to_agent_id, (perceptionText, choicesText) =>
+          formatTransferTimeoutPrompt(this.getWorldContext(event.to_agent_id), event.from_agent_name, true, perceptionText, this.skillName, choicesText),
+        );
+      } catch (error) {
+        this.reportError(`transfer_timeout receiver 通知の配信に失敗 (transfer_id=${event.transfer_id})`, error);
+      }
     } else if (event.conversation_id) {
       // in_conversation: 会話継続中なら次回 conversation_message に inline 添付。
       // 会話が既に終わっているケースはここでは検知できないが、closing 系で別途通知される。
@@ -1431,17 +1476,29 @@ export class DiscordEventHandler {
         outcome: 'timeout',
       });
     }
-    await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferTimeout(event.to_agent_name));
+    try {
+      await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferTimeout(event.to_agent_name));
+    } catch (error) {
+      this.reportError(`transfer_timeout world-log 配信に失敗 (transfer_id=${event.transfer_id})`, error);
+    }
   }
 
   private async handleTransferCancelled(event: Extract<WorldEvent, { type: 'transfer_cancelled' }>): Promise<void> {
     if (event.mode === 'standalone') {
-      await this.sendStandaloneTransferSettlementPrompt(event.from_agent_id, (perceptionText, choicesText) =>
-        formatTransferCancelledPrompt(this.getWorldContext(event.from_agent_id), event.to_agent_name, event.reason, false, perceptionText, this.skillName, choicesText),
-      );
-      await this.sendStandaloneTransferSettlementPrompt(event.to_agent_id, (perceptionText, choicesText) =>
-        formatTransferCancelledPrompt(this.getWorldContext(event.to_agent_id), event.from_agent_name, event.reason, true, perceptionText, this.skillName, choicesText),
-      );
+      try {
+        await this.sendStandaloneTransferSettlementPrompt(event.from_agent_id, (perceptionText, choicesText) =>
+          formatTransferCancelledPrompt(this.getWorldContext(event.from_agent_id), event.to_agent_name, event.reason, false, perceptionText, this.skillName, choicesText),
+        );
+      } catch (error) {
+        this.reportError(`transfer_cancelled sender 通知の配信に失敗 (transfer_id=${event.transfer_id})`, error);
+      }
+      try {
+        await this.sendStandaloneTransferSettlementPrompt(event.to_agent_id, (perceptionText, choicesText) =>
+          formatTransferCancelledPrompt(this.getWorldContext(event.to_agent_id), event.from_agent_name, event.reason, true, perceptionText, this.skillName, choicesText),
+        );
+      } catch (error) {
+        this.reportError(`transfer_cancelled receiver 通知の配信に失敗 (transfer_id=${event.transfer_id})`, error);
+      }
     } else if (event.conversation_id) {
       // in_conversation の cancel は会話終了処理に伴う発火が多い。会話継続中なら次の
       // conversation_message 通知本文に inline 表示される。会話が既に終了している場合は
@@ -1461,12 +1518,24 @@ export class DiscordEventHandler {
         partnerName: event.from_agent_name,
       });
     }
-    await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferCancelled(event.to_agent_name));
+    try {
+      await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferCancelled(event.to_agent_name));
+    } catch (error) {
+      this.reportError(`transfer_cancelled world-log 配信に失敗 (transfer_id=${event.transfer_id})`, error);
+    }
   }
 
   private async handleTransferEscrowLost(event: Extract<WorldEvent, { type: 'transfer_escrow_lost' }>): Promise<void> {
-    await this.sendConversationFollowUp(event.from_agent_id, formatTransferEscrowLostMessage(event.to_agent_name));
-    await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferEscrowLost(event.to_agent_name));
+    try {
+      await this.sendConversationFollowUp(event.from_agent_id, formatTransferEscrowLostMessage(event.to_agent_name));
+    } catch (error) {
+      this.reportError(`transfer_escrow_lost sender 通知の配信に失敗 (transfer_id=${event.transfer_id})`, error);
+    }
+    try {
+      await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferEscrowLost(event.to_agent_name));
+    } catch (error) {
+      this.reportError(`transfer_escrow_lost world-log 配信に失敗 (transfer_id=${event.transfer_id})`, error);
+    }
   }
 
   /**

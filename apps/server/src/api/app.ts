@@ -25,7 +25,14 @@ export function createApp(engine: WorldEngine, options: AppOptions) {
       return c.json(toErrorResponse(error), { status: error.status as 400 | 401 | 403 | 404 | 409 | 500 | 501 | 503 });
     }
 
+    // 未捕捉の例外は Sentry / 通知系へ届けるために engine.reportError も呼ぶ。
+    const message = error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : String(error);
     console.error(error);
+    try {
+      engine.reportError(`Unhandled error in API: ${c.req.method} ${c.req.path}: ${message}`);
+    } catch (reportError) {
+      console.error('engine.reportError threw.', reportError);
+    }
     return c.json(toErrorResponse(new WorldError(500, 'state_conflict', 'Internal server error.')), { status: 500 });
   });
 

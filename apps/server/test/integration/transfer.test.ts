@@ -66,10 +66,10 @@ describe('transfer API', () => {
     expect(startedMoney.response.status).toBe(200);
     expect(startedMoney.data.transfer_status).toBe('pending');
 
+    // accept route は body 不要 (受信側エージェントの pending_transfer_id から自動解決される)
     const acceptedMoney = await requestJson(app, '/api/agents/transfer/accept', {
       method: 'POST',
       headers: { Authorization: `Bearer ${bob.data.api_key}` },
-      body: JSON.stringify({ transfer_id: startedMoney.data.transfer_id }),
     });
     expect(acceptedMoney.response.status).toBe(200);
     expect(acceptedMoney.data.transfer_status).toBe('completed');
@@ -86,7 +86,6 @@ describe('transfer API', () => {
     const acceptedItem = await requestJson(app, '/api/agents/transfer/accept', {
       method: 'POST',
       headers: { Authorization: `Bearer ${bob.data.api_key}` },
-      body: JSON.stringify({ transfer_id: startedItem.data.transfer_id }),
     });
     expect(acceptedItem.response.status).toBe(200);
     expect(acceptedItem.data.transfer_status).toBe('completed');
@@ -179,7 +178,6 @@ describe('transfer API', () => {
     const accepted = await requestJson(app, '/api/agents/transfer/accept', {
       method: 'POST',
       headers: { Authorization: `Bearer ${bob.data.api_key}` },
-      body: JSON.stringify({ transfer_id: started.data.transfer_id }),
     });
 
     expect(accepted.response.status).toBe(200);
@@ -212,7 +210,6 @@ describe('transfer API', () => {
     const accepted = await requestJson(app, '/api/agents/transfer/accept', {
       method: 'POST',
       headers: { Authorization: `Bearer ${bob.data.api_key}` },
-      body: JSON.stringify({ transfer_id: started.data.transfer_id }),
     });
 
     expect(accepted.response.status).toBe(409);
@@ -610,7 +607,6 @@ describe('transfer API', () => {
     const accepted = await requestJson(app, '/api/agents/transfer/accept', {
       method: 'POST',
       headers: { Authorization: `Bearer ${bob.data.api_key}` },
-      body: JSON.stringify({ transfer_id: spoke.data.transfer_id }),
     });
 
     expect(accepted.response.status).toBe(409);
@@ -865,7 +861,6 @@ describe('transfer API', () => {
     const rejected = await requestJson(app, '/api/agents/transfer/reject', {
       method: 'POST',
       headers: { Authorization: `Bearer ${bob.data.api_key}` },
-      body: JSON.stringify({ transfer_id: started.data.transfer_id }),
     });
     expect(rejected.response.status).toBe(200);
     expect(engine.state.getLoggedIn(alice.data.agent_id)?.state).toBe('idle');
@@ -874,5 +869,58 @@ describe('transfer API', () => {
     expect(engine.timerManager.find((timer) => timer.type === 'wait' && timer.agent_id === bob.data.agent_id)).toBeUndefined();
     // sender に escrow が返却されている
     expect(engine.state.getLoggedIn(alice.data.agent_id)?.items).toEqual([{ item_id: 'apple', quantity: 1 }]);
+  });
+
+  it('preserves recovered escrow on logout when sender holds a refund_failed transfer', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        items: [{ item_id: 'apple', name: 'りんご', description: 'りんご', type: 'food', stackable: true }],
+      },
+    });
+    const { app } = createApp(engine, { adminKey: ADMIN_KEY, publicBaseUrl: PUBLIC_BASE_URL });
+    const alice = await registerAgent(app, 'bot-alice');
+    const bob = await registerAgent(app, 'bot-bob');
+
+    await requestJson(app, '/api/agents/login', { method: 'POST', headers: { Authorization: `Bearer ${alice.data.api_key}` } });
+    await requestJson(app, '/api/agents/login', { method: 'POST', headers: { Authorization: `Bearer ${bob.data.api_key}` } });
+    engine.state.setNode(alice.data.agent_id, '1-1');
+    engine.state.setNode(bob.data.agent_id, '1-2');
+    engine.state.setMoney(alice.data.agent_id, 500);
+
+    // 1) transfer 開始 (escrow 100 が consumed されて alice.money=400)
+    const started = await requestJson(app, '/api/agents/transfer', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${alice.data.api_key}` },
+      body: JSON.stringify({ target_agent_id: bob.data.agent_id, money: 100 }),
+    });
+    expect(started.response.status).toBe(200);
+    expect(engine.state.getLoggedIn(alice.data.agent_id)?.money).toBe(400);
+
+    // 2) refund persist を一時失敗させて offer を refund_failed にする
+    const persistSpy = vi.spyOn(engine, 'persistLoggedInAgentState').mockImplementationOnce(() => {
+      throw new Error('persist fail');
+    });
+    const rejected = await requestJson(app, '/api/agents/transfer/reject', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${bob.data.api_key}` },
+    });
+    persistSpy.mockRestore();
+    expect(rejected.response.status).toBe(200);
+    // C2: refund 失敗時は failed/persist_failed が返る
+    expect(rejected.data.transfer_status).toBe('failed');
+    expect(rejected.data.failure_reason).toBe('persist_failed');
+    expect(engine.state.transfers.get(started.data.transfer_id)?.status).toBe('refund_failed');
+    // alice の loggedInAgent.money は依然 400 (escrow 未返却)
+    expect(engine.state.getLoggedIn(alice.data.agent_id)?.money).toBe(400);
+
+    // 3) logout: persistLoggedInAgentState で alice.money=400 を registration に書き戻し、
+    //    その後 recoverRefundFailedTransfersForAgent で escrow 100 を merge → 最終 registration.money=500
+    const logout = await requestJson(app, '/api/agents/logout', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${alice.data.api_key}` },
+    });
+    expect(logout.response.status).toBe(200);
+    expect(engine.state.getById(alice.data.agent_id)?.money).toBe(500);
+    expect(engine.state.transfers.has(started.data.transfer_id)).toBe(false);
   });
 });

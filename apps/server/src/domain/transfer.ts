@@ -138,7 +138,9 @@ export function validateTransfer(
   ensureTransferParticipantsAvailable(to, 'receive a transfer');
   validateTransferState(engine, to, mode, conversationId);
 
-  if (manhattanDistance(getAgentCurrentNode(engine, from), getAgentCurrentNode(engine, to)) > 1) {
+  // in_conversation mode は会話自体が成立している以上、物理距離は問わない
+  // (3+ 人会話で離れた参加者にも transfer できるようにするため)。
+  if (mode === 'standalone' && manhattanDistance(getAgentCurrentNode(engine, from), getAgentCurrentNode(engine, to)) > 1) {
     throw new WorldError(400, 'out_of_range', 'Target agent is out of range.');
   }
   if (money > 0 && from.money < money) {
@@ -602,6 +604,20 @@ export function cancelTransfer(engine: WorldEngine, transferId: string, reason: 
   return { transfer_id: offer.transfer_id, refund_failed: !refundOk };
 }
 
+/**
+ * acceptTransfer の中間失敗パスから cancelTransfer を呼ぶ際に、cancel 自体の例外で
+ * offer が settling_* のまま固着するのを防ぐための保険。失敗しても reportError で観測する。
+ */
+function safeCancelTransfer(engine: WorldEngine, transferId: string, reason: TransferCancelReason): void {
+  try {
+    cancelTransfer(engine, transferId, reason);
+  } catch (error) {
+    engine.reportError(
+      `safeCancelTransfer failed (transfer_id=${transferId}, reason=${reason}): ${error instanceof Error ? error.message : String(error)}. admin の force-refund 復旧を待機中です。`,
+    );
+  }
+}
+
 export function acceptTransfer(
   engine: WorldEngine,
   transferId: string,
@@ -626,21 +642,28 @@ export function acceptTransfer(
   }
   const offer = transitionTransferStatus(engine, transferId, 'open', 'settling_accept');
   if (offer.mode === 'standalone' && receiver.state !== 'in_transfer') {
-    cancelTransfer(engine, transferId, 'error');
+    safeCancelTransfer(engine, transferId, 'error');
     throw new WorldError(409, 'state_conflict', 'Receiver is not ready to accept this transfer.');
   }
   if (offer.mode === 'in_conversation' && receiver.state !== 'in_conversation') {
-    cancelTransfer(engine, transferId, 'error');
+    safeCancelTransfer(engine, transferId, 'error');
     throw new WorldError(409, 'state_conflict', 'Receiver is not in the expected conversation.');
   }
   if (receiver.money + offer.money > Number.MAX_SAFE_INTEGER) {
-    cancelTransfer(engine, transferId, 'error');
+    safeCancelTransfer(engine, transferId, 'error');
     return { outcome: 'failed', failure_reason: 'overflow_money' };
   }
   const result = grantToReceiver(engine, offer);
   if (result.dropped.length > 0) {
     const droppedItem = result.dropped[0] ?? null;
-    rejectTransfer(engine, transferId, byAgentId, { kind: 'inventory_full', dropped_item: droppedItem }, source);
+    try {
+      rejectTransfer(engine, transferId, byAgentId, { kind: 'inventory_full', dropped_item: droppedItem }, source);
+    } catch (rejectError) {
+      engine.reportError(
+        `acceptTransfer の inventory_full 経路で rejectTransfer が失敗しました（transfer_id=${transferId}, agent_id=${byAgentId}）。原因: ${rejectError instanceof Error ? rejectError.message : String(rejectError)}. cancelTransfer で escrow 救済を試行します。`,
+      );
+      safeCancelTransfer(engine, transferId, 'error');
+    }
     return { outcome: 'failed', failure_reason: 'overflow_inventory_full' };
   }
 
@@ -662,7 +685,7 @@ export function acceptTransfer(
         `acceptTransfer の receiver memory rollback に失敗しました（transfer_id=${transferId}, agent_id=${byAgentId}）。原因: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
       );
     }
-    cancelTransfer(engine, transferId, 'error');
+    safeCancelTransfer(engine, transferId, 'error');
     return { outcome: 'failed', failure_reason: 'persist_failed' };
   }
 
@@ -736,14 +759,20 @@ export function cancelPendingTransfersForAgent(
 ): void {
   const offers = [...engine.state.transfers.listByAgent(agentId)];
   for (const offer of offers) {
-    if (offer.status === 'refund_failed') {
-      clearTransferState(engine, offer);
-      continue;
-    }
-    if (offer.from_agent_id === agentId) {
-      cancelTransfer(engine, offer.transfer_id, reasonByRole.sender);
-    } else if (offer.to_agent_id === agentId) {
-      cancelTransfer(engine, offer.transfer_id, reasonByRole.receiver);
+    try {
+      if (offer.status === 'refund_failed') {
+        clearTransferState(engine, offer);
+        continue;
+      }
+      if (offer.from_agent_id === agentId) {
+        cancelTransfer(engine, offer.transfer_id, reasonByRole.sender);
+      } else if (offer.to_agent_id === agentId) {
+        cancelTransfer(engine, offer.transfer_id, reasonByRole.receiver);
+      }
+    } catch (error) {
+      engine.reportError(
+        `cancelPendingTransfersForAgent failed for transfer_id=${offer.transfer_id} (agent_id=${agentId}): ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 }

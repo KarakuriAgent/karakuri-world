@@ -283,8 +283,12 @@ export interface TransferAcceptedEvent extends TransferEventBase {
   type: 'transfer_accepted';
   /** receiver に実際に渡ったアイテム。money 譲渡時は null。 */
   item_granted: AgentItem | null;
-  /** receiver の inventory 不足で sender に戻ったアイテム。通常 null（accept 経路は overflow を別 reject で処理）。 */
-  item_dropped: AgentItem | null;
+  /**
+   * transfer_accepted では常に null。受信側の inventory 不足は
+   * rejectTransfer({ kind: 'inventory_full' }) 経路で別途処理されるため、
+   * このイベントには到達しない。新しいコードは item_granted のみ参照すること。
+   */
+  item_dropped: null;
   money_received: number;
   from_money_balance?: number;
   to_money_balance: number;
@@ -307,9 +311,8 @@ export interface TransferCancelledEvent extends TransferEventBase {
 
 export interface TransferEscrowLostEvent extends TransferEventBase {
   type: 'transfer_escrow_lost';
-  reason: 'registration_writeback_failed' | 'startup_recovery_failed' | 'inventory_overflow_on_refund';
-  recovery_log_path?: string;
-  /** 受信側の inventory 不足等で escrow が完全に戻せなかった分。 */
+  reason: 'registration_writeback_failed' | 'inventory_overflow_on_refund';
+  /** sender の inventory 不足等で escrow が完全に戻せなかった分。 */
   dropped_item?: { item_id: string; quantity: number } | null;
 }
 

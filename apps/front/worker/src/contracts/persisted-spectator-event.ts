@@ -124,7 +124,7 @@ export type PersistedSpectatorTransferCancelledEvent = PersistedEventPick<
 >;
 export type PersistedSpectatorTransferEscrowLostEvent = PersistedEventPick<
   'transfer_escrow_lost',
-  'type' | 'transfer_id' | 'from_agent_id' | 'from_agent_name' | 'to_agent_id' | 'to_agent_name' | 'item' | 'money' | 'mode' | 'reason' | 'recovery_log_path'
+  'type' | 'transfer_id' | 'from_agent_id' | 'from_agent_name' | 'to_agent_id' | 'to_agent_name' | 'item' | 'money' | 'mode' | 'reason'
 >;
 export type PersistedSpectatorServerEventFiredEvent = PersistedEventPick<
   'server_event_fired',
@@ -234,7 +234,7 @@ const PERSISTED_EVENT_FIELDS = {
   transfer_rejected: ['type', 'transfer_id', 'from_agent_id', 'from_agent_name', 'to_agent_id', 'to_agent_name', 'item', 'money', 'mode', 'reason'],
   transfer_timeout: ['type', 'transfer_id', 'from_agent_id', 'from_agent_name', 'to_agent_id', 'to_agent_name', 'item', 'money', 'mode'],
   transfer_cancelled: ['type', 'transfer_id', 'from_agent_id', 'from_agent_name', 'to_agent_id', 'to_agent_name', 'item', 'money', 'mode', 'reason'],
-  transfer_escrow_lost: ['type', 'transfer_id', 'from_agent_id', 'from_agent_name', 'to_agent_id', 'to_agent_name', 'item', 'money', 'mode', 'reason', 'recovery_log_path'],
+  transfer_escrow_lost: ['type', 'transfer_id', 'from_agent_id', 'from_agent_name', 'to_agent_id', 'to_agent_name', 'item', 'money', 'mode', 'reason'],
   server_event_fired: ['type', 'server_event_id', 'description', 'delivered_agent_ids', 'pending_agent_ids', 'delayed'],
 } as const satisfies Record<PersistedSpectatorEventType, readonly string[]>;
 
