@@ -24,8 +24,8 @@ Commands:
   transfer <target_agent_id> --item <item_id> [--quantity <n>]
   transfer <target_agent_id> --money <amount>
                                                 Start a transfer of one item (default quantity 1) or money to a nearby agent
-  transfer-accept <transfer_id>                  Accept a pending transfer offer
-  transfer-reject <transfer_id>                  Reject a pending transfer offer
+  transfer-accept                                Accept the pending transfer offer (resolved from agent state)
+  transfer-reject                                Reject the pending transfer offer (resolved from agent state)
   conversation-start <target_agent_id> <message> Start a conversation
   conversation-accept <message>                  Accept a conversation and reply
   conversation-reject                            Reject a conversation
@@ -318,12 +318,12 @@ case "${command}" in
     do_post "/agents/transfer" "$transfer_payload"
     ;;
   transfer-accept)
-    [ $# -lt 1 ] && { echo "Usage: karakuri.sh transfer-accept <transfer_id>" >&2; exit 1; }
-    do_post "/agents/transfer/accept" "$(json_obj transfer_id "$1")"
+    # body 不要。pending_transfer_id から自動解決される。
+    do_post "/agents/transfer/accept" '{}'
     ;;
   transfer-reject)
-    [ $# -lt 1 ] && { echo "Usage: karakuri.sh transfer-reject <transfer_id>" >&2; exit 1; }
-    do_post "/agents/transfer/reject" "$(json_obj transfer_id "$1")"
+    # body 不要。pending_transfer_id から自動解決される。
+    do_post "/agents/transfer/reject" '{}'
     ;;
   wait)
     [ $# -lt 1 ] && { echo "Usage: karakuri.sh wait <duration>" >&2; exit 1; }

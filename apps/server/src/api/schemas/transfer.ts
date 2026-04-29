@@ -35,7 +35,3 @@ export const transferRequestSchema = z.union([
   transferRequestItemOnlySchema,
   transferRequestMoneyOnlySchema,
 ]);
-
-export const transferIdSchema = z.object({
-  transfer_id: z.string().min(1),
-}).strict();

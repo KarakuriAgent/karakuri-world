@@ -63,9 +63,7 @@ import type {
   ConversationStartRequest,
   ConversationStartResponse,
   TransferActionResponse,
-  TransferRejectRequest,
   TransferRequest,
-  TransferResponseRequest,
   FireServerEventRequest,
   FireServerEventResponse,
   LoginResponse,
@@ -466,9 +464,10 @@ export class WorldEngine {
     return { ok: true, message: '正常に受け付けました。結果が通知されるまで待機してください。', transfer_status: 'pending', transfer_id: result.transfer_id };
   }
 
-  acceptTransfer(agentId: string, request: TransferResponseRequest): TransferActionResponse {
+  acceptTransfer(agentId: string): TransferActionResponse {
+    const transferId = this.requirePendingTransferId(agentId);
     handleServerEventInterruption(this, agentId);
-    const result = acceptTransferRequest(this, request.transfer_id, agentId);
+    const result = acceptTransferRequest(this, transferId, agentId);
     if (result.outcome === 'completed') {
       return { ok: true, message: '正常に受け付けました。結果が通知されるまで待機してください。', transfer_status: 'completed', transfer_id: result.transfer_id };
     }
@@ -478,10 +477,27 @@ export class WorldEngine {
     return { ok: true, message: '正常に受け付けました。結果が通知されるまで待機してください。', transfer_status: 'failed', failure_reason: result.failure_reason };
   }
 
-  rejectTransfer(agentId: string, request: TransferRejectRequest): TransferActionResponse {
+  rejectTransfer(agentId: string): TransferActionResponse {
+    const transferId = this.requirePendingTransferId(agentId);
     handleServerEventInterruption(this, agentId);
-    const result = rejectTransferRequest(this, request.transfer_id, agentId, { kind: 'rejected_by_receiver' });
+    const result = rejectTransferRequest(this, transferId, agentId, { kind: 'rejected_by_receiver' });
     return { ok: true, message: '正常に受け付けました。結果が通知されるまで待機してください。', transfer_status: 'rejected', transfer_id: result.transfer_id };
+  }
+
+  /**
+   * accept_transfer / reject_transfer の payload から transfer_id を撤去したのに伴い、
+   * 受信側エージェントの pending_transfer_id から transfer_id を解決する。pending が
+   * 無い場合は 409 で落とす。
+   */
+  private requirePendingTransferId(agentId: string): string {
+    const agent = this.state.getLoggedIn(agentId);
+    if (!agent) {
+      throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
+    }
+    if (!agent.pending_transfer_id) {
+      throw new WorldError(409, 'state_conflict', 'No pending transfer offer to respond to.');
+    }
+    return agent.pending_transfer_id;
   }
 
   startConversation(agentId: string, request: ConversationStartRequest): ConversationStartResponse {

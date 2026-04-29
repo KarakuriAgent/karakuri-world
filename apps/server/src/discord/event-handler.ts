@@ -28,6 +28,8 @@ import {
   formatConversationRejectedMessage,
   formatConversationReplyPromptMessage,
   formatConversationRequestedMessage,
+  formatInConversationPendingTransferLine,
+  formatInConversationTransferOutcomeLine,
   formatConversationServerEventClosingPromptMessage,
   formatConversationThreadName,
   formatConversationTurnClosingPromptMessage,
@@ -75,12 +77,20 @@ import {
   formatWorldLogServerEvent,
   formatWorldLogWait,
   type ConversationParticipantInfo,
+  type TransferOptionsHint,
   type WorldContext,
 } from './notification.js';
 
 interface PendingForcedConversationEnd {
   initiator_agent_id: string;
   participant_agent_ids: string[];
+}
+
+interface InConversationTransferAnnotation {
+  partnerName: string;
+  item: { item_id: string; quantity: number } | null;
+  money: number;
+  outcome: 'accepted' | 'rejected_by_receiver' | 'unanswered_speak' | 'inventory_full' | 'timeout';
 }
 
 interface ForcedConversationPartner {
@@ -99,6 +109,13 @@ export class DiscordEventHandler {
   private readonly conversationThreads = new Map<string, Promise<string | null>>();
   private readonly conversationLogDeliveries = new Map<string, Promise<void>>();
   private readonly agentMessageDeliveries = new Map<string, Promise<void>>();
+  /**
+   * in_conversation transfer の決着結果を、対象エージェントの次の conversation_message 通知本文に
+   * inline で埋めるための一時キャッシュ。key = `${conversation_id}:${recipient_agent_id}`。
+   * handleTransferAccepted/Rejected/Timeout で in_conversation のときに書き込み、
+   * handleConversationMessage が読み取り次第クリアする。
+   */
+  private readonly inConversationTransferAnnotations = new Map<string, InConversationTransferAnnotation>();
   private readonly skillName: string;
 
   constructor(
@@ -363,6 +380,7 @@ export class DiscordEventHandler {
       }
 
       await this.handleConversationMessage(
+        timer.conversation_id,
         listenerAgentId,
         this.getAgentName(timer.speaker_agent_id),
         timer.message,
@@ -439,6 +457,7 @@ export class DiscordEventHandler {
       }
 
       await this.handleConversationMessage(
+        event.conversation_id,
         listenerAgentId,
         speakerName,
         event.message,
@@ -775,6 +794,7 @@ export class DiscordEventHandler {
   }
 
   private async handleConversationMessage(
+    conversationId: string,
     listenerAgentId: string,
     speakerName: string,
     message: string,
@@ -783,6 +803,21 @@ export class DiscordEventHandler {
     actionable: boolean,
     nextSpeakerName?: string,
   ): Promise<void> {
+    // 会話本体メッセージの直前/直後で発生した in_conversation transfer の状況を inline で添える。
+    // 1) 受け手が pending offer を抱えていれば「X から Y の譲渡提案が届いています」を append。
+    // 2) 直前のターンで決着した outcome (accept / reject / unanswered_speak / inventory_full / timeout)
+    //    がキャッシュにあれば inline で append しキャッシュを消費する。
+    // どちらが乗っているかで会話 reply プロンプトの transfer_response トーンも変える。
+    const pendingOffer = this.resolveInConversationPendingOffer(conversationId, listenerAgentId);
+    const cachedOutcome = this.consumeInConversationTransferAnnotation(conversationId, listenerAgentId);
+    const inlineLines: string[] = [];
+    if (pendingOffer) {
+      inlineLines.push(formatInConversationPendingTransferLine(pendingOffer.fromName, pendingOffer.item, pendingOffer.money));
+    }
+    if (cachedOutcome) {
+      inlineLines.push(formatInConversationTransferOutcomeLine(cachedOutcome.partnerName, cachedOutcome.item, cachedOutcome.money, cachedOutcome.outcome));
+    }
+    const inlineNote = inlineLines.length > 0 ? inlineLines.join('\n') : undefined;
     const content = actionable
       ? (closing
       ? formatConversationClosingPromptMessage(
@@ -791,6 +826,7 @@ export class DiscordEventHandler {
           message,
           this.skillName,
           participants,
+          { transferNote: inlineNote, hasPendingOffer: pendingOffer !== null },
         )
       : formatConversationReplyPromptMessage(
           this.getWorldContext(listenerAgentId),
@@ -798,6 +834,8 @@ export class DiscordEventHandler {
           message,
           this.skillName,
           participants,
+          this.getTransferOptionsHint(listenerAgentId),
+          { transferNote: inlineNote, hasPendingOffer: pendingOffer !== null },
         ))
       : formatConversationFYIMessage(speakerName, message, nextSpeakerName);
 
@@ -942,16 +980,33 @@ export class DiscordEventHandler {
     }
 
     const participants = this.getParticipantInfos(conversation.participant_agent_ids);
+    // turn prompt にも pending offer / outcome inline を反映する。
+    const pendingOffer = this.resolveInConversationPendingOffer(event.conversation_id, event.current_speaker_agent_id);
+    const cachedOutcome = this.consumeInConversationTransferAnnotation(event.conversation_id, event.current_speaker_agent_id);
+    const inlineLines: string[] = [];
+    if (pendingOffer) {
+      inlineLines.push(formatInConversationPendingTransferLine(pendingOffer.fromName, pendingOffer.item, pendingOffer.money));
+    }
+    if (cachedOutcome) {
+      inlineLines.push(formatInConversationTransferOutcomeLine(cachedOutcome.partnerName, cachedOutcome.item, cachedOutcome.money, cachedOutcome.outcome));
+    }
+    const transferInline = {
+      transferNote: inlineLines.length > 0 ? inlineLines.join('\n') : undefined,
+      hasPendingOffer: pendingOffer !== null,
+    };
     const content = conversation.status === 'closing'
       ? formatConversationTurnClosingPromptMessage(
           this.getWorldContext(event.current_speaker_agent_id),
           this.skillName,
           participants,
+          transferInline,
         )
       : formatConversationTurnPromptMessage(
           this.getWorldContext(event.current_speaker_agent_id),
           this.skillName,
           participants,
+          this.getTransferOptionsHint(event.current_speaker_agent_id),
+          transferInline,
         );
     await this.sendConversationFollowUp(event.current_speaker_agent_id, content);
   }
@@ -1271,21 +1326,21 @@ export class DiscordEventHandler {
   }
 
   private async handleTransferRequested(event: Extract<WorldEvent, { type: 'transfer_requested' }>): Promise<void> {
-    await this.sendConversationFollowUp(
-      event.from_agent_id,
-      formatTransferSentMessage(event.to_agent_name, event.item, event.money),
-    );
-    await this.sendConversationFollowUpBuilt(event.to_agent_id, () => formatTransferRequestedMessage(
-      this.getWorldContext(event.to_agent_id),
-      event.from_agent_name,
-      event.item,
-      event.money,
-      event.expires_at,
-      this.engine.config.timezone,
-      this.skillName,
-      event.mode,
-      event.transfer_id,
-    ));
+    if (event.mode === 'standalone') {
+      await this.sendConversationFollowUp(
+        event.from_agent_id,
+        formatTransferSentMessage(event.to_agent_name, event.item, event.money),
+      );
+      await this.sendConversationFollowUpBuilt(event.to_agent_id, () => formatTransferRequestedMessage(
+        this.getWorldContext(event.to_agent_id),
+        event.from_agent_name,
+        event.item,
+        event.money,
+        this.skillName,
+      ));
+    }
+    // in_conversation の場合は会話メッセージ通知に inline 統合されるため、独立通知は送らない
+    // (handleConversationMessage 側で受信側 pending_transfer_id を見て本文に追記する)。
     await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferRequested(event.to_agent_name));
   }
 
@@ -1321,9 +1376,15 @@ export class DiscordEventHandler {
       await this.sendStandaloneTransferSettlementPrompt(event.to_agent_id, (perceptionText, choicesText) =>
         formatTransferAcceptedPrompt(this.getWorldContext(event.to_agent_id), event.from_agent_name, event.item, event.money, true, perceptionText, this.skillName, choicesText),
       );
-    } else {
-      await this.sendConversationFollowUp(event.from_agent_id, formatTransferAcceptedMessage(event.to_agent_name, event.item, event.money, false));
-      await this.sendConversationFollowUp(event.to_agent_id, formatTransferAcceptedMessage(event.from_agent_name, event.item, event.money, true));
+    } else if (event.conversation_id) {
+      // in_conversation: 独立通知は出さず、送信側 (from_agent_id) の次回 conversation_message
+      // 通知本文に「相手が受け取った」旨を inline で添えるため、結果をキャッシュする。
+      this.cacheInConversationTransferAnnotation(event.conversation_id, event.from_agent_id, {
+        partnerName: event.to_agent_name,
+        item: event.item ? { item_id: event.item.item_id, quantity: event.item.quantity } : null,
+        money: event.money,
+        outcome: 'accepted',
+      });
     }
     await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferAccepted(event.to_agent_name, false));
   }
@@ -1336,9 +1397,18 @@ export class DiscordEventHandler {
       await this.sendStandaloneTransferSettlementPrompt(event.to_agent_id, (perceptionText, choicesText) =>
         formatTransferRejectedPrompt(this.getWorldContext(event.to_agent_id), event.from_agent_name, event.reason, true, perceptionText, this.skillName, choicesText),
       );
-    } else {
-      await this.sendConversationFollowUp(event.from_agent_id, formatTransferRejectedMessage(event.to_agent_name, event.reason, false));
-      await this.sendConversationFollowUp(event.to_agent_id, formatTransferRejectedMessage(event.from_agent_name, event.reason, true));
+    } else if (event.conversation_id) {
+      // in_conversation: 結果を送信側にキャッシュ。reason から inline 表現を選ぶ。
+      const outcome: InConversationTransferAnnotation['outcome'] =
+        event.reason.kind === 'rejected_by_receiver' ? 'rejected_by_receiver'
+          : event.reason.kind === 'unanswered_speak' ? 'unanswered_speak'
+            : 'inventory_full';
+      this.cacheInConversationTransferAnnotation(event.conversation_id, event.from_agent_id, {
+        partnerName: event.to_agent_name,
+        item: event.item ? { item_id: event.item.item_id, quantity: event.item.quantity } : null,
+        money: event.money,
+        outcome,
+      });
     }
     await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferRejected(event.to_agent_name));
   }
@@ -1351,9 +1421,15 @@ export class DiscordEventHandler {
       await this.sendStandaloneTransferSettlementPrompt(event.to_agent_id, (perceptionText, choicesText) =>
         formatTransferTimeoutPrompt(this.getWorldContext(event.to_agent_id), event.from_agent_name, true, perceptionText, this.skillName, choicesText),
       );
-    } else {
-      await this.sendConversationFollowUp(event.from_agent_id, formatTransferTimeoutMessage(event.to_agent_name, false));
-      await this.sendConversationFollowUp(event.to_agent_id, formatTransferTimeoutMessage(event.from_agent_name, true));
+    } else if (event.conversation_id) {
+      // in_conversation: 会話継続中なら次回 conversation_message に inline 添付。
+      // 会話が既に終わっているケースはここでは検知できないが、closing 系で別途通知される。
+      this.cacheInConversationTransferAnnotation(event.conversation_id, event.from_agent_id, {
+        partnerName: event.to_agent_name,
+        item: event.item ? { item_id: event.item.item_id, quantity: event.item.quantity } : null,
+        money: event.money,
+        outcome: 'timeout',
+      });
     }
     await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferTimeout(event.to_agent_name));
   }
@@ -1366,9 +1442,24 @@ export class DiscordEventHandler {
       await this.sendStandaloneTransferSettlementPrompt(event.to_agent_id, (perceptionText, choicesText) =>
         formatTransferCancelledPrompt(this.getWorldContext(event.to_agent_id), event.from_agent_name, event.reason, true, perceptionText, this.skillName, choicesText),
       );
-    } else {
-      await this.sendConversationFollowUp(event.from_agent_id, formatTransferCancelledMessage(event.to_agent_name, event.reason, false));
-      await this.sendConversationFollowUp(event.to_agent_id, formatTransferCancelledMessage(event.from_agent_name, event.reason, true));
+    } else if (event.conversation_id) {
+      // in_conversation の cancel は会話終了処理に伴う発火が多い。会話継続中なら次の
+      // conversation_message 通知本文に inline 表示される。会話が既に終了している場合は
+      // キャッシュは消費されず数分後に Map から消去されないが、通常は短命なので許容。
+      const annotation: InConversationTransferAnnotation = {
+        partnerName: '',
+        item: event.item ? { item_id: event.item.item_id, quantity: event.item.quantity } : null,
+        money: event.money,
+        outcome: 'timeout', // cancel/timeout 共通の「自動キャンセル」表現を流用
+      };
+      this.cacheInConversationTransferAnnotation(event.conversation_id, event.from_agent_id, {
+        ...annotation,
+        partnerName: event.to_agent_name,
+      });
+      this.cacheInConversationTransferAnnotation(event.conversation_id, event.to_agent_id, {
+        ...annotation,
+        partnerName: event.from_agent_name,
+      });
     }
     await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferCancelled(event.to_agent_name));
   }
@@ -1376,6 +1467,72 @@ export class DiscordEventHandler {
   private async handleTransferEscrowLost(event: Extract<WorldEvent, { type: 'transfer_escrow_lost' }>): Promise<void> {
     await this.sendConversationFollowUp(event.from_agent_id, formatTransferEscrowLostMessage(event.to_agent_name));
     await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferEscrowLost(event.to_agent_name));
+  }
+
+  /**
+   * in_conversation transfer 決着の結果を、相手側 (受け手) に伝えるための一時キャッシュ書き込み。
+   * 次に当該会話で recipientAgentId を listener とする conversation_message 通知が組み立てられた
+   * タイミングで本文に inline で添えられる。
+   */
+  private cacheInConversationTransferAnnotation(
+    conversationId: string,
+    recipientAgentId: string,
+    annotation: InConversationTransferAnnotation,
+  ): void {
+    const key = `${conversationId}:${recipientAgentId}`;
+    this.inConversationTransferAnnotations.set(key, annotation);
+  }
+
+  private consumeInConversationTransferAnnotation(
+    conversationId: string,
+    recipientAgentId: string,
+  ): InConversationTransferAnnotation | undefined {
+    const key = `${conversationId}:${recipientAgentId}`;
+    const annotation = this.inConversationTransferAnnotations.get(key);
+    if (annotation !== undefined) {
+      this.inConversationTransferAnnotations.delete(key);
+    }
+    return annotation;
+  }
+
+  /**
+   * recipientAgentId に届いている pending な in_conversation transfer offer を引く。
+   * conversation_id が一致するものだけ返す。
+   */
+  private resolveInConversationPendingOffer(
+    conversationId: string,
+    recipientAgentId: string,
+  ): { fromName: string; item: { item_id: string; quantity: number } | null; money: number } | null {
+    const recipient = this.engine.state.getLoggedIn(recipientAgentId);
+    if (!recipient || !recipient.pending_transfer_id) {
+      return null;
+    }
+    const offer = this.engine.state.transfers.get(recipient.pending_transfer_id);
+    if (!offer || offer.mode !== 'in_conversation' || offer.conversation_id !== conversationId) {
+      return null;
+    }
+    if (offer.status !== 'open') {
+      return null;
+    }
+    return {
+      fromName: this.engine.getAgentById(offer.from_agent_id)?.agent_name ?? offer.from_agent_id,
+      item: offer.item ? { item_id: offer.item.item_id, quantity: offer.item.quantity } : null,
+      money: offer.money,
+    };
+  }
+
+  /**
+   * 会話 reply プロンプトに乗せる「同梱可能な transfer のヒント」を組み立てる。
+   * 所持アイテムの item_id を集約し、所持金の有無も併せて返す。空なら transfer? は出さない。
+   */
+  private getTransferOptionsHint(agentId: string): TransferOptionsHint {
+    const agent = this.engine.state.getLoggedIn(agentId);
+    if (!agent) {
+      return { item_ids: [], has_money: false };
+    }
+    const item_ids = [...new Set(agent.items.filter((entry) => entry.quantity > 0).map((entry) => entry.item_id))]
+      .sort((left, right) => left.localeCompare(right));
+    return { item_ids, has_money: agent.money > 0 };
   }
 
   private getAgentName(agentId: string): string {

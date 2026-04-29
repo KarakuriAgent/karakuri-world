@@ -116,21 +116,21 @@ describe('karakuri.sh dry-run payloads', () => {
   });
 
   describe('transfer-accept / transfer-reject', () => {
-    it('transfer-accept builds payload with transfer_id', async () => {
-      const result = await runScript('transfer-accept', 'transfer-abc');
+    it('transfer-accept sends empty body (pending_transfer_id resolved server-side)', async () => {
+      const result = await runScript('transfer-accept');
       expect(result).toEqual({
         method: 'POST',
         url: `${BASE_URL}/agents/transfer/accept`,
-        body: { transfer_id: 'transfer-abc' },
+        body: {},
       });
     });
 
-    it('transfer-reject builds payload with transfer_id', async () => {
-      const result = await runScript('transfer-reject', 'transfer-xyz');
+    it('transfer-reject sends empty body', async () => {
+      const result = await runScript('transfer-reject');
       expect(result).toEqual({
         method: 'POST',
         url: `${BASE_URL}/agents/transfer/reject`,
-        body: { transfer_id: 'transfer-xyz' },
+        body: {},
       });
     });
   });

@@ -138,12 +138,6 @@ export type TransferRequest = TransferAttachment & {
   target_agent_id: string;
 };
 
-export interface TransferResponseRequest {
-  transfer_id: string;
-}
-
-export interface TransferRejectRequest extends TransferResponseRequest {}
-
 export interface ConversationStartRequest {
   target_agent_id: string;
   message: string;

@@ -270,6 +270,8 @@ interface TransferEventBase extends EventBase {
   /** 譲渡対象の金額。item 譲渡時は 0。 */
   money: number;
   mode: TransferMode;
+  /** in_conversation モードの場合は会話 ID。standalone モードでは undefined。 */
+  conversation_id?: string;
 }
 
 export interface TransferRequestedEvent extends TransferEventBase {

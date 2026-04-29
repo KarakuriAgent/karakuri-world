@@ -102,17 +102,33 @@ export function buildChoicesPrompt(
         })
     : [];
 
-  const transferLines = canStartStandaloneTransfer
+  // 所持していないものは譲渡の選択肢から外す（手元が空の状態で transfer を選ぶのは無意味）。
+  // 形式は conversation_start と揃え「候補 1 人 = 1 行」。所持アイテムの item_id を
+  // `or` で列挙して、エージェントが payload に書くべき item_id を特定できるようにする。
+  const transferableItemIds = canStartStandaloneTransfer
+    ? [...new Set(agent.items.filter((item) => item.quantity > 0).map((item) => item.item_id))]
+        .sort((left, right) => left.localeCompare(right))
+    : [];
+  const hasTransferableItem = transferableItemIds.length > 0;
+  const hasTransferableMoney = agent.money > 0;
+  const transferPayloadHint = ((): string => {
+    const parts: string[] = [];
+    if (hasTransferableItem) {
+      parts.push(`item: { item_id: ${transferableItemIds.join(' or ')}, quantity: 数量 }`);
+    }
+    if (hasTransferableMoney) {
+      parts.push('money: 金額');
+    }
+    return parts.join(' または ');
+  })();
+  const transferLines = canStartStandaloneTransfer && (hasTransferableItem || hasTransferableMoney)
     ? engine.state
         .listLoggedIn()
         .filter((candidate) => candidate.agent_id !== agentId)
         .filter((candidate) => ['idle', 'in_action'].includes(candidate.state) && candidate.pending_conversation_id === null && !isInTransfer(candidate))
         .filter((candidate) => manhattanDistance(currentNodeId, getAgentCurrentNode(engine, candidate, now)) <= 1)
         .sort((left, right) => left.agent_id.localeCompare(right.agent_id))
-        .flatMap((candidate) => [
-          `- transfer: ${candidate.agent_name} にアイテム1種類を譲渡する (target_agent_id: ${candidate.agent_id}, item: { item_id: アイテムID, quantity: 数量 })`,
-          `- transfer: ${candidate.agent_name} にお金を譲渡する (target_agent_id: ${candidate.agent_id}, money: 金額)`,
-        ])
+        .map((candidate) => `- transfer: ${candidate.agent_name} に譲渡する (target_agent_id: ${candidate.agent_id}, ${transferPayloadHint})`)
     : [];
   const pendingTransferLines = agent.pending_transfer_id
     ? (() => {
@@ -131,8 +147,8 @@ export function buildChoicesPrompt(
           return [] as string[];
         }
         return [
-          `- accept_transfer: ${senderName} からの譲渡を受け取る (transfer_id: ${offer.transfer_id})`,
-          `- reject_transfer: ${senderName} からの譲渡を断る (transfer_id: ${offer.transfer_id})`,
+          `- accept_transfer: ${senderName} からの譲渡を受け取る`,
+          `- reject_transfer: ${senderName} からの譲渡を断る`,
         ];
       })()
     : [];

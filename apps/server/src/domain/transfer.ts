@@ -394,6 +394,7 @@ export function startTransfer(
     money,
     mode,
     expires_at,
+    ...(mode === 'in_conversation' ? { conversation_id: conversationId! } : {}),
   });
   if (mode === 'standalone') {
     engine.state.clearExcludedInfoCommands(from.agent_id);
@@ -477,6 +478,7 @@ function emitTransferEscrowLost(
     mode: offer.mode,
     reason,
     ...(droppedItem ? { dropped_item: { ...droppedItem } } : {}),
+    ...(offer.mode === 'in_conversation' ? { conversation_id: offer.conversation_id } : {}),
   });
 }
 
@@ -554,6 +556,7 @@ export function rejectTransfer(
     money: offer.money,
     mode: offer.mode,
     reason,
+    ...(offer.mode === 'in_conversation' ? { conversation_id: offer.conversation_id } : {}),
   });
   if (offer.mode === 'standalone') {
     engine.state.clearExcludedInfoCommands(byAgentId);
@@ -587,6 +590,7 @@ export function cancelTransfer(engine: WorldEngine, transferId: string, reason: 
     money: offer.money,
     mode: offer.mode,
     reason,
+    ...(offer.mode === 'in_conversation' ? { conversation_id: offer.conversation_id } : {}),
   });
   return { transfer_id: offer.transfer_id, refund_failed: !refundOk };
 }
@@ -679,6 +683,7 @@ export function acceptTransfer(
     money_received: offer.money,
     from_money_balance: sender?.money,
     to_money_balance: updatedReceiver.money,
+    ...(offer.mode === 'in_conversation' ? { conversation_id: offer.conversation_id } : {}),
   });
   if (offer.mode === 'standalone') {
     engine.state.clearExcludedInfoCommands(byAgentId);
@@ -713,6 +718,7 @@ export function handleTransferTimeout(engine: WorldEngine, timer: TransferTimer)
     money: offer.money,
     mode: offer.mode,
     ...(refundOk ? {} : { refund_failed: true }),
+    ...(offer.mode === 'in_conversation' ? { conversation_id: offer.conversation_id } : {}),
   });
 }
 

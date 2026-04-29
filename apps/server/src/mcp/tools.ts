@@ -6,7 +6,7 @@ import type { WorldEngine } from '../engine/world-engine.js';
 import type { NodeId } from '../types/data-model.js';
 import type { InfoCommandChoice } from '../types/choices.js';
 import { createNotificationAcceptedResponse, WorldError, toErrorResponse } from '../types/api.js';
-import { transferAttachmentSchema, transferIdSchema, transferRequestSchema } from '../api/schemas/transfer.js';
+import { transferAttachmentSchema, transferRequestSchema } from '../api/schemas/transfer.js';
 
 export interface McpToolDefinition {
   name: string;
@@ -32,7 +32,8 @@ const nextSpeakerSchema = z.string().min(1);
 const speakSchema = z.object({ message: z.string().min(1), next_speaker_agent_id: nextSpeakerSchema, transfer: transferAttachmentSchema.optional(), transfer_response: z.enum(['accept', 'reject']).optional(), }).strict();
 const endConversationSchema = z.object({ message: z.string().min(1), next_speaker_agent_id: nextSpeakerSchema, transfer_response: z.enum(['accept', 'reject']).optional(), }).strict();
 const transferRequestToolSchema = transferRequestSchema;
-const transferResponseToolSchema = transferIdSchema;
+// accept_transfer / reject_transfer は引数なし。受信側エージェントの pending_transfer_id から自動解決する。
+const transferResponseToolSchema = z.object({}).strict();
 
 function toToolSuccess(payload: unknown): CallToolResult {
   return {
@@ -127,15 +128,15 @@ export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): 
     },
     {
       name: 'accept_transfer',
-      description: '保留中の譲渡を受諾する。',
+      description: '保留中の譲渡を受諾する。引数なし。受信側エージェントの保留オファーが自動解決される。',
       inputSchema: transferResponseToolSchema,
-      execute: wrapTool(transferResponseToolSchema, async (arguments_) => engine.acceptTransfer(agentId, arguments_)),
+      execute: wrapTool(transferResponseToolSchema, async () => engine.acceptTransfer(agentId)),
     },
     {
       name: 'reject_transfer',
-      description: '保留中の譲渡を拒否する。',
+      description: '保留中の譲渡を拒否する。引数なし。受信側エージェントの保留オファーが自動解決される。',
       inputSchema: transferResponseToolSchema,
-      execute: wrapTool(transferResponseToolSchema, async (arguments_) => engine.rejectTransfer(agentId, arguments_)),
+      execute: wrapTool(transferResponseToolSchema, async () => engine.rejectTransfer(agentId)),
     },
     {
       name: 'conversation_start',
