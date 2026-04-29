@@ -117,6 +117,13 @@ export const weatherConfigSchema = z
   })
   .strict();
 
+export const transferConfigSchema = z
+  .object({
+    response_timeout_ms: positiveIntSchema,
+    in_conversation_response_timeout_ms: positiveIntSchema,
+  })
+  .strict();
+
 export const economyConfigSchema = z
   .object({
     initial_money: nonNegativeIntSchema.optional(),
@@ -180,6 +187,7 @@ export const serverConfigSchema = z
         range: z.number().int().min(0),
       })
       .strict(),
+    transfer: transferConfigSchema,
     spawn: z
       .object({
         nodes: z.array(nodeIdSchema).min(1),

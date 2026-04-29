@@ -2,7 +2,7 @@ export type NodeId = `${number}-${number}`;
 
 export type NodeType = 'normal' | 'wall' | 'door' | 'building_interior' | 'npc';
 
-export type AgentState = 'idle' | 'moving' | 'in_action' | 'in_conversation';
+export type AgentState = 'idle' | 'moving' | 'in_action' | 'in_conversation' | 'in_transfer';
 
 export interface SnapshotWeather {
   condition: string;

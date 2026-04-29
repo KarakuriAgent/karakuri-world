@@ -5,11 +5,13 @@ import { AgentStateStore, type LoginAgentParams } from './agent-state.js';
 import { ConversationStateStore } from './conversation-state.js';
 import { RecentServerEventsStore } from './recent-server-events-state.js';
 import { ServerEventStateStore } from './server-event-state.js';
+import { TransferStateStore } from './transfer-state.js';
 
 export class WorldState {
   readonly conversations = new ConversationStateStore();
   readonly serverEvents = new ServerEventStateStore();
   readonly recentServerEvents = new RecentServerEventsStore();
+  readonly transfers = new TransferStateStore();
   private readonly agents: AgentStateStore;
 
   constructor(initialRegistrations: AgentRegistration[] = []) {
@@ -70,6 +72,14 @@ export class WorldState {
 
   setCurrentConversation(agentId: string, conversationId: string | null): LoggedInAgent {
     return this.agents.setCurrentConversation(agentId, conversationId);
+  }
+
+  setActiveTransfer(agentId: string, transferId: string | null): LoggedInAgent {
+    return this.agents.setActiveTransfer(agentId, transferId);
+  }
+
+  setPendingTransfer(agentId: string, transferId: string | null): LoggedInAgent {
+    return this.agents.setPendingTransfer(agentId, transferId);
   }
 
   addPendingServerEvent(agentId: string, serverEventId: string): LoggedInAgent {

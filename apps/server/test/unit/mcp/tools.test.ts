@@ -30,6 +30,9 @@ describe('MCP tools', () => {
       'action',
       'use_item',
       'wait',
+      'transfer',
+      'accept_transfer',
+      'reject_transfer',
       'conversation_start',
       'conversation_accept',
       'conversation_join',
@@ -174,6 +177,62 @@ describe('MCP tools', () => {
 
     expect(action).toBeDefined();
     expect(action!.description).toContain('所持金や必要アイテムが不足していても選択肢に表示されるが');
+  });
+
+  it('rejects transfer payloads that mix item and money via the MCP schema', async () => {
+    const { engine } = createTestWorld();
+    const agent = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const definitions = createMcpToolDefinitions(engine, agent.agent_id);
+    const transfer = definitions.find((definition) => definition.name === 'transfer');
+    expect(transfer).toBeDefined();
+    expect(transfer!.inputSchema.safeParse({ target_agent_id: 'bot-bob', item: { item_id: 'apple', quantity: 1 } }).success).toBe(true);
+    expect(transfer!.inputSchema.safeParse({ target_agent_id: 'bot-bob', money: 100 }).success).toBe(true);
+    expect(transfer!.inputSchema.safeParse({ target_agent_id: 'bot-bob', item: { item_id: 'apple', quantity: 1 }, money: 100 }).success).toBe(false);
+    expect(transfer!.inputSchema.safeParse({ target_agent_id: 'bot-bob' }).success).toBe(false);
+  });
+
+  it('executes transfer / accept_transfer / reject_transfer end-to-end through MCP tools', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        items: [{ item_id: 'apple', name: 'りんご', description: 'りんご', type: 'food', stackable: true }],
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.state.setNode(bob.agent_id, '1-2');
+    engine.state.setItems(alice.agent_id, [{ item_id: 'apple', quantity: 2 }]);
+
+    const aliceDefs = createMcpToolDefinitions(engine, alice.agent_id);
+    const bobDefs = createMcpToolDefinitions(engine, bob.agent_id);
+    const transferTool = aliceDefs.find((definition) => definition.name === 'transfer')!;
+    const acceptTransferTool = bobDefs.find((definition) => definition.name === 'accept_transfer')!;
+    const rejectTransferTool = bobDefs.find((definition) => definition.name === 'reject_transfer')!;
+
+    // 1) transfer 開始 (item 譲渡)
+    const startResult = await transferTool.execute({ target_agent_id: bob.agent_id, item: { item_id: 'apple', quantity: 1 } });
+    expect(startResult.isError).not.toBe(true);
+    const startData = parseToolText(startResult) as { transfer_status: string; transfer_id: string };
+    expect(startData.transfer_status).toBe('pending');
+    expect(typeof startData.transfer_id).toBe('string');
+
+    // 2) accept (receiver = Bob)
+    const acceptResult = await acceptTransferTool.execute({});
+    expect(acceptResult.isError).not.toBe(true);
+    const acceptData = parseToolText(acceptResult) as { transfer_status: string };
+    expect(acceptData.transfer_status).toBe('completed');
+    expect(engine.state.getLoggedIn(bob.agent_id)?.items).toEqual([{ item_id: 'apple', quantity: 1 }]);
+
+    // 3) もう一度 transfer 開始 → reject (receiver = Bob)
+    await transferTool.execute({ target_agent_id: bob.agent_id, item: { item_id: 'apple', quantity: 1 } });
+    const rejectResult = await rejectTransferTool.execute({});
+    expect(rejectResult.isError).not.toBe(true);
+    const rejectData = parseToolText(rejectResult) as { transfer_status: string };
+    expect(rejectData.transfer_status).toBe('rejected');
+    // sender に escrow が返却されている (apple x 1 が alice に戻る)
+    expect(engine.state.getLoggedIn(alice.agent_id)?.items).toEqual([{ item_id: 'apple', quantity: 1 }]);
   });
 
   it('authenticates bearer tokens for MCP requests', async () => {

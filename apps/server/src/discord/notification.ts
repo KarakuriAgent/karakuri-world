@@ -3,6 +3,7 @@ import type { AgentState } from '../types/agent.js';
 import type { PerceptionResponse } from '../types/api.js';
 import type { ConversationClosureReason, ConversationRejectionReason, PendingJoinCancelReason } from '../types/conversation.js';
 import type { ItemType } from '../types/data-model.js';
+import type { TransferCancelReason, TransferRejectReason } from '../types/transfer.js';
 
 export interface WorldContext {
   worldName: string;
@@ -72,20 +73,70 @@ function formatConversationParticipants(participants: ConversationParticipantInf
   return `参加者: ${participants.map((participant) => `${participant.name} (id: ${participant.id})`).join('、')}`;
 }
 
+/**
+ * 会話中に同梱できる transfer の payload ヒント。所持アイテム・所持金の有無で動的に
+ * 「transfer?: ... のどちらか1つ」部分を組み立てるための情報。closing モードでは
+ * 使われない（新規譲渡開始は禁止のため）。
+ */
+export interface TransferOptionsHint {
+  /** 所持中の item_id を ' or ' で並べる用にソート済みの一覧。空なら item 譲渡不可。 */
+  item_ids: readonly string[];
+  /** 所持金 > 0 なら true。 */
+  has_money: boolean;
+}
+
+function formatConversationTransferAttachmentHint(hint: TransferOptionsHint): string {
+  const parts: string[] = [];
+  if (hint.item_ids.length > 0) {
+    parts.push(`{ item: { item_id: ${hint.item_ids.join(' or ')}, quantity: 数量 } }`);
+  }
+  if (hint.has_money) {
+    parts.push('{ money: 正の整数 }');
+  }
+  if (parts.length === 0) {
+    return '';
+  }
+  const body = parts.length === 1 ? parts[0] : `${parts.join(' または ')} のどちらか1つ`;
+  return `, transfer?: ${body}`;
+}
+
 function formatConversationChoices(
   mode: 'reply' | 'closing',
   group: boolean,
+  transferHint?: TransferOptionsHint,
+  hasPendingOffer = false,
 ): string {
   const lines = ['選択肢:'];
+  // pending offer がある時は transfer_response を必須トーンに昇格して LLM が見落とさないようにする。
+  const responseHint = hasPendingOffer
+    ? 'transfer_response: accept または reject (届いている譲渡提案への応答)'
+    : 'transfer_response?: accept|reject';
   if (mode === 'reply') {
-    lines.push('- conversation_speak: 返答する (message: 発言内容, next_speaker_agent_id: 次の話者ID)');
-    lines.push(group
-      ? '- end_conversation: 会話から退出する (message: 最後の発言, next_speaker_agent_id: 次の話者ID)'
-      : '- end_conversation: 会話を終了する (message: お別れのメッセージ, next_speaker_agent_id: 次の話者ID)');
+    const transferAttachment = transferHint ? formatConversationTransferAttachmentHint(transferHint) : '';
+    lines.push(`- conversation_speak: 返答する (message: 発言内容, next_speaker_agent_id: 次の話者ID${transferAttachment}, ${responseHint})`);
+    if (hasPendingOffer) {
+      lines.push(group
+        ? `- end_conversation: 会話から退出する (message: 最後の発言, next_speaker_agent_id: 次の話者ID, ${responseHint})`
+        : `- end_conversation: 会話を終了する (message: お別れのメッセージ, next_speaker_agent_id: 次の話者ID, ${responseHint})`);
+    } else {
+      lines.push(group
+        ? '- end_conversation: 会話から退出する (message: 最後の発言, next_speaker_agent_id: 次の話者ID)'
+        : '- end_conversation: 会話を終了する (message: お別れのメッセージ, next_speaker_agent_id: 次の話者ID)');
+    }
   } else {
-    lines.push('- conversation_speak: お別れのメッセージを送る (message: 発言内容, next_speaker_agent_id: 次の話者ID)');
+    lines.push(`- conversation_speak: お別れのメッセージを送る (message: 発言内容, next_speaker_agent_id: 次の話者ID, ${responseHint})`);
   }
   return lines.join('\n');
+}
+
+/**
+ * 会話 reply / closing プロンプトに付随する in_conversation transfer 関連の inline 注釈。
+ */
+export interface ConversationTransferInline {
+  /** 本文に追加する inline note (offer 通知 / outcome 結果のテキスト)。 */
+  transferNote?: string;
+  /** 受信者が pending な譲渡オファーを抱えているか。choice line の transfer_response トーン切替に使う。 */
+  hasPendingOffer: boolean;
 }
 
 export function formatPerceptionMessage(perception: PerceptionResponse): string {
@@ -250,13 +301,16 @@ export function formatConversationReplyPromptMessage(
   message: string,
   skillName: string,
   participants: ConversationParticipantInfo[] = [],
+  transferHint?: TransferOptionsHint,
+  transferInline: ConversationTransferInline = { hasPendingOffer: false },
 ): string {
   const group = participants.length > 2;
   return joinSections(
     formatWorldContextHeader(ctx),
     formatConversationParticipants(participants),
     `${speakerName}: 「${message}」`,
-    formatActionPrompt(skillName, formatConversationChoices('reply', group)),
+    transferInline.transferNote,
+    formatActionPrompt(skillName, formatConversationChoices('reply', group, transferHint, transferInline.hasPendingOffer)),
   );
 }
 
@@ -266,14 +320,16 @@ export function formatConversationClosingPromptMessage(
   message: string,
   skillName: string,
   participants: ConversationParticipantInfo[] = [],
+  transferInline: ConversationTransferInline = { hasPendingOffer: false },
 ): string {
   const group = participants.length > 2;
   return joinSections(
     formatWorldContextHeader(ctx),
     formatConversationParticipants(participants),
     `${speakerName}: 「${message}」`,
+    transferInline.transferNote,
     'これが最後のメッセージです。',
-    formatActionPrompt(skillName, formatConversationChoices('closing', group)),
+    formatActionPrompt(skillName, formatConversationChoices('closing', group, undefined, transferInline.hasPendingOffer)),
   );
 }
 
@@ -305,13 +361,16 @@ export function formatConversationTurnPromptMessage(
   ctx: WorldContext,
   skillName: string,
   participants: ConversationParticipantInfo[] = [],
+  transferHint?: TransferOptionsHint,
+  transferInline: ConversationTransferInline = { hasPendingOffer: false },
 ): string {
   const group = participants.length > 2;
   return joinSections(
     formatWorldContextHeader(ctx),
     formatConversationParticipants(participants),
+    transferInline.transferNote,
     'あなたの番です。',
-    formatActionPrompt(skillName, formatConversationChoices('reply', group)),
+    formatActionPrompt(skillName, formatConversationChoices('reply', group, transferHint, transferInline.hasPendingOffer)),
   );
 }
 
@@ -319,13 +378,15 @@ export function formatConversationTurnClosingPromptMessage(
   ctx: WorldContext,
   skillName: string,
   participants: ConversationParticipantInfo[] = [],
+  transferInline: ConversationTransferInline = { hasPendingOffer: false },
 ): string {
   const group = participants.length > 2;
   return joinSections(
     formatWorldContextHeader(ctx),
     formatConversationParticipants(participants),
+    transferInline.transferNote,
     'あなたが最後のメッセージを送る番です。',
-    formatActionPrompt(skillName, formatConversationChoices('closing', group)),
+    formatActionPrompt(skillName, formatConversationChoices('closing', group, undefined, transferInline.hasPendingOffer)),
   );
 }
 
@@ -460,6 +521,213 @@ export function formatAvailableActionsInfoMessage(
   return joinSections(formatWorldContextHeader(ctx), actionsText, formatActionPrompt(skillName, choicesText));
 }
 
+function formatTransferSummary(item: { item_id: string; quantity: number } | null, money: number): string {
+  if (item) {
+    return `${item.item_id}×${item.quantity}`;
+  }
+  if (money > 0) {
+    return `${money.toLocaleString('ja-JP')}円`;
+  }
+  return '(空)';
+}
+
+function formatTransferRejectReason(reason: TransferRejectReason): string {
+  switch (reason.kind) {
+    case 'rejected_by_receiver':
+      return '受け取り側が拒否しました。';
+    case 'unanswered_speak':
+      return '受け取り側が発話で応答しなかったため自動拒否されました。';
+    case 'inventory_full':
+      return '受け取り側のインベントリが満杯で受け取れませんでした。';
+  }
+}
+
+function formatTransferCancelReason(reason: TransferCancelReason): string {
+  switch (reason) {
+    case 'server_event':
+      return 'サーバーイベントにより取り消されました。';
+    case 'sender_logged_out':
+      return '送信側がログアウトしたため取り消されました。';
+    case 'receiver_logged_out':
+      return '受信側がログアウトしたため取り消されました。';
+    case 'conversation_closing':
+      return '会話終了処理により取り消されました。';
+    case 'participant_inactive':
+      return '会話参加者の不応答により取り消されました。';
+    case 'error':
+      return 'エラーにより取り消されました。';
+  }
+}
+
+export function formatTransferRequestedMessage(
+  ctx: WorldContext,
+  fromName: string,
+  item: { item_id: string; quantity: number } | null,
+  money: number,
+  skillName: string,
+): string {
+  // standalone 専用の通知。in_conversation のオファー情報は会話メッセージ通知に
+  // inline 統合されるので、ここを通らない。
+  // transfer_id は受信側エージェントの pending_transfer_id から自動解決されるため
+  // payload にも本文にも露出しない。応答期限は他 agent-facing 通知に揃えて出さない
+  // (詳細は world-log 側で観測可能)。
+  const choices = [
+    '選択肢:',
+    '- accept_transfer: 譲渡を受け入れる',
+    '- reject_transfer: 譲渡を拒否する',
+  ].join('\n');
+  return joinSections(
+    formatWorldContextHeader(ctx),
+    `${fromName} から ${formatTransferSummary(item, money)} の譲渡提案が届きました。`,
+    formatActionPrompt(skillName, choices),
+  );
+}
+
+export function formatTransferSentMessage(toName: string, item: { item_id: string; quantity: number } | null, money: number): string {
+  return `${toName} に ${formatTransferSummary(item, money)} の譲渡を提案しました。`;
+}
+
+export function formatTransferAcceptedMessage(name: string, item: { item_id: string; quantity: number } | null, money: number, received: boolean): string {
+  return received
+    ? `${name} から ${formatTransferSummary(item, money)}を受け取りました。`
+    : `${name} が ${formatTransferSummary(item, money)}を受け取りました。`;
+}
+
+export function formatTransferRejectedMessage(name: string, reason: TransferRejectReason, received: boolean): string {
+  if (reason.kind === 'rejected_by_receiver') {
+    return received ? `${name}が受取を拒否しました。` : '受取を拒否しました。';
+  }
+  return received
+    ? `${name} からの譲渡を処理できませんでした。${formatTransferRejectReason(reason)}`
+    : `${name} への譲渡は成立しませんでした。${formatTransferRejectReason(reason)}`;
+}
+
+export function formatTransferTimeoutMessage(name: string, received: boolean): string {
+  return received
+    ? `${name} からの譲渡は応答期限切れになりました。`
+    : `${name} への譲渡は応答期限切れになりました。`;
+}
+
+export function formatTransferCancelledMessage(name: string, reason: TransferCancelReason, received: boolean): string {
+  return received
+    ? `${name} からの譲渡は取り消されました。${formatTransferCancelReason(reason)}`
+    : `${name} への譲渡は取り消されました。${formatTransferCancelReason(reason)}`;
+}
+
+export function formatTransferEscrowLostMessage(name: string): string {
+  return `${name} との譲渡で返却処理に失敗しました。管理者確認が必要です。`;
+}
+
+/**
+ * 会話メッセージ通知に inline で添える「pending な譲渡オファーが届いている」案内。
+ * 受け手は次の発話 (conversation_speak / end_conversation) で transfer_response を返す前提。
+ */
+export function formatInConversationPendingTransferLine(
+  fromName: string,
+  item: { item_id: string; quantity: number } | null,
+  money: number,
+): string {
+  return `${fromName} から ${formatTransferSummary(item, money)} の譲渡提案が届いています（次の発話で transfer_response: accept または reject を指定。省略すると自動 reject）。`;
+}
+
+/**
+ * 会話メッセージ通知に inline で添える「直前のターンで譲渡が決着した」結果サマリ。
+ * 送信側 (元のオファー出し手) に対して「相手が受け取った/断った」を伝える。
+ */
+export function formatInConversationTransferOutcomeLine(
+  partnerName: string,
+  item: { item_id: string; quantity: number } | null,
+  money: number,
+  outcome: 'accepted' | 'rejected_by_receiver' | 'unanswered_speak' | 'inventory_full' | 'timeout',
+): string {
+  const summary = formatTransferSummary(item, money);
+  switch (outcome) {
+    case 'accepted':
+      return `${partnerName} が ${summary}を受け取りました。`;
+    case 'rejected_by_receiver':
+      return `${partnerName}が受取を拒否しました。`;
+    case 'unanswered_speak':
+      return `${partnerName} が応答しなかったため ${summary} の譲渡は自動キャンセルされました。`;
+    case 'inventory_full':
+      return `${partnerName} のインベントリが満杯のため ${summary} の譲渡は受け取れませんでした。`;
+    case 'timeout':
+      return `${summary} の譲渡は応答期限切れで自動キャンセルされました。`;
+  }
+}
+
+/**
+ * standalone モードの譲渡が決着したあと、両者は idle に戻る。次の行動を選べるように
+ * 結果メッセージ + perception + 選択肢を含むプロンプトを返す。in_conversation モード
+ * では会話フローが次のターンを案内するので、こちらは不要。
+ */
+export function formatTransferAcceptedPrompt(
+  ctx: WorldContext,
+  partnerName: string,
+  item: { item_id: string; quantity: number } | null,
+  money: number,
+  received: boolean,
+  perceptionText: string,
+  skillName: string,
+  choicesText?: string,
+): string {
+  return joinSections(
+    formatWorldContextHeader(ctx),
+    formatTransferAcceptedMessage(partnerName, item, money, received),
+    perceptionText,
+    formatActionPrompt(skillName, choicesText),
+  );
+}
+
+export function formatTransferRejectedPrompt(
+  ctx: WorldContext,
+  partnerName: string,
+  reason: TransferRejectReason,
+  received: boolean,
+  perceptionText: string,
+  skillName: string,
+  choicesText?: string,
+): string {
+  return joinSections(
+    formatWorldContextHeader(ctx),
+    formatTransferRejectedMessage(partnerName, reason, received),
+    perceptionText,
+    formatActionPrompt(skillName, choicesText),
+  );
+}
+
+export function formatTransferTimeoutPrompt(
+  ctx: WorldContext,
+  partnerName: string,
+  received: boolean,
+  perceptionText: string,
+  skillName: string,
+  choicesText?: string,
+): string {
+  return joinSections(
+    formatWorldContextHeader(ctx),
+    formatTransferTimeoutMessage(partnerName, received),
+    perceptionText,
+    formatActionPrompt(skillName, choicesText),
+  );
+}
+
+export function formatTransferCancelledPrompt(
+  ctx: WorldContext,
+  partnerName: string,
+  reason: TransferCancelReason,
+  received: boolean,
+  perceptionText: string,
+  skillName: string,
+  choicesText?: string,
+): string {
+  return joinSections(
+    formatWorldContextHeader(ctx),
+    formatTransferCancelledMessage(partnerName, reason, received),
+    perceptionText,
+    formatActionPrompt(skillName, choicesText),
+  );
+}
+
 export function formatWorldLogLoggedIn(): string {
   return '世界にログインしました';
 }
@@ -474,6 +742,8 @@ export function formatAgentLoggedOutMessage(cancelledState: AgentState, cancelle
       return '移動をキャンセルし、ログアウトしました。';
     case 'in_conversation':
       return '会話を終了し、ログアウトしました。';
+    case 'in_transfer':
+      return '譲渡処理を中断し、ログアウトしました。';
     case 'idle':
       return 'ログアウトしました。';
   }
@@ -490,6 +760,8 @@ export function formatWorldLogLoggedOut(cancelledState: AgentState, cancelledAct
       return '移動をキャンセルし、ログアウトしました';
     case 'in_conversation':
       return '会話を終了し、ログアウトしました';
+    case 'in_transfer':
+      return '譲渡処理を中断し、ログアウトしました';
     case 'idle':
       return '世界からログアウトしました';
   }
@@ -578,4 +850,28 @@ export function formatIdleReminderMessage(
 
 export function formatWorldLogServerEvent(description: string): string {
   return `【サーバーイベント】${description}`;
+}
+
+export function formatWorldLogTransferRequested(toName: string): string {
+  return `${toName} に譲渡を提案しました`;
+}
+
+export function formatWorldLogTransferAccepted(name: string, received: boolean): string {
+  return received ? `${name} からの譲渡を受け取りました` : `${name} が譲渡を受け取りました`;
+}
+
+export function formatWorldLogTransferRejected(name: string): string {
+  return `${name} との譲渡は成立しませんでした`;
+}
+
+export function formatWorldLogTransferTimeout(name: string): string {
+  return `${name} との譲渡は期限切れになりました`;
+}
+
+export function formatWorldLogTransferCancelled(name: string): string {
+  return `${name} との譲渡は取り消されました`;
+}
+
+export function formatWorldLogTransferEscrowLost(name: string): string {
+  return `${name} との譲渡で返却処理に失敗しました`;
 }

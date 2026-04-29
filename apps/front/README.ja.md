@@ -62,7 +62,7 @@ npx wrangler secret put SNAPSHOT_PUBLISH_AUTH_KEY
 
 `SNAPSHOT_PUBLISH_AUTH_KEY` は本体サーバー（`@karakuri-world/server`）が `/api/publish-snapshot` / `/api/publish-agent-history` を叩くときに使う共有 Bearer トークン。本体側 `.env` の同名変数と完全一致させる。空文字・空白のみは Worker 起動時の env parse で失敗するので不可。未設定なら publish endpoint は default-deny の `503` のままとなる。
 
-対話式デバッグフロー（`npm run debug:start`）でも同じ secret を入力する。
+対話式デバッグフロー（`npm run debug:start`）でも、本体サーバーで使っている値と同じ共有キー `SNAPSHOT_PUBLISH_AUTH_KEY` を入力する。
 
 ### 4. R2 バケットの CORS を設定
 

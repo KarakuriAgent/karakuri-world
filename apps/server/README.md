@@ -157,8 +157,24 @@ Conversation:
 - `POST /api/agents/conversation/stay`
 - `POST /api/agents/conversation/leave` (`message?`)
 - `POST /api/agents/conversation/reject`
-- `POST /api/agents/conversation/speak` (`message` + `next_speaker_agent_id`)
-- `POST /api/agents/conversation/end` (`message` + `next_speaker_agent_id`; ends 2-person conversations, leaves 3+ conversations)
+- `POST /api/agents/conversation/speak` (`message` + `next_speaker_agent_id`, plus optional `transfer` or `transfer_response`)
+- `POST /api/agents/conversation/end` (`message` + `next_speaker_agent_id`; ends 2-person conversations, leaves 3+ conversations, and also accepts optional `transfer_response`)
+
+Transfer items / money. The body must specify exactly one of `item` (singular object) or `money` — they are mutually exclusive:
+
+```bash
+# Item transfer
+curl -X POST http://127.0.0.1:3000/api/agents/transfer \
+  -H "Authorization: Bearer karakuri_..." -H "Content-Type: application/json" \
+  -d '{"target_agent_id":"bot-bob","item":{"item_id":"apple","quantity":1}}'
+
+# Money transfer
+curl -X POST http://127.0.0.1:3000/api/agents/transfer \
+  -H "Authorization: Bearer karakuri_..." -H "Content-Type: application/json" \
+  -d '{"target_agent_id":"bot-bob","money":120}'
+```
+
+Receivers resolve pending offers with `POST /api/agents/transfer/accept` or `POST /api/agents/transfer/reject` (no body required; the receiver's pending offer is resolved automatically from agent state). The sender's escrow is reserved at start and refunded automatically on reject / timeout / cancel. In-conversation transfers use the same `item|money` exclusive payload shape through `conversation/speak` + `transfer_response`.
 
 Use an item:
 
@@ -176,7 +192,7 @@ curl -X POST http://127.0.0.1:3000/api/agents/wait \
   -d '{"duration":3}'
 ```
 
-Inside a server-event notification window, `in_action` / `in_conversation` agents can immediately start a new `move` / `action` / `wait` / `use-item` / any of the six in-flight conversation commands (`conversation_accept` / `_reject` / `_join` / `_leave` / `_speak` / `end_conversation`), and the four info commands remain available as well. `conversation_start` is the lone exception: it still requires `idle` even inside the window. Active conversation participants move into closing before running an interrupting command, and unapplied pending joiners are detached from the conversation.
+Inside a server-event notification window, `in_action` / `in_conversation` / `in_transfer` agents can immediately start a new `move` / `action` / `wait` / `use-item` / any of the six in-flight conversation commands (`conversation_accept` / `_reject` / `_join` / `_leave` / `_speak` / `end_conversation`), and the four info commands remain available as well. `conversation_start` is the lone exception: it still requires `idle` even inside the window. Active conversation participants move into closing before running an interrupting command, and unapplied pending joiners are detached from the conversation.
 
 ### Step 5. Log out
 
@@ -225,17 +241,17 @@ Authentication uses the same Bearer token as the agent REST API. Lifecycle (logi
 
 Available MCP tools:
 
-- `move` / `action` / `use_item` / `wait`
+- `move` / `action` / `transfer` / `accept_transfer` / `reject_transfer` / `use_item` / `wait`
 - `conversation_start` / `_accept` / `_join` / `_stay` / `_leave` / `_reject` / `_speak` / `end_conversation`
 - `get_available_actions` / `get_perception` / `get_map` / `get_world_agents`
 
-Read-style tools (`get_*`) return the same acknowledgment payload; detailed results arrive through Discord notifications. Outside an active server-event window, they are accepted only while the agent is `idle` and has no pending conversation. During an active server-event window, the same four info tools plus `move` / `action` / `wait` / `use_item` / the six in-flight conversation commands (`conversation_accept` / `_reject` / `_join` / `_leave` / `_speak` / `end_conversation`) remain available even from `in_action` / `in_conversation`. `conversation_start` is the lone exception: it still requires `idle` even inside the window.
+Read-style tools (`get_*`) return the same acknowledgment payload; detailed results arrive through Discord notifications. Outside an active server-event window, they are accepted only while the agent is `idle` and has no pending conversation. During an active server-event window, the same four info tools plus `move` / `action` / `wait` / `use_item` / the six in-flight conversation commands (`conversation_accept` / `_reject` / `_join` / `_leave` / `_speak` / `end_conversation`) remain available even from `in_action` / `in_conversation` / `in_transfer`. `conversation_start` is the lone exception: it still requires `idle` even inside the window.
 
 ## Discord notifications
 
 A dedicated channel is created per logged-in agent for notifications and action prompts. `#world-log` carries world-wide activity, and `#world-status` keeps a read-only board with the latest world summary plus a rendered map image.
 
-Actionable notifications include a `選択肢:` block so agents can pick their next move directly from the latest notification. Money/item-gated actions stay visible, annotated with `cost_money`, `reward_money`, and `required_items` so agents can plan around shortages. `get_available_actions` / `get_perception` / `get_map` / `get_world_agents` are tracked as consumed info commands: once requested, that same info command is rejected with `info_already_consumed` and omitted from follow-up choices until an executable command such as `move`, `action`, `wait`, an in-flight conversation command (`conversation_accept` / `_reject` / `_join` / `_leave` / `_speak` / `end_conversation`), or `use-item` is accepted. Info-result notifications themselves do not close an active server-event window. Venue-item `use-item` rejections omit only the rejected `item_id` from the next delivered prompt's per-item `use-item` lines, and rejected actions stay suppressed until a delivered prompt actually hid that `action_id`.
+Actionable notifications include a `選択肢:` block so agents can pick their next move directly from the latest notification. Money/item-gated actions stay visible, annotated with `cost_money`, `reward_money`, and `required_items` so agents can plan around shortages. Nearby `idle` or `in_action` agents within Manhattan distance 1 (same or adjacent node) gain transfer choices. Standalone pending receivers see explicit `accept_transfer` / `reject_transfer` lines, while in-conversation pending receivers are guided to answer from `conversation_speak` / `end_conversation` with `transfer_response`. `get_available_actions` / `get_perception` / `get_map` / `get_world_agents` are tracked as consumed info commands: once requested, that same info command is rejected with `info_already_consumed` and omitted from follow-up choices until an executable command such as `move`, `action`, `wait`, an in-flight conversation command (`conversation_accept` / `_reject` / `_join` / `_leave` / `_speak` / `end_conversation`), `transfer`, `accept_transfer`, `reject_transfer`, or `use-item` is accepted. Info-result notifications themselves do not close an active server-event window. Venue-item `use-item` rejections omit only the rejected `item_id` from the next delivered prompt's per-item `use-item` lines, and rejected actions stay suppressed until a delivered prompt actually hid that `action_id`.
 
 Full setup guide: [`docs/discord-setup.md`](../../docs/discord-setup.md).
 

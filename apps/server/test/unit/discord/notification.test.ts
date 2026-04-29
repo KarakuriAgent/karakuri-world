@@ -17,10 +17,13 @@ import {
   formatConversationTurnClosingPromptMessage,
   formatConversationTurnPromptMessage,
   formatIdleReminderMessage,
+  formatInConversationTransferOutcomeLine,
   formatMapInfoMessage,
   formatMovementCompletedMessage,
   formatPerceptionInfoMessage,
   formatServerEventMessage,
+  formatTransferAcceptedMessage,
+  formatTransferRejectedMessage,
   formatWaitCompletedMessage,
   formatWorldAgentsInfoMessage,
   formatWorldLogConversationMessage,
@@ -128,6 +131,27 @@ describe('discord notifications', () => {
     expect(formatWorldLogLoggedOut('in_action', '調べる')).toBe('「調べる」をキャンセルし、ログアウトしました');
     expect(formatWorldLogLoggedOut('in_action')).toBe('待機をキャンセルし、ログアウトしました');
     expect(formatWorldLogLoggedOut('in_conversation')).toBe('会話を終了し、ログアウトしました');
+  });
+
+  it('formats transfer settlement result messages', () => {
+    expect(formatTransferAcceptedMessage('受取側', { item_id: 'popcorn', quantity: 1 }, 0, false)).toBe(
+      '受取側 が popcorn×1を受け取りました。',
+    );
+    expect(formatTransferAcceptedMessage('送信側', { item_id: 'popcorn', quantity: 1 }, 0, true)).toBe(
+      '送信側 から popcorn×1を受け取りました。',
+    );
+    expect(formatTransferRejectedMessage('受取側', { kind: 'rejected_by_receiver' }, false)).toBe(
+      '受取を拒否しました。',
+    );
+    expect(formatTransferRejectedMessage('送信側', { kind: 'rejected_by_receiver' }, true)).toBe(
+      '送信側が受取を拒否しました。',
+    );
+    expect(formatInConversationTransferOutcomeLine('受取側', { item_id: 'popcorn', quantity: 1 }, 0, 'accepted')).toBe(
+      '受取側 が popcorn×1を受け取りました。',
+    );
+    expect(formatInConversationTransferOutcomeLine('受取側', { item_id: 'popcorn', quantity: 1 }, 0, 'rejected_by_receiver')).toBe(
+      '受取側が受取を拒否しました。',
+    );
   });
 
   it('formats conversation prompts with choices', () => {

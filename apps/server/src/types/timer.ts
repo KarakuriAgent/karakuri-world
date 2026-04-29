@@ -9,7 +9,8 @@ export type TimerType =
   | 'conversation_turn'
   | 'conversation_interval'
   | 'conversation_inactive_check'
-  | 'idle_reminder';
+  | 'idle_reminder'
+  | 'transfer';
 
 export interface TimerBase {
   timer_id: string;
@@ -84,6 +85,14 @@ export interface IdleReminderTimer extends TimerBase {
   idle_since: number;
 }
 
+export interface TransferTimer extends TimerBase {
+  type: 'transfer';
+  transfer_id: string;
+  from_agent_id: string;
+  to_agent_id: string;
+  agent_ids: [string, string];
+}
+
 export type Timer =
   | MovementTimer
   | ActionTimer
@@ -93,4 +102,5 @@ export type Timer =
   | ConversationTurnTimer
   | ConversationIntervalTimer
   | ConversationInactiveCheckTimer
-  | IdleReminderTimer;
+  | IdleReminderTimer
+  | TransferTimer;

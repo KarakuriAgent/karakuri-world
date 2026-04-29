@@ -412,6 +412,59 @@ describe('StatusBoard', () => {
     expect(channel.sendMessage).toHaveBeenCalled();
   });
 
+  it('refreshes when a transfer starts and when its timeout clears the transfer state', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        items: [{ item_id: 'apple', name: 'りんご', description: 'りんご', type: 'food', stackable: true }],
+      },
+    });
+    const channel = createMockChannel();
+    const board = new StatusBoard(engine, channel, {
+      debounceMs: 10,
+      mapImage: null,
+    });
+
+    const alice = await engine.registerAgent({
+      discord_bot_id: 'discord-bot-a',
+    });
+    const bob = await engine.registerAgent({
+      discord_bot_id: 'discord-bot-b',
+    });
+
+    board.register();
+    await flushAsyncWork();
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
+    engine.state.setNode(bob.agent_id, '3-2');
+    engine.state.setItems(alice.agent_id, [{ item_id: 'apple', quantity: 1 }]);
+    await vi.advanceTimersByTimeAsync(10);
+    await flushAsyncWork();
+
+    channel.fetchMessages.mockClear();
+    channel.sendMessage.mockClear();
+
+    engine.startTransfer(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      item: { item_id: 'apple', quantity: 1 },
+    });
+    await vi.advanceTimersByTimeAsync(10);
+    await flushAsyncWork();
+
+    expect(channel.fetchMessages).toHaveBeenCalled();
+    expect(channel.sendMessage.mock.calls[0]?.[0]).toContain('譲渡中');
+
+    channel.fetchMessages.mockClear();
+    channel.sendMessage.mockClear();
+
+    await vi.advanceTimersByTimeAsync(engine.config.transfer.response_timeout_ms + 11);
+    await flushAsyncWork();
+
+    expect(channel.fetchMessages).toHaveBeenCalled();
+    expect(channel.sendMessage.mock.calls[0]?.[0]).toContain('待機中');
+    expect(channel.sendMessage.mock.calls[0]?.[0]).not.toContain('譲渡中');
+  });
+
   it('runs an immediate catch-up refresh when a conversation handoff elapses mid-refresh', async () => {
     const { engine } = createTestWorld({
       config: {

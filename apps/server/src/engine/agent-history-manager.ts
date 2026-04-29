@@ -30,6 +30,12 @@ export type PersistedHistoryDetail =
   | { type: 'conversation_leave' }
   | { type: 'conversation_interval_interrupted'; speaker_agent_id: string }
   | { type: 'conversation_ended'; final_speaker_agent_id?: string }
+  | { type: 'transfer_requested' }
+  | { type: 'transfer_accepted' }
+  | { type: 'transfer_rejected' }
+  | { type: 'transfer_timeout' }
+  | { type: 'transfer_cancelled' }
+  | { type: 'transfer_escrow_lost' }
   | { type: 'server_event_fired' };
 
 export interface PersistedHistoryEntry {
@@ -202,6 +208,13 @@ function resolveHistoryAgentIds(
           ? [event.final_speaker_agent_id, ...event.participant_agent_ids]
           : [...event.participant_agent_ids],
       );
+    case 'transfer_requested':
+    case 'transfer_accepted':
+    case 'transfer_rejected':
+    case 'transfer_timeout':
+    case 'transfer_cancelled':
+    case 'transfer_escrow_lost':
+      return dedupeAgentIds([event.from_agent_id, event.to_agent_id]);
     case 'server_event_fired':
       return dedupeAgentIds([...event.delivered_agent_ids, ...event.pending_agent_ids]);
     default: {
@@ -268,6 +281,18 @@ function buildSummary(event: Extract<WorldEvent, { type: SupportedHistoryEventTy
       return { emoji: '⏸️', title: '会話が割り込まれた', text: event.message };
     case 'conversation_ended':
       return { emoji: '🏁', title: '会話終了', text: event.final_message ?? '会話が終了した。' };
+    case 'transfer_requested':
+      return { emoji: '🤝', title: '譲渡提案', text: `${event.from_agent_name} が ${event.to_agent_name} に譲渡を提案した。` };
+    case 'transfer_accepted':
+      return { emoji: '🎁', title: '譲渡成立', text: `${event.to_agent_name} が譲渡を受け取った。` };
+    case 'transfer_rejected':
+      return { emoji: '↩️', title: '譲渡拒否', text: `${event.to_agent_name} が譲渡を受け取らなかった。` };
+    case 'transfer_timeout':
+      return { emoji: '⌛', title: '譲渡タイムアウト', text: `${event.to_agent_name} への譲渡が期限切れになった。` };
+    case 'transfer_cancelled':
+      return { emoji: '⚠️', title: '譲渡取消', text: `${event.to_agent_name} への譲渡が取り消された。` };
+    case 'transfer_escrow_lost':
+      return { emoji: '🚨', title: '譲渡返却失敗', text: `${event.to_agent_name} との譲渡で返却処理に失敗した。` };
     case 'server_event_fired':
       return { emoji: '📣', title: 'サーバーイベント発生', text: event.description };
     default: {

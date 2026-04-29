@@ -10,6 +10,18 @@ export type ConversationClosureReason =
   | 'ended_by_agent'
   | 'participant_logged_out';
 export type PendingJoinCancelReason = ConversationClosureReason | 'agent_unavailable';
+export type TransferMode = 'standalone' | 'in_conversation';
+export type TransferRejectReason =
+  | { kind: 'rejected_by_receiver' }
+  | { kind: 'unanswered_speak' }
+  | { kind: 'inventory_full'; dropped_item: AgentItem | null };
+export type TransferCancelReason =
+  | 'server_event'
+  | 'sender_logged_out'
+  | 'receiver_logged_out'
+  | 'conversation_closing'
+  | 'participant_inactive'
+  | 'error';
 
 export interface AgentItem {
   item_id: string;
@@ -42,6 +54,12 @@ export type EventType =
   | 'conversation_closing'
   | 'conversation_ended'
   | 'conversation_pending_join_cancelled'
+  | 'transfer_requested'
+  | 'transfer_accepted'
+  | 'transfer_rejected'
+  | 'transfer_timeout'
+  | 'transfer_cancelled'
+  | 'transfer_escrow_lost'
   | 'server_event_fired'
   | 'idle_reminder_fired'
   | 'map_info_requested'
@@ -275,6 +293,58 @@ export interface ConversationPendingJoinCancelledEvent extends EventBase {
   reason: PendingJoinCancelReason;
 }
 
+interface TransferEventBase extends EventBase {
+  transfer_id: string;
+  from_agent_id: string;
+  from_agent_name: string;
+  to_agent_id: string;
+  to_agent_name: string;
+  /** 譲渡対象のアイテム1種類。money 譲渡時は null。 */
+  item: AgentItem | null;
+  /** 譲渡対象の金額。item 譲渡時は 0。 */
+  money: number;
+  mode: TransferMode;
+  /** in_conversation モードの場合は会話 ID。standalone モードでは undefined。 */
+  conversation_id?: string;
+}
+
+export interface TransferRequestedEvent extends TransferEventBase {
+  type: 'transfer_requested';
+  expires_at: number;
+}
+
+export interface TransferAcceptedEvent extends TransferEventBase {
+  type: 'transfer_accepted';
+  /** receiver に実際に渡ったアイテム。money 譲渡時は null。 */
+  item_granted: AgentItem | null;
+  /** receiver の inventory 不足で sender に戻ったアイテム。通常 null。 */
+  item_dropped: AgentItem | null;
+  money_received: number;
+  from_money_balance?: number;
+  to_money_balance: number;
+}
+
+export interface TransferRejectedEvent extends TransferEventBase {
+  type: 'transfer_rejected';
+  reason: TransferRejectReason;
+}
+
+export interface TransferTimeoutEvent extends TransferEventBase {
+  type: 'transfer_timeout';
+  refund_failed?: boolean;
+}
+
+export interface TransferCancelledEvent extends TransferEventBase {
+  type: 'transfer_cancelled';
+  reason: TransferCancelReason;
+}
+
+export interface TransferEscrowLostEvent extends TransferEventBase {
+  type: 'transfer_escrow_lost';
+  reason: 'registration_writeback_failed' | 'inventory_overflow_on_refund';
+  dropped_item?: AgentItem | null;
+}
+
 export interface ServerEventFiredEvent extends EventBase {
   type: 'server_event_fired';
   server_event_id: string;
@@ -336,6 +406,12 @@ export type WorldEvent =
   | ConversationClosingEvent
   | ConversationEndedEvent
   | ConversationPendingJoinCancelledEvent
+  | TransferRequestedEvent
+  | TransferAcceptedEvent
+  | TransferRejectedEvent
+  | TransferTimeoutEvent
+  | TransferCancelledEvent
+  | TransferEscrowLostEvent
   | ServerEventFiredEvent
   | IdleReminderFiredEvent
   | MapInfoRequestedEvent

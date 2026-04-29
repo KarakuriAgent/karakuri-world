@@ -1,6 +1,6 @@
 import type { NodeId } from './data-model.js';
 
-export type AgentState = 'idle' | 'moving' | 'in_action' | 'in_conversation';
+export type AgentState = 'idle' | 'moving' | 'in_action' | 'in_conversation' | 'in_transfer';
 
 export interface AgentItem {
   item_id: string;
@@ -27,6 +27,8 @@ export interface LoggedInAgent {
   discord_channel_id: string;
   pending_conversation_id: string | null;
   current_conversation_id: string | null;
+  active_transfer_id: string | null;
+  pending_transfer_id: string | null;
   pending_server_event_ids: string[];
   active_server_event_id: string | null;
   /** 通常のクールダウン対象となる直前の action_id */

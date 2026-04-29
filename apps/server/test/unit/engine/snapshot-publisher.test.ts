@@ -53,6 +53,15 @@ describe('SnapshotPublisher', () => {
     expect(isSnapshotTriggerEvent('available_actions_requested')).toBe(false);
   });
 
+  it('treats every transfer event as a snapshot trigger', () => {
+    expect(isSnapshotTriggerEvent('transfer_requested')).toBe(true);
+    expect(isSnapshotTriggerEvent('transfer_accepted')).toBe(true);
+    expect(isSnapshotTriggerEvent('transfer_rejected')).toBe(true);
+    expect(isSnapshotTriggerEvent('transfer_timeout')).toBe(true);
+    expect(isSnapshotTriggerEvent('transfer_cancelled')).toBe(true);
+    expect(isSnapshotTriggerEvent('transfer_escrow_lost')).toBe(true);
+  });
+
   it('pushes the snapshot body with JSON content-type and bearer auth', async () => {
     vi.useFakeTimers();
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));

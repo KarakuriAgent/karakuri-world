@@ -13,6 +13,7 @@ import {
   getConversationActionableSpeaker,
 } from './conversation.js';
 import { cancelActiveItemUse } from './use-item.js';
+import { cancelTransfer } from './transfer.js';
 import { cancelActiveWait } from './wait.js';
 
 function maybeCleanupServerEvent(engine: WorldEngine, serverEventId: string): boolean {
@@ -168,6 +169,13 @@ export function handleServerEventInterruption(engine: WorldEngine, agentId: stri
     cancelActiveAction(engine, agentId);
     cancelActiveWait(engine, agentId);
     cancelActiveItemUse(engine, agentId);
+  } else if (refreshedAgent.state === 'in_transfer') {
+    const transferId = refreshedAgent.active_transfer_id ?? refreshedAgent.pending_transfer_id;
+    if (transferId) {
+      cancelTransfer(engine, transferId, 'server_event');
+    }
+    clearActiveServerEvent(engine, agentId);
+    return;
   } else if (refreshedAgent.state === 'in_conversation') {
     const conversation = findConversationByAgent(engine, agentId, ['active', 'closing']);
     if (conversation) {

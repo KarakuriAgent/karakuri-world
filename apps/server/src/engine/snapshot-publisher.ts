@@ -58,6 +58,12 @@ type SnapshotTriggerEventType =
   | 'conversation_turn_started'
   | 'conversation_closing'
   | 'conversation_ended'
+  | 'transfer_requested'
+  | 'transfer_accepted'
+  | 'transfer_rejected'
+  | 'transfer_timeout'
+  | 'transfer_cancelled'
+  | 'transfer_escrow_lost'
   | 'server_event_fired';
 
 type NonTriggerEventType =
@@ -124,6 +130,12 @@ export function isSnapshotTriggerEvent(type: EventType): boolean {
     case 'conversation_turn_started':
     case 'conversation_closing':
     case 'conversation_ended':
+    case 'transfer_requested':
+    case 'transfer_accepted':
+    case 'transfer_rejected':
+    case 'transfer_timeout':
+    case 'transfer_cancelled':
+    case 'transfer_escrow_lost':
     case 'server_event_fired':
       return true;
     case 'conversation_inactive_check':

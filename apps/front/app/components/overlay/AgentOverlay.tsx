@@ -68,6 +68,8 @@ function getCurrentActivitySummary(
       );
     case 'in_action':
       return 'アクション中';
+    case 'in_transfer':
+      return '譲渡中';
     case 'idle':
       return '待機中';
   }

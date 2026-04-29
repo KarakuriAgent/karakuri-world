@@ -14,6 +14,9 @@ conversation:
   turn_timeout_ms: 600000
 perception:
   range: 5
+transfer:
+  response_timeout_ms: 600000
+  in_conversation_response_timeout_ms: 300000
 spawn:
   nodes:
     - 20-1

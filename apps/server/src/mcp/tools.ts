@@ -6,6 +6,7 @@ import type { WorldEngine } from '../engine/world-engine.js';
 import type { NodeId } from '../types/data-model.js';
 import type { InfoCommandChoice } from '../types/choices.js';
 import { createNotificationAcceptedResponse, WorldError, toErrorResponse } from '../types/api.js';
+import { transferAttachmentSchema, transferRequestSchema } from '../api/schemas/transfer.js';
 
 export interface McpToolDefinition {
   name: string;
@@ -28,6 +29,11 @@ const actionSchema = z
   })
   .strict();
 const nextSpeakerSchema = z.string().min(1);
+const speakSchema = z.object({ message: z.string().min(1), next_speaker_agent_id: nextSpeakerSchema, transfer: transferAttachmentSchema.optional(), transfer_response: z.enum(['accept', 'reject']).optional(), }).strict();
+const endConversationSchema = z.object({ message: z.string().min(1), next_speaker_agent_id: nextSpeakerSchema, transfer_response: z.enum(['accept', 'reject']).optional(), }).strict();
+const transferRequestToolSchema = transferRequestSchema;
+// accept_transfer / reject_transfer は引数なし。受信側エージェントの pending_transfer_id から自動解決する。
+const transferResponseToolSchema = z.object({}).strict();
 
 function toToolSuccess(payload: unknown): CallToolResult {
   return {
@@ -115,6 +121,24 @@ export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): 
       execute: wrapTool(z.object({ duration: z.number().int().min(1).max(6) }).strict(), async (arguments_) => engine.executeWait(agentId, arguments_)),
     },
     {
+      name: 'transfer',
+      description: '隣接するエージェントへ「アイテム1種類 (item: { item_id, quantity })」または「お金 (money: 正の整数)」のどちらか1つを譲渡する。両方同時指定・両方未指定は不可。受信側は accept_transfer / reject_transfer で応答する。',
+      inputSchema: transferRequestToolSchema,
+      execute: wrapTool(transferRequestToolSchema, async (arguments_) => engine.startTransfer(agentId, arguments_)),
+    },
+    {
+      name: 'accept_transfer',
+      description: '保留中の譲渡を受諾する。引数なし。受信側エージェントの保留オファーが自動解決される。',
+      inputSchema: transferResponseToolSchema,
+      execute: wrapTool(transferResponseToolSchema, async () => engine.acceptTransfer(agentId)),
+    },
+    {
+      name: 'reject_transfer',
+      description: '保留中の譲渡を拒否する。引数なし。受信側エージェントの保留オファーが自動解決される。',
+      inputSchema: transferResponseToolSchema,
+      execute: wrapTool(transferResponseToolSchema, async () => engine.rejectTransfer(agentId)),
+    },
+    {
       name: 'conversation_start',
       description: '他のエージェントに話しかけて会話を開始する。隣接または同一ノードにいるエージェントが対象。idle状態でのみ実行可能。',
       inputSchema: z.object({ target_agent_id: z.string().min(1), message: z.string().min(1) }).strict(),
@@ -153,14 +177,14 @@ export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): 
     {
       name: 'conversation_speak',
       description: '会話中に発言する。in_conversation状態で自分のターンのときのみ実行可能。next_speaker_agent_id で次の話者を指名する必要がある。',
-      inputSchema: z.object({ message: z.string().min(1), next_speaker_agent_id: nextSpeakerSchema }).strict(),
-      execute: wrapTool(z.object({ message: z.string().min(1), next_speaker_agent_id: nextSpeakerSchema }).strict(), async (arguments_) => engine.speak(agentId, arguments_)),
+      inputSchema: speakSchema,
+      execute: wrapTool(speakSchema, async (arguments_) => engine.speak(agentId, arguments_)),
     },
     {
       name: 'end_conversation',
       description: '会話を終了または退出する。2人会話では message を最後のメッセージとして送り会話全体を終了する。3人以上の会話では自分だけ退出し、next_speaker_agent_id で残留話者を指名する。2人会話では next_speaker_agent_id は受け取るが使用されない。',
-      inputSchema: z.object({ message: z.string().min(1), next_speaker_agent_id: nextSpeakerSchema }).strict(),
-      execute: wrapTool(z.object({ message: z.string().min(1), next_speaker_agent_id: nextSpeakerSchema }).strict(), async (arguments_) => engine.endConversation(agentId, arguments_)),
+      inputSchema: endConversationSchema,
+      execute: wrapTool(endConversationSchema, async (arguments_) => engine.endConversation(agentId, arguments_)),
     },
     {
       name: 'get_available_actions',

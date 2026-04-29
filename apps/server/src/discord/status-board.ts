@@ -36,6 +36,12 @@ const STATUS_TRIGGERING_EVENTS = new Set<EventType>([
   'conversation_inactive_check',
   'conversation_ended',
   'conversation_pending_join_cancelled',
+  'transfer_requested',
+  'transfer_accepted',
+  'transfer_rejected',
+  'transfer_timeout',
+  'transfer_cancelled',
+  'transfer_escrow_lost',
   'server_event_fired',
 ]);
 
@@ -273,6 +279,7 @@ export class StatusBoard {
       case 'item_use':
       case 'conversation_interval':
       case 'conversation_turn':
+      case 'transfer':
         // +1ms: refresh after the timer fires so the snapshot reflects the completed state.
         return timer.fires_at + 1;
       case 'conversation_accept':

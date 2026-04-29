@@ -168,6 +168,8 @@ const mapRenderThemeSchema = z.object({
   default_text_color: z.string(),
 });
 
+const agentStateSchema = z.enum(['idle', 'moving', 'in_action', 'in_conversation', 'in_transfer']);
+
 const worldSnapshotSchema = z.object({
   world: z.object({
     name: z.string(),
@@ -231,7 +233,7 @@ const worldSnapshotSchema = z.object({
       agent_id: z.string(),
       agent_name: z.string(),
       node_id: z.string(),
-      state: z.enum(['idle', 'moving', 'in_action', 'in_conversation']),
+      state: agentStateSchema,
       discord_channel_id: z.string(),
       money: z.number(),
       items: z.array(z.unknown()),
@@ -311,6 +313,22 @@ const agentItemSchema = z
     quantity: z.number(),
   })
   .passthrough();
+const transferEventFields = {
+  transfer_id: z.string(),
+  from_agent_id: z.string(),
+  from_agent_name: z.string(),
+  to_agent_id: z.string(),
+  to_agent_name: z.string(),
+  item: agentItemSchema.nullable(),
+  money: z.number(),
+  mode: z.enum(['standalone', 'in_conversation']),
+  conversation_id: z.string().optional(),
+};
+const transferRejectReasonSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('rejected_by_receiver') }),
+  z.object({ kind: z.literal('unanswered_speak') }),
+  z.object({ kind: z.literal('inventory_full'), dropped_item: agentItemSchema.nullable() }),
+]);
 
 const worldEventSchema = z.discriminatedUnion('type', [
   eventBaseSchema.extend({
@@ -326,7 +344,7 @@ const worldEventSchema = z.discriminatedUnion('type', [
     agent_name: z.string(),
     node_id: z.string(),
     discord_channel_id: z.string(),
-    cancelled_state: z.enum(['idle', 'moving', 'in_action', 'in_conversation']),
+    cancelled_state: agentStateSchema,
     cancelled_action_name: z.string().optional(),
   }),
   eventBaseSchema.extend({
@@ -509,6 +527,48 @@ const worldEventSchema = z.discriminatedUnion('type', [
     ]),
   }),
   eventBaseSchema.extend({
+    type: z.literal('transfer_requested'),
+    ...transferEventFields,
+    expires_at: z.number().int().nonnegative(),
+  }),
+  eventBaseSchema.extend({
+    type: z.literal('transfer_accepted'),
+    ...transferEventFields,
+    item_granted: agentItemSchema.nullable(),
+    item_dropped: agentItemSchema.nullable(),
+    money_received: z.number(),
+    from_money_balance: z.number().optional(),
+    to_money_balance: z.number(),
+  }),
+  eventBaseSchema.extend({
+    type: z.literal('transfer_rejected'),
+    ...transferEventFields,
+    reason: transferRejectReasonSchema,
+  }),
+  eventBaseSchema.extend({
+    type: z.literal('transfer_timeout'),
+    ...transferEventFields,
+    refund_failed: z.boolean().optional(),
+  }),
+  eventBaseSchema.extend({
+    type: z.literal('transfer_cancelled'),
+    ...transferEventFields,
+    reason: z.enum([
+      'server_event',
+      'sender_logged_out',
+      'receiver_logged_out',
+      'conversation_closing',
+      'participant_inactive',
+      'error',
+    ]),
+  }),
+  eventBaseSchema.extend({
+    type: z.literal('transfer_escrow_lost'),
+    ...transferEventFields,
+    reason: z.enum(['registration_writeback_failed', 'inventory_overflow_on_refund']),
+    dropped_item: agentItemSchema.nullable().optional(),
+  }),
+  eventBaseSchema.extend({
     type: z.literal('server_event_fired'),
     server_event_id: z.string(),
     description: z.string(),
@@ -543,6 +603,12 @@ export const KNOWN_WORLD_EVENT_TYPES = [
   'conversation_closing',
   'conversation_ended',
   'conversation_pending_join_cancelled',
+  'transfer_requested',
+  'transfer_accepted',
+  'transfer_rejected',
+  'transfer_timeout',
+  'transfer_cancelled',
+  'transfer_escrow_lost',
   'server_event_fired',
 ] as const satisfies readonly PersistedSpectatorEventType[];
 

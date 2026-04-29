@@ -29,7 +29,16 @@ export type ApiErrorCode =
   | 'cannot_nominate_self'
   | 'not_found'
   | 'invalid_config'
-  | 'validation_error';
+  | 'validation_error'
+  | 'transfer_role_conflict'
+  | 'transfer_already_settled'
+  | 'transfer_refund_failed';
+
+export type TransferRoleConflictReason =
+  | 'sender_active_transfer_id_set'
+  | 'sender_pending_transfer_id_set'
+  | 'receiver_active_transfer_id_set'
+  | 'receiver_pending_transfer_id_set';
 
 export interface ErrorResponse {
   error: ApiErrorCode;
@@ -115,6 +124,20 @@ export interface WaitResponse {
   completes_at: number;
 }
 
+/**
+ * 譲渡時の payload。
+ * - `item` を指定する場合: `{ item: { item_id, quantity } }`（quantity は正の整数）
+ * - `money` を指定する場合: `{ money: 正の整数 }`
+ * `item` と `money` は排他で、どちらか一方のみ。
+ */
+export type TransferAttachment =
+  | { item: { item_id: string; quantity: number }; money?: undefined }
+  | { item?: undefined; money: number };
+
+export type TransferRequest = TransferAttachment & {
+  target_agent_id: string;
+};
+
 export interface ConversationStartRequest {
   target_agent_id: string;
   message: string;
@@ -139,11 +162,14 @@ export interface ConversationAcceptRequest {
 export interface ConversationSpeakRequest {
   message: string;
   next_speaker_agent_id: string;
+  transfer?: TransferAttachment;
+  transfer_response?: 'accept' | 'reject';
 }
 
 export interface ConversationEndRequest {
   message: string;
   next_speaker_agent_id: string;
+  transfer_response?: 'accept' | 'reject';
 }
 
 export interface OkResponse {
@@ -164,8 +190,24 @@ export function createNotificationAcceptedResponse(): NotificationAcceptedRespon
   };
 }
 
+export type TransferFailureReason =
+  | 'persist_failed'
+  | 'role_conflict'
+  | 'overflow_inventory_full'
+  | 'overflow_money'
+  | 'validation_failed';
+
 export interface ConversationSpeakResponse {
   turn: number;
+  transfer_status?: 'pending' | 'completed' | 'rejected' | 'failed';
+  transfer_id?: string;
+  failure_reason?: TransferFailureReason;
+}
+
+export interface TransferActionResponse extends NotificationAcceptedResponse {
+  transfer_status: 'pending' | 'completed' | 'rejected' | 'failed';
+  transfer_id?: string;
+  failure_reason?: TransferFailureReason;
 }
 
 export interface FireServerEventRequest {
