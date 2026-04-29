@@ -33,12 +33,16 @@ import {
   formatConversationTurnClosingPromptMessage,
   formatConversationTurnPromptMessage,
   formatTransferAcceptedMessage,
+  formatTransferAcceptedPrompt,
   formatTransferCancelledMessage,
+  formatTransferCancelledPrompt,
   formatTransferEscrowLostMessage,
   formatTransferRejectedMessage,
+  formatTransferRejectedPrompt,
   formatTransferRequestedMessage,
   formatTransferSentMessage,
   formatTransferTimeoutMessage,
+  formatTransferTimeoutPrompt,
   formatIdleReminderMessage,
   formatItemUseCompletedMessage,
   formatItemUseVenueRejectedMessage,
@@ -1280,31 +1284,92 @@ export class DiscordEventHandler {
       this.engine.config.timezone,
       this.skillName,
       event.mode,
+      event.transfer_id,
     ));
     await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferRequested(event.to_agent_name));
   }
 
+  /**
+   * standalone モードの譲渡決着後、両者は idle に戻る。次の行動を選べるよう
+   * sendToAgentClearingServerEventBuilt 経由で perception + 選択肢付き prompt を送る。
+   * in_conversation モードは会話フローが次ターンを案内するので、現状の info-only 通知を維持。
+   */
+  private async sendStandaloneTransferSettlementPrompt(
+    agentId: string,
+    buildPrompt: (perceptionText: string, choicesText: string | undefined) => string,
+  ): Promise<void> {
+    const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
+    let consumedRejectedActionId: string | null = null;
+    let consumedUsedItemId: string | null = null;
+    await this.sendToAgentClearingServerEventBuilt(agentId, () => {
+      const perceptionText = this.getPerceptionText(agentId);
+      if (!perceptionText) {
+        return null;
+      }
+      const choicesPrompt = this.getChoicesPrompt(agentId, undefined, suppressionSnapshot);
+      consumedRejectedActionId = choicesPrompt.consumedRejectedActionId;
+      consumedUsedItemId = choicesPrompt.consumedUsedItemId;
+      return buildPrompt(perceptionText, choicesPrompt.choicesText);
+    }, () => this.clearChoicesPromptSuppressionsIfCurrent(agentId, consumedRejectedActionId, consumedUsedItemId));
+  }
+
   private async handleTransferAccepted(event: Extract<WorldEvent, { type: 'transfer_accepted' }>): Promise<void> {
-    await this.sendConversationFollowUp(event.from_agent_id, formatTransferAcceptedMessage(event.to_agent_name, event.item, event.money, false));
-    await this.sendConversationFollowUp(event.to_agent_id, formatTransferAcceptedMessage(event.from_agent_name, event.item, event.money, true));
+    if (event.mode === 'standalone') {
+      await this.sendStandaloneTransferSettlementPrompt(event.from_agent_id, (perceptionText, choicesText) =>
+        formatTransferAcceptedPrompt(this.getWorldContext(event.from_agent_id), event.to_agent_name, event.item, event.money, false, perceptionText, this.skillName, choicesText),
+      );
+      await this.sendStandaloneTransferSettlementPrompt(event.to_agent_id, (perceptionText, choicesText) =>
+        formatTransferAcceptedPrompt(this.getWorldContext(event.to_agent_id), event.from_agent_name, event.item, event.money, true, perceptionText, this.skillName, choicesText),
+      );
+    } else {
+      await this.sendConversationFollowUp(event.from_agent_id, formatTransferAcceptedMessage(event.to_agent_name, event.item, event.money, false));
+      await this.sendConversationFollowUp(event.to_agent_id, formatTransferAcceptedMessage(event.from_agent_name, event.item, event.money, true));
+    }
     await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferAccepted(event.to_agent_name, false));
   }
 
   private async handleTransferRejected(event: Extract<WorldEvent, { type: 'transfer_rejected' }>): Promise<void> {
-    await this.sendConversationFollowUp(event.from_agent_id, formatTransferRejectedMessage(event.to_agent_name, event.reason, false));
-    await this.sendConversationFollowUp(event.to_agent_id, formatTransferRejectedMessage(event.from_agent_name, event.reason, true));
+    if (event.mode === 'standalone') {
+      await this.sendStandaloneTransferSettlementPrompt(event.from_agent_id, (perceptionText, choicesText) =>
+        formatTransferRejectedPrompt(this.getWorldContext(event.from_agent_id), event.to_agent_name, event.reason, false, perceptionText, this.skillName, choicesText),
+      );
+      await this.sendStandaloneTransferSettlementPrompt(event.to_agent_id, (perceptionText, choicesText) =>
+        formatTransferRejectedPrompt(this.getWorldContext(event.to_agent_id), event.from_agent_name, event.reason, true, perceptionText, this.skillName, choicesText),
+      );
+    } else {
+      await this.sendConversationFollowUp(event.from_agent_id, formatTransferRejectedMessage(event.to_agent_name, event.reason, false));
+      await this.sendConversationFollowUp(event.to_agent_id, formatTransferRejectedMessage(event.from_agent_name, event.reason, true));
+    }
     await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferRejected(event.to_agent_name));
   }
 
   private async handleTransferTimeout(event: Extract<WorldEvent, { type: 'transfer_timeout' }>): Promise<void> {
-    await this.sendConversationFollowUp(event.from_agent_id, formatTransferTimeoutMessage(event.to_agent_name, false));
-    await this.sendConversationFollowUp(event.to_agent_id, formatTransferTimeoutMessage(event.from_agent_name, true));
+    if (event.mode === 'standalone') {
+      await this.sendStandaloneTransferSettlementPrompt(event.from_agent_id, (perceptionText, choicesText) =>
+        formatTransferTimeoutPrompt(this.getWorldContext(event.from_agent_id), event.to_agent_name, false, perceptionText, this.skillName, choicesText),
+      );
+      await this.sendStandaloneTransferSettlementPrompt(event.to_agent_id, (perceptionText, choicesText) =>
+        formatTransferTimeoutPrompt(this.getWorldContext(event.to_agent_id), event.from_agent_name, true, perceptionText, this.skillName, choicesText),
+      );
+    } else {
+      await this.sendConversationFollowUp(event.from_agent_id, formatTransferTimeoutMessage(event.to_agent_name, false));
+      await this.sendConversationFollowUp(event.to_agent_id, formatTransferTimeoutMessage(event.from_agent_name, true));
+    }
     await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferTimeout(event.to_agent_name));
   }
 
   private async handleTransferCancelled(event: Extract<WorldEvent, { type: 'transfer_cancelled' }>): Promise<void> {
-    await this.sendConversationFollowUp(event.from_agent_id, formatTransferCancelledMessage(event.to_agent_name, event.reason, false));
-    await this.sendConversationFollowUp(event.to_agent_id, formatTransferCancelledMessage(event.from_agent_name, event.reason, true));
+    if (event.mode === 'standalone') {
+      await this.sendStandaloneTransferSettlementPrompt(event.from_agent_id, (perceptionText, choicesText) =>
+        formatTransferCancelledPrompt(this.getWorldContext(event.from_agent_id), event.to_agent_name, event.reason, false, perceptionText, this.skillName, choicesText),
+      );
+      await this.sendStandaloneTransferSettlementPrompt(event.to_agent_id, (perceptionText, choicesText) =>
+        formatTransferCancelledPrompt(this.getWorldContext(event.to_agent_id), event.from_agent_name, event.reason, true, perceptionText, this.skillName, choicesText),
+      );
+    } else {
+      await this.sendConversationFollowUp(event.from_agent_id, formatTransferCancelledMessage(event.to_agent_name, event.reason, false));
+      await this.sendConversationFollowUp(event.to_agent_id, formatTransferCancelledMessage(event.from_agent_name, event.reason, true));
+    }
     await this.sendWorldLogForAgent(event.from_agent_id, formatWorldLogTransferCancelled(event.to_agent_name));
   }
 

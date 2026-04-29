@@ -508,6 +508,7 @@ export function formatTransferRequestedMessage(
   timezone: string,
   skillName: string,
   mode: TransferMode,
+  transferId: string,
 ): string {
   const choices = mode === 'in_conversation'
     ? [
@@ -517,12 +518,13 @@ export function formatTransferRequestedMessage(
       ].join('\n')
     : [
         '選択肢:',
-        '- accept_transfer: 譲渡を受け入れる (transfer_id: 通知の transfer_id)',
-        '- reject_transfer: 譲渡を拒否する (transfer_id: 通知の transfer_id)',
+        `- accept_transfer: 譲渡を受け入れる (transfer_id: ${transferId})`,
+        `- reject_transfer: 譲渡を拒否する (transfer_id: ${transferId})`,
       ].join('\n');
   return joinSections(
     formatWorldContextHeader(ctx),
     `${fromName} から ${formatTransferSummary(item, money)} の譲渡提案が届きました。`,
+    `transfer_id: ${transferId}`,
     `応答期限: ${formatTime(expiresAt, timezone)}`,
     formatActionPrompt(skillName, choices),
   );
@@ -558,6 +560,79 @@ export function formatTransferCancelledMessage(name: string, reason: TransferCan
 
 export function formatTransferEscrowLostMessage(name: string): string {
   return `${name} との譲渡で返却処理に失敗しました。管理者確認が必要です。`;
+}
+
+/**
+ * standalone モードの譲渡が決着したあと、両者は idle に戻る。次の行動を選べるように
+ * 結果メッセージ + perception + 選択肢を含むプロンプトを返す。in_conversation モード
+ * では会話フローが次のターンを案内するので、こちらは不要。
+ */
+export function formatTransferAcceptedPrompt(
+  ctx: WorldContext,
+  partnerName: string,
+  item: { item_id: string; quantity: number } | null,
+  money: number,
+  received: boolean,
+  perceptionText: string,
+  skillName: string,
+  choicesText?: string,
+): string {
+  return joinSections(
+    formatWorldContextHeader(ctx),
+    formatTransferAcceptedMessage(partnerName, item, money, received),
+    perceptionText,
+    formatActionPrompt(skillName, choicesText),
+  );
+}
+
+export function formatTransferRejectedPrompt(
+  ctx: WorldContext,
+  partnerName: string,
+  reason: TransferRejectReason,
+  received: boolean,
+  perceptionText: string,
+  skillName: string,
+  choicesText?: string,
+): string {
+  return joinSections(
+    formatWorldContextHeader(ctx),
+    formatTransferRejectedMessage(partnerName, reason, received),
+    perceptionText,
+    formatActionPrompt(skillName, choicesText),
+  );
+}
+
+export function formatTransferTimeoutPrompt(
+  ctx: WorldContext,
+  partnerName: string,
+  received: boolean,
+  perceptionText: string,
+  skillName: string,
+  choicesText?: string,
+): string {
+  return joinSections(
+    formatWorldContextHeader(ctx),
+    formatTransferTimeoutMessage(partnerName, received),
+    perceptionText,
+    formatActionPrompt(skillName, choicesText),
+  );
+}
+
+export function formatTransferCancelledPrompt(
+  ctx: WorldContext,
+  partnerName: string,
+  reason: TransferCancelReason,
+  received: boolean,
+  perceptionText: string,
+  skillName: string,
+  choicesText?: string,
+): string {
+  return joinSections(
+    formatWorldContextHeader(ctx),
+    formatTransferCancelledMessage(partnerName, reason, received),
+    perceptionText,
+    formatActionPrompt(skillName, choicesText),
+  );
 }
 
 export function formatWorldLogLoggedIn(): string {
