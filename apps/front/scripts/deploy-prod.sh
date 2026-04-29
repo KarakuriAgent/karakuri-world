@@ -32,23 +32,11 @@ fi
 if [ -z "$WORKER_URL" ]; then
   echo ""
   echo "Warning: Worker URL を検出できませんでした。"
-  echo "  手動で curl -i <WORKER_URL>/ を実行して DO の初回 boot をトリガしてください。"
-  exit 0
-fi
-
-# ==== Warm up Worker DO so snapshot publishing alarms start ====
-echo ""
-echo "Worker DO をウォームアップ中 ($WORKER_URL)..."
-WARMUP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$WORKER_URL/" || echo "000")
-if [ "$WARMUP_STATUS" = "204" ] || [ "$WARMUP_STATUS" = "200" ]; then
-  echo "Worker DO ウォームアップ完了 (HTTP $WARMUP_STATUS)"
-else
-  echo "Error: Worker DO ウォームアップの応答が想定外でした (HTTP $WARMUP_STATUS)"
-  echo "  DO の alarm 連鎖が起動しないまま snapshot publisher が休眠状態となるため、デプロイを失敗扱いにします。"
-  echo "  原因を解消したうえで再実行するか、手動で curl -i $WORKER_URL/ を成功させてから利用してください。"
-  exit 1
+  echo "  wrangler deploy 自体は成功しています。必要であれば Cloudflare Dashboard / wrangler の出力から URL を確認してください。"
 fi
 
 echo ""
 echo "===== Production deploy 完了 ====="
-echo "Worker: $WORKER_URL"
+if [ -n "$WORKER_URL" ]; then
+  echo "Worker: $WORKER_URL"
+fi
