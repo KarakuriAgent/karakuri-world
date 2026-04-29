@@ -64,7 +64,7 @@ npx wrangler secret put SNAPSHOT_PUBLISH_AUTH_KEY
 
 `SNAPSHOT_PUBLISH_AUTH_KEY` is the shared Bearer token the backend (`@karakuri-world/server`) uses when calling `/api/publish-snapshot` and `/api/publish-agent-history`. It must match the same-named variable in the backend `.env` exactly. Empty or whitespace-only values fail the Worker env parse at boot; leaving it unset keeps those publish endpoints in the default-deny `503` state.
 
-The interactive debug flow (`npm run debug:start`) prompts for the same `SNAPSHOT_PUBLISH_AUTH_KEY` value that your backend uses.
+The interactive debug flow (`npm run debug:start`) prompts for the same secret.
 
 ### 4. Configure R2 bucket CORS
 
@@ -100,9 +100,8 @@ npm run deploy:prod
 
 1. Fail closed if `wrangler.toml` still contains placeholder R2 bucket names
 2. Run `npx wrangler deploy`
-3. `curl` the Worker URL once so `UIBridgeDurableObject.boot()` runs immediately and starts the quiet-period alarm path
 
-> **Note**: If step 3 does not succeed, the quiet-period fallback resync will not start.
+No post-deploy warm-up request is needed. The relay Durable Object boots automatically when the backend sends the first authenticated `POST /api/publish-snapshot` or `POST /api/publish-agent-history`.
 
 ### 6. Deploy the frontend (Cloudflare Pages)
 

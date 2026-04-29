@@ -62,7 +62,7 @@ npx wrangler secret put SNAPSHOT_PUBLISH_AUTH_KEY
 
 `SNAPSHOT_PUBLISH_AUTH_KEY` は本体サーバー（`@karakuri-world/server`）が `/api/publish-snapshot` / `/api/publish-agent-history` を叩くときに使う共有 Bearer トークン。本体側 `.env` の同名変数と完全一致させる。空文字・空白のみは Worker 起動時の env parse で失敗するので不可。未設定なら publish endpoint は default-deny の `503` のままとなる。
 
-対話式デバッグフロー（`npm run debug:start`）でも、本体サーバーで使っている値と同じ共有キー `SNAPSHOT_PUBLISH_AUTH_KEY` を入力する。
+対話式デバッグフロー（`npm run debug:start`）でも同じ secret を入力する。
 
 ### 4. R2 バケットの CORS を設定
 
@@ -98,9 +98,8 @@ npm run deploy:prod
 
 1. `wrangler.toml` にプレースホルダ R2 バケット名が残っていたら fail-closed で停止
 2. `npx wrangler deploy` でデプロイ
-3. Worker URL に対して 1 回 `curl` を打ち、`UIBridgeDurableObject.boot()` を即時起動して静穏期 alarm 経路を立ち上げる
 
-> **注意**: 3 のウォームアップが成功しないと静穏期 fallback resync が始まらない。
+デプロイ後のウォームアップリクエストは不要。relay Durable Object は、backend から最初の認証済み `POST /api/publish-snapshot` または `POST /api/publish-agent-history` が届いた時点で自動的に起動する。
 
 ### 6. フロントエンドをデプロイ（Cloudflare Pages）
 
