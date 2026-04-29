@@ -276,6 +276,71 @@ describe('transfer API', () => {
     expect(engine.state.getLoggedIn(bob.data.agent_id)?.items).toEqual([{ item_id: 'apple', quantity: 1 }]);
   });
 
+  it('starts the in-conversation transfer response timeout after the message delivery interval', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        conversation: {
+          interval_ms: 500,
+        },
+        transfer: {
+          in_conversation_response_timeout_ms: 1,
+        },
+        items: [{ item_id: 'apple', name: 'りんご', description: 'りんご', type: 'food', stackable: true }],
+      },
+    });
+    const { app } = createApp(engine, { adminKey: ADMIN_KEY, publicBaseUrl: PUBLIC_BASE_URL });
+    const alice = await registerAgent(app, 'bot-alice');
+    const bob = await registerAgent(app, 'bot-bob');
+
+    await requestJson(app, '/api/agents/login', { method: 'POST', headers: { Authorization: `Bearer ${alice.data.api_key}` } });
+    await requestJson(app, '/api/agents/login', { method: 'POST', headers: { Authorization: `Bearer ${bob.data.api_key}` } });
+    engine.state.setNode(alice.data.agent_id, '1-1');
+    engine.state.setNode(bob.data.agent_id, '1-2');
+    engine.state.setItems(alice.data.agent_id, [{ item_id: 'apple', quantity: 1 }]);
+
+    await requestJson(app, '/api/agents/conversation/start', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${alice.data.api_key}` },
+      body: JSON.stringify({ target_agent_id: bob.data.agent_id, message: 'hello' }),
+    });
+    await requestJson(app, '/api/agents/conversation/accept', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${bob.data.api_key}` },
+      body: JSON.stringify({ message: 'hi' }),
+    });
+
+    vi.advanceTimersByTime(500);
+    const spoke = await requestJson(app, '/api/agents/conversation/speak', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${alice.data.api_key}` },
+      body: JSON.stringify({
+        message: 'take this',
+        next_speaker_agent_id: bob.data.agent_id,
+        transfer: { item: { item_id: 'apple', quantity: 1 } },
+      }),
+    });
+
+    expect(spoke.response.status).toBe(200);
+    expect(spoke.data.transfer_status).toBe('pending');
+
+    vi.advanceTimersByTime(500);
+
+    expect(engine.state.transfers.get(spoke.data.transfer_id)?.status).toBe('open');
+
+    const reply = await requestJson(app, '/api/agents/conversation/speak', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${bob.data.api_key}` },
+      body: JSON.stringify({
+        message: 'thanks',
+        next_speaker_agent_id: alice.data.agent_id,
+        transfer_response: 'accept',
+      }),
+    });
+    expect(reply.response.status).toBe(200);
+    expect(reply.data.transfer_status).toBe('completed');
+    expect(engine.state.getLoggedIn(bob.data.agent_id)?.items).toEqual([{ item_id: 'apple', quantity: 1 }]);
+  });
+
   it('auto-rejects a pending in-conversation transfer before starting a new one on speak', async () => {
     const { engine } = createTestWorld({
       config: {

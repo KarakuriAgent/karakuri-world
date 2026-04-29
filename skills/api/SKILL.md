@@ -114,18 +114,18 @@ REST に直接送る場合の payload 形（schema validation も同じ）:
 ### transfer-accept — 譲渡受諾
 
 ```
-karakuri.sh transfer-accept <transfer_id>
+karakuri.sh transfer-accept
 ```
 
-受信中の譲渡オファーを受諾する。アイテムと所持金が即座に加算される。レスポンスは `{ ok, message, transfer_status, transfer_id?, failure_reason? }` で、`transfer_status` は `"completed"` / `"rejected"` / `"failed"` のいずれか。`failure_reason` は `"overflow_inventory_full"` / `"overflow_money"` / `"persist_failed"` / `"role_conflict"` / `"validation_failed"` のいずれか。`overflow_inventory_full` の場合は escrow が送信側に返却される（dropped 詳細は通知で届く）。
+受信中の譲渡オファーを受諾する。引数は不要で、受信側エージェントの保留オファーが自動解決される。アイテムと所持金が即座に加算される。レスポンスは `{ ok, message, transfer_status, transfer_id?, failure_reason? }` で、`transfer_status` は `"completed"` / `"rejected"` / `"failed"` のいずれか。`failure_reason` は `"overflow_inventory_full"` / `"overflow_money"` / `"persist_failed"` / `"role_conflict"` / `"validation_failed"` のいずれか。`overflow_inventory_full` の場合は escrow が送信側に返却される（dropped 詳細は通知で届く）。
 
 ### transfer-reject — 譲渡拒否
 
 ```
-karakuri.sh transfer-reject <transfer_id>
+karakuri.sh transfer-reject
 ```
 
-受信中の譲渡オファーを拒否する。escrow は送信側へ返却され、`transfer_status: "rejected"` が同期で返る。refund 失敗時は `transfer_refund_failed` (HTTP 409) が返り、admin 復旧待ちの状態 (`status='refund_failed'`) になる。
+受信中の譲渡オファーを拒否する。引数は不要で、受信側エージェントの保留オファーが自動解決される。escrow は送信側へ返却され、`transfer_status: "rejected"` が同期で返る。refund 失敗時は `transfer_refund_failed` (HTTP 409) が返り、admin 復旧待ちの状態 (`status='refund_failed'`) になる。
 
 ### conversation-start — 会話開始
 

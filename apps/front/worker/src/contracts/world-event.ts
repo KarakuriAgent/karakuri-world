@@ -20,6 +20,7 @@ export type TransferCancelReason =
   | 'sender_logged_out'
   | 'receiver_logged_out'
   | 'conversation_closing'
+  | 'participant_inactive'
   | 'error';
 
 export interface AgentItem {
@@ -303,6 +304,8 @@ interface TransferEventBase extends EventBase {
   /** 譲渡対象の金額。item 譲渡時は 0。 */
   money: number;
   mode: TransferMode;
+  /** in_conversation モードの場合は会話 ID。standalone モードでは undefined。 */
+  conversation_id?: string;
 }
 
 export interface TransferRequestedEvent extends TransferEventBase {
@@ -328,6 +331,7 @@ export interface TransferRejectedEvent extends TransferEventBase {
 
 export interface TransferTimeoutEvent extends TransferEventBase {
   type: 'transfer_timeout';
+  refund_failed?: boolean;
 }
 
 export interface TransferCancelledEvent extends TransferEventBase {

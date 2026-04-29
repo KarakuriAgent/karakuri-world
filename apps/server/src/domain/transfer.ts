@@ -300,6 +300,14 @@ function cloneItem(item: ItemRequirement | null): AgentItem | null {
   return item ? { item_id: item.item_id, quantity: item.quantity } : null;
 }
 
+function calculateTransferExpiresAt(engine: WorldEngine, mode: TransferMode, startedAt: number): number {
+  const responseTimeoutMs = mode === 'in_conversation'
+    ? engine.config.transfer.in_conversation_response_timeout_ms
+    : engine.config.transfer.response_timeout_ms;
+  const deliveryDelayMs = mode === 'in_conversation' ? engine.config.conversation.interval_ms : 0;
+  return startedAt + deliveryDelayMs + responseTimeoutMs;
+}
+
 export function startTransfer(
   engine: WorldEngine,
   fromId: string,
@@ -311,9 +319,8 @@ export function startTransfer(
   const { from, to, item, money } = validateTransfer(engine, fromId, toId, payload, mode, conversationId);
   const transfer_id = `transfer-${randomUUID()}`;
   acquireTransferRolesPair(engine, from.agent_id, to.agent_id, transfer_id, mode);
-  const expires_at = Date.now() + (mode === 'in_conversation'
-    ? engine.config.transfer.in_conversation_response_timeout_ms
-    : engine.config.transfer.response_timeout_ms);
+  const started_at = Date.now();
+  const expires_at = calculateTransferExpiresAt(engine, mode, started_at);
   const offer: TransferOffer = mode === 'in_conversation'
     ? {
         transfer_id,
@@ -322,7 +329,7 @@ export function startTransfer(
         item: cloneItem(item),
         money,
         status: 'open',
-        started_at: Date.now(),
+        started_at,
         expires_at,
         mode,
         conversation_id: conversationId!,
@@ -334,7 +341,7 @@ export function startTransfer(
         item: cloneItem(item),
         money,
         status: 'open',
-        started_at: Date.now(),
+        started_at,
         expires_at,
         mode,
       };

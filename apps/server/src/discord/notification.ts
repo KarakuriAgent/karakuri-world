@@ -589,11 +589,14 @@ export function formatTransferSentMessage(toName: string, item: { item_id: strin
 
 export function formatTransferAcceptedMessage(name: string, item: { item_id: string; quantity: number } | null, money: number, received: boolean): string {
   return received
-    ? `${name} から ${formatTransferSummary(item, money)} を受け取りました。`
-    : `${name} が ${formatTransferSummary(item, money)} の譲渡を受け取りました。`;
+    ? `${name} から ${formatTransferSummary(item, money)}を受け取りました。`
+    : `${name} が ${formatTransferSummary(item, money)}を受け取りました。`;
 }
 
 export function formatTransferRejectedMessage(name: string, reason: TransferRejectReason, received: boolean): string {
+  if (reason.kind === 'rejected_by_receiver') {
+    return received ? `${name}が受取を拒否しました。` : '受取を拒否しました。';
+  }
   return received
     ? `${name} からの譲渡を処理できませんでした。${formatTransferRejectReason(reason)}`
     : `${name} への譲渡は成立しませんでした。${formatTransferRejectReason(reason)}`;
@@ -640,9 +643,9 @@ export function formatInConversationTransferOutcomeLine(
   const summary = formatTransferSummary(item, money);
   switch (outcome) {
     case 'accepted':
-      return `${partnerName} が ${summary} を受け取りました。`;
+      return `${partnerName} が ${summary}を受け取りました。`;
     case 'rejected_by_receiver':
-      return `${partnerName} が ${summary} の譲渡を断りました。`;
+      return `${partnerName}が受取を拒否しました。`;
     case 'unanswered_speak':
       return `${partnerName} が応答しなかったため ${summary} の譲渡は自動キャンセルされました。`;
     case 'inventory_full':

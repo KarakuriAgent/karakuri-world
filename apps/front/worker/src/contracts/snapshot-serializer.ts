@@ -132,7 +132,7 @@ const spectatorAgentSnapshotSchema = z.object({
   agent_id: z.string(),
   agent_name: z.string(),
   node_id: z.string(),
-  state: z.enum(['idle', 'moving', 'in_action', 'in_conversation']),
+  state: z.enum(['idle', 'moving', 'in_action', 'in_conversation', 'in_transfer']),
   status_emoji: z.string(),
   discord_bot_avatar_url: z.string().optional(),
   current_conversation_id: z.string().optional(),
