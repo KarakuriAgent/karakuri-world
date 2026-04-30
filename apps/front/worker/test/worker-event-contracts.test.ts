@@ -12,6 +12,9 @@ const BACKEND_NON_PERSISTED_EVENT_TYPES = [
   'idle_reminder_fired',
   'map_info_requested',
   'world_agents_info_requested',
+  'status_info_requested',
+  'nearby_agents_info_requested',
+  'active_conversations_info_requested',
   'perception_requested',
   'available_actions_requested',
 ] as const satisfies readonly Exclude<BackendEventType, PersistedSpectatorEventType>[];

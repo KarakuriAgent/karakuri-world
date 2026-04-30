@@ -222,7 +222,7 @@ describe('use-item domain', () => {
 
     const choicesText = buildChoicesText(engine, alice.agent_id);
 
-    expect(choicesText).toContain('(item_id: bread)');
+    expect(choicesText).toContain('- use-item: アイテムを使用する (item_id: 使用するアイテムのID)');
     expect(choicesText).not.toContain('(item_id: ticket)');
   });
 });

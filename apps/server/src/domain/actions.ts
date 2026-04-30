@@ -294,6 +294,7 @@ export function executeValidatedAction(
   });
   engine.state.clearExcludedInfoCommands(agent.agent_id);
   engine.state.setLastAction(agent.agent_id, source.action.action_id);
+  engine.state.setLastUsedItem(agent.agent_id, null);
 
   engine.emitEvent({
     type: 'action_started',

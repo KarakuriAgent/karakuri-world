@@ -44,6 +44,7 @@ export function executeValidatedWait(engine: WorldEngine, agent: LoggedInAgent, 
     fires_at: completesAt,
   });
   engine.state.clearExcludedInfoCommands(agent.agent_id);
+  engine.state.setLastUsedItem(agent.agent_id, null);
 
   engine.emitEvent({
     type: 'wait_started',

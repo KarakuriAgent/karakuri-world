@@ -113,13 +113,17 @@ function summarizeList(title: string, values: string[]): string {
   return `${title}: ${values.length > 0 ? values.join(' / ') : 'なし'}`;
 }
 
-export function buildPerceptionText(data: PerceptionData): string {
+export function buildPerceptionText(data: PerceptionData, options: { hiddenItemId?: string | null } = {}): string {
   const passableNodes = data.nodes
     .filter((node) => node.distance !== 0 && isPassable(node.type))
     .map((node) => `${node.node_id}${node.label ? `(${node.label})` : ''}`)
     .join(', ');
 
-  const itemsText = data.items.length > 0 ? data.items.map((item) => `${item.name} (${item.item_id}) ×${item.quantity}`).join(', ') : 'なし';
+  const itemCount = data.items.reduce((total, item) => total + item.quantity, 0);
+  const visibleItemCount = Math.max(
+    0,
+    itemCount - (options.hiddenItemId && data.items.some((item) => item.item_id === options.hiddenItemId && item.quantity > 0) ? 1 : 0),
+  );
   const weatherText = data.weather ? `天気: ${data.weather.condition} ${data.weather.temperature_celsius}℃` : undefined;
 
   return [
@@ -127,14 +131,11 @@ export function buildPerceptionText(data: PerceptionData): string {
     weatherText,
     `現在地: ${data.current_node.node_id}${data.current_node.label ? ` (${data.current_node.label})` : ''}`,
     summarizeList('近くのノード', passableNodes ? [passableNodes] : []),
-    summarizeList(
-      '見えているエージェント',
-      data.agents.map((agent) => `${agent.agent_name}@${agent.node_id}`),
-    ),
+    `近くのエージェント: ${data.agents.length > 0 ? `${data.agents.length} 人` : 'なし'}`,
     summarizeList('近くのNPC', data.npcs.map((npc) => `${npc.name}@${npc.node_id}`)),
     summarizeList('近くの建物', data.buildings.map((building) => `${building.name} [${building.door_nodes.join(', ')}]`)),
     `所持金: ${data.money.toLocaleString('ja-JP')}円`,
-    `アイテム: ${itemsText}`,
+    `所持品: ${visibleItemCount > 0 ? `${visibleItemCount} 個` : 'なし'}`,
   ]
     .filter(Boolean)
     .join('\n');

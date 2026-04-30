@@ -503,6 +503,18 @@ export function formatWorldAgentsInfoMessage(ctx: WorldContext, agentsText: stri
   return joinSections(formatWorldContextHeader(ctx), agentsText, formatActionPrompt(skillName, choicesText));
 }
 
+export function formatStatusInfoMessage(ctx: WorldContext, statusText: string, skillName: string, choicesText?: string): string {
+  return joinSections(formatWorldContextHeader(ctx), statusText, formatActionPrompt(skillName, choicesText));
+}
+
+export function formatNearbyAgentsInfoMessage(ctx: WorldContext, agentsText: string, skillName: string, choicesText?: string): string {
+  return joinSections(formatWorldContextHeader(ctx), agentsText, formatActionPrompt(skillName, choicesText));
+}
+
+export function formatActiveConversationsInfoMessage(ctx: WorldContext, conversationsText: string, skillName: string, choicesText?: string): string {
+  return joinSections(formatWorldContextHeader(ctx), conversationsText, formatActionPrompt(skillName, choicesText));
+}
+
 export function formatPerceptionInfoMessage(
   ctx: WorldContext,
   perceptionText: string,

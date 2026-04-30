@@ -70,6 +70,7 @@ export function executeValidatedMove(
     fires_at: arrivesAt,
   });
   engine.state.clearExcludedInfoCommands(agent.agent_id);
+  engine.state.setLastUsedItem(agent.agent_id, null);
 
   engine.emitEvent({
     type: 'movement_started',

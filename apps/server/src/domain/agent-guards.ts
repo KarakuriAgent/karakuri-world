@@ -35,6 +35,13 @@ export function requireInfoCommandReadyAgent(
   command: InfoCommandChoice,
 ): LoggedInAgent {
   const agent = requireActionableAgent(engine, agentId, { activityLabel: `request ${command}` });
+  if (isInTransfer(agent)) {
+    throw new WorldError(
+      409,
+      'state_conflict',
+      `Agent cannot request ${command} in the current state.`,
+    );
+  }
   if (engine.state.getExcludedInfoCommands(agentId).has(command)) {
     throw new WorldError(
       409,

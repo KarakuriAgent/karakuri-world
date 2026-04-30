@@ -45,6 +45,9 @@ describe('MCP tools', () => {
       'get_perception',
       'get_map',
       'get_world_agents',
+      'get_status',
+      'get_nearby_agents',
+      'get_active_conversations',
     ]);
   });
 
@@ -87,13 +90,46 @@ describe('MCP tools', () => {
     expect(requestedEventType).toBe('perception_requested');
   });
 
+  it.each([
+    ['get_available_actions', 'available_actions_requested'],
+    ['get_perception', 'perception_requested'],
+    ['get_map', 'map_info_requested'],
+    ['get_world_agents', 'world_agents_info_requested'],
+    ['get_status', 'status_info_requested'],
+    ['get_nearby_agents', 'nearby_agents_info_requested'],
+    ['get_active_conversations', 'active_conversations_info_requested'],
+  ] as const)('emits %s -> %s event', async (toolName, expectedEventType) => {
+    const { engine } = createTestWorld();
+    const agent = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(agent.agent_id);
+    const tool = createMcpToolDefinitions(engine, agent.agent_id).find((definition) => definition.name === toolName);
+    expect(tool).toBeDefined();
+
+    let requestedEventType: string | null = null;
+    const unsubscribe = engine.eventBus.onAny((event) => {
+      requestedEventType = event.type;
+    });
+    await tool!.execute({});
+    unsubscribe();
+
+    expect(requestedEventType).toBe(expectedEventType);
+  });
+
   it('returns 409 errors for state-conflicting or already-consumed info tools', async () => {
     const { engine } = createTestWorld();
     const agent = await engine.registerAgent({ discord_bot_id: 'bot-alice', });
     await engine.loginAgent(agent.agent_id);
     const definitions = createMcpToolDefinitions(engine, agent.agent_id);
 
-    for (const name of ['get_available_actions', 'get_perception', 'get_map', 'get_world_agents']) {
+    for (const name of [
+      'get_available_actions',
+      'get_perception',
+      'get_map',
+      'get_world_agents',
+      'get_status',
+      'get_nearby_agents',
+      'get_active_conversations',
+    ]) {
       const tool = definitions.find((definition) => definition.name === name);
       expect(tool).toBeDefined();
 

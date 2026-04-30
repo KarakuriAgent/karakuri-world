@@ -1,11 +1,10 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 
-import { requireInfoCommandReadyAgent } from '../domain/agent-guards.js';
+import { emitInfoRequest } from '../domain/info-commands.js';
 import type { WorldEngine } from '../engine/world-engine.js';
 import type { NodeId } from '../types/data-model.js';
-import type { InfoCommandChoice } from '../types/choices.js';
-import { createNotificationAcceptedResponse, WorldError, toErrorResponse } from '../types/api.js';
+import { WorldError, toErrorResponse } from '../types/api.js';
 import { transferAttachmentSchema, transferRequestSchema } from '../api/schemas/transfer.js';
 
 export interface McpToolDefinition {
@@ -77,18 +76,6 @@ function wrapTool<TArguments>(
       throw error;
     }
   };
-}
-
-function emitInfoRequest(
-  engine: WorldEngine,
-  agentId: string,
-  command: InfoCommandChoice,
-  type: 'map_info_requested' | 'world_agents_info_requested' | 'perception_requested' | 'available_actions_requested',
-) {
-  requireInfoCommandReadyAgent(engine, agentId, command);
-  engine.state.addExcludedInfoCommand(agentId, command);
-  engine.emitEvent({ type, agent_id: agentId });
-  return createNotificationAcceptedResponse();
 }
 
 export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): McpToolDefinition[] {
@@ -190,25 +177,43 @@ export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): 
       name: 'get_available_actions',
       description: '現在位置で実行可能なアクションを取得する。通常は idle かサーバーイベントウィンドウ中のみ実行可能で、結果は通知で届く。',
       inputSchema: emptySchema,
-      execute: wrapTool(emptySchema, async () => emitInfoRequest(engine, agentId, 'get_available_actions', 'available_actions_requested')),
+      execute: wrapTool(emptySchema, async () => emitInfoRequest(engine, agentId, 'get_available_actions')),
     },
     {
       name: 'get_perception',
       description: '周囲の情報を取得する。通常は idle かサーバーイベントウィンドウ中のみ実行可能で、結果は通知で届く。',
       inputSchema: emptySchema,
-      execute: wrapTool(emptySchema, async () => emitInfoRequest(engine, agentId, 'get_perception', 'perception_requested')),
+      execute: wrapTool(emptySchema, async () => emitInfoRequest(engine, agentId, 'get_perception')),
     },
     {
       name: 'get_map',
       description: 'マップ全体の情報を取得する。通常は idle かサーバーイベントウィンドウ中のみ実行可能で、結果は通知で届く。',
       inputSchema: emptySchema,
-      execute: wrapTool(emptySchema, async () => emitInfoRequest(engine, agentId, 'get_map', 'map_info_requested')),
+      execute: wrapTool(emptySchema, async () => emitInfoRequest(engine, agentId, 'get_map')),
     },
     {
       name: 'get_world_agents',
       description: '全エージェントの位置と状態を取得する。通常は idle かサーバーイベントウィンドウ中のみ実行可能で、結果は通知で届く。',
       inputSchema: emptySchema,
-      execute: wrapTool(emptySchema, async () => emitInfoRequest(engine, agentId, 'get_world_agents', 'world_agents_info_requested')),
+      execute: wrapTool(emptySchema, async () => emitInfoRequest(engine, agentId, 'get_world_agents')),
+    },
+    {
+      name: 'get_status',
+      description: '自分の所持金・所持品・現在地を取得する。通常は idle かサーバーイベントウィンドウ中のみ実行可能で、結果は通知で届く。',
+      inputSchema: emptySchema,
+      execute: wrapTool(emptySchema, async () => emitInfoRequest(engine, agentId, 'get_status')),
+    },
+    {
+      name: 'get_nearby_agents',
+      description: '隣接エージェントの一覧を用途別候補として取得する。通常は idle かサーバーイベントウィンドウ中のみ実行可能で、結果は通知で届く。',
+      inputSchema: emptySchema,
+      execute: wrapTool(emptySchema, async () => emitInfoRequest(engine, agentId, 'get_nearby_agents')),
+    },
+    {
+      name: 'get_active_conversations',
+      description: '参加可能な進行中の会話一覧を取得する。通常は idle かサーバーイベントウィンドウ中のみ実行可能で、結果は通知で届く。',
+      inputSchema: emptySchema,
+      execute: wrapTool(emptySchema, async () => emitInfoRequest(engine, agentId, 'get_active_conversations')),
     },
   ];
 }

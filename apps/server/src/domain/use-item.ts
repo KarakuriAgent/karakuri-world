@@ -104,6 +104,7 @@ export function executeValidatedUseItem(
     fires_at: completesAt,
   });
   engine.state.clearExcludedInfoCommands(validated.agent_id);
+  engine.state.setLastUsedItem(validated.agent_id, null);
 
   engine.emitEvent({
     type: 'item_use_started',
