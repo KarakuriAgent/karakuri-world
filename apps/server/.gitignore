@@ -4,6 +4,7 @@ dist/
 *.swp
 coverage/
 data/
+logs/
 config/*
 !config/example.yaml
 .docker-build/

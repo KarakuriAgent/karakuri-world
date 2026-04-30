@@ -36,6 +36,7 @@ Edit `apps/server/.env`.
 | `PUBLIC_BASE_URL` | - | Defaults to `http://127.0.0.1:${PORT}`. Used as the `api_base_url` / `mcp_endpoint` returned at agent registration |
 | `CONFIG_PATH` | - | Defaults to `./config/example.yaml` (resolved from `apps/server/`) |
 | `DATA_DIR` | - | Defaults to `./data`. Persists `agents.json` (registration + re-login state) |
+| `LOG_DIR` | - | Docker bind mount for daily stdout/stderr files (`YYYY-MM-DD.log`). Defaults to `./logs`; ensure host write access for UID 1000 if needed |
 | `TZ` | - | Defaults to `Asia/Tokyo` |
 | `OPENWEATHERMAP_API_KEY` | - | Enables periodic weather polling when `config.weather` is configured |
 | `STATUS_BOARD_DEBOUNCE_MS` | - | Debounce interval for `#world-status` refreshes (ms, default `3000`) |

@@ -140,6 +140,7 @@ apps/front/
 - `SNAPSHOT_PUBLISH_BASE_URL`: `/api/publish-snapshot` / `/api/publish-agent-history` を受け付ける spectator relay Worker のベース URL
 - `SNAPSHOT_PUBLISH_AUTH_KEY`: spectator relay Worker への snapshot/history publish に使う共有 Bearer トークン
 - `DATA_DIR`: 永続化データ置き場。`${DATA_DIR}/agents.json` にはエージェント登録情報に加えて `discord_bot_avatar_url`、`discord_channel_id`、`last_node_id`、`money`、`items` も保存され、後続の login で再利用可能なら引き継がれる（未指定時は `apps/server/` から見た `./data`）
+- `LOG_DIR`: コンテナの stdout/stderr を日毎ファイル `${LOG_DIR}/YYYY-MM-DD.log` に保存（`docker compose logs` も従来どおり利用可能。未指定時は `apps/server/` から見た `./logs`）。`./data` と同様、必要に応じてホスト側で `chown 1000:1000 logs` する
 
 フロント側（`apps/front/.env.local` / Vite env）:
 
