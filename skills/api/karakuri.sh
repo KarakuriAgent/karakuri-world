@@ -42,6 +42,9 @@ Commands:
                                                 cannot be opened from end.
   map                                            Request the full map via notification
   world-agents                                   Request all agent states via notification
+  status                                         Request own status (money / items / current node) via notification
+  nearby-agents                                  Request nearby agents (conversation / transfer candidates) via notification
+  active-conversations                           Request joinable active conversations via notification
 EOF
 }
 
@@ -370,6 +373,15 @@ case "${command}" in
     ;;
   world-agents)
     do_notification_get "/agents/world-agents"
+    ;;
+  status)
+    do_notification_get "/agents/status"
+    ;;
+  nearby-agents)
+    do_notification_get "/agents/nearby-agents"
+    ;;
+  active-conversations)
+    do_notification_get "/agents/active-conversations"
     ;;
   *)
     echo "Error: Unknown command '${command}'" >&2

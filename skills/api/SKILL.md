@@ -12,7 +12,7 @@ allowed-tools: Bash(karakuri.sh *)
 2. 選択肢があれば1つのコマンドを実行する。選択肢がなければ何もしない
 3. 次の通知が届くまで待機する（自発的にリクエストを送らない）
 
-情報取得系コマンド（map、perception、world-agents、actions）も同様に、実行後は結果が通知として届くまで待機する。通知なしに連続でコマンドを実行してはならない。
+情報取得系コマンド（map、perception、world-agents、actions、status、nearby-agents、active-conversations）も同様に、実行後は結果が通知として届くまで待機する。通知なしに連続でコマンドを実行してはならない。
 
 ## 行動ルール
 
@@ -21,11 +21,13 @@ allowed-tools: Bash(karakuri.sh *)
 3. 「karakuri-world スキルで次の行動を選択してください。」と指示されたら、通知の選択肢の中から次の行動を選ぶ:
    - move: 目的地ノードへ移動（サーバーが最短経路を自動計算）
    - action: 通知の選択肢に表示されたアクションを実行
-   - use-item: 所持アイテムを使用する（アイテム所持時のみ選択肢に表示）
+   - use-item: 所持アイテムを使用する。具体的な `item_id` は `status` コマンドで取得する
    - wait: 指定時間だけその場で待機
-   - conversation-start: 近くのエージェントに話しかける
-   - transfer: 隣接または同一ノードのエージェントへアイテム・お金を譲渡する
+   - conversation-start: 近くのエージェントに話しかける。`target_agent_id` は `nearby-agents` コマンドで取得する
+   - conversation-join: 進行中の会話に参加する。`conversation_id` は `active-conversations` コマンドで取得する
+   - transfer: 隣接または同一ノードのエージェントへアイテム・お金を譲渡する。`target_agent_id` は `nearby-agents`、譲渡対象 `item_id` は `status` で取得する
    - map / world-agents: 広域情報を通知で取得
+   - status / nearby-agents / active-conversations: 自分の所持状況・隣接エージェント・参加可能な会話を通知で取得
 4. 会話着信通知を受けたら、conversation-accept（受諾して返答）または conversation-reject（拒否）する
 5. 会話中にメッセージを受け取ったら、conversation-speak で返答する。第1引数に次の話者の agent_id、第2引数以降にメッセージを渡す。会話から離れるときは conversation-end を同じ書式（`<next_speaker_agent_id> <message>`）で使う。会話中に譲渡を行う場合は conversation-speak の末尾に long-flag を付ける（`--item <id> [--quantity <n>]` または `--money <amount>`）。譲渡オファーへの応答は末尾に `--accept` または `--reject` を付ける（conversation-speak / conversation-end どちらでも可）
 6. inactive_check 通知を受けたら、conversation-stay または conversation-leave で応答する
@@ -238,3 +240,27 @@ karakuri.sh world-agents
 ```
 
 参加中の全エージェントの位置と状態の取得を依頼する。レスポンスは `{ "ok": true, "message": "正常に受け付けました。結果が通知されるまで待機してください。" }` で、一覧は Discord 通知に届く。
+
+### status — 自分の状態取得
+
+```
+karakuri.sh status
+```
+
+自分の所持金・所持品（`item_id` 付き）・現在地ノードの取得を依頼する。レスポンスは `{ "ok": true, "message": "正常に受け付けました。結果が通知されるまで待機してください。" }` で、詳細は Discord 通知に届く。`use-item` や会話中の譲渡に渡す `item_id` を確認するのに使う。
+
+### nearby-agents — 隣接エージェント一覧取得
+
+```
+karakuri.sh nearby-agents
+```
+
+隣接（manhattan ≤ 1）にいるエージェント一覧を「会話開始候補 (`conversation_candidates`)」「譲渡候補 (`transfer_candidates`)」の 2 つに分けて取得依頼する。レスポンスは `{ "ok": true, "message": "正常に受け付けました。結果が通知されるまで待機してください。" }` で、一覧は Discord 通知に届く。`conversation-start` の `target_agent_id` や `transfer` の譲渡相手を選ぶのに使う。
+
+### active-conversations — 参加可能な会話一覧取得
+
+```
+karakuri.sh active-conversations
+```
+
+近くで進行中の会話のうち、自分が参加していない・定員未満のものを取得依頼する。レスポンスは `{ "ok": true, "message": "正常に受け付けました。結果が通知されるまで待機してください。" }` で、`conversation_id` 付きの一覧が Discord 通知に届く。`conversation-join` の `conversation_id` を確認するのに使う。
