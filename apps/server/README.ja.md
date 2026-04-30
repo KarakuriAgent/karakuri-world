@@ -34,6 +34,7 @@ cp apps/server/.env.example apps/server/.env
 | `PUBLIC_BASE_URL` | - | 既定 `http://127.0.0.1:${PORT}`。管理 API がエージェント登録時に返す `api_base_url` / `mcp_endpoint` のベース |
 | `CONFIG_PATH` | - | 既定 `./config/example.yaml`（`apps/server/` からの相対） |
 | `DATA_DIR` | - | 既定 `./data`。`agents.json` に登録・再ログイン用状態を永続化する |
+| `LOG_DIR` | - | Docker の stdout/stderr を日毎ファイル（`YYYY-MM-DD.log`）へ保存する bind mount。既定 `./logs`。必要に応じてホスト側で UID 1000 の書き込み権限を付与する |
 | `TZ` | - | 既定 `Asia/Tokyo` |
 | `OPENWEATHERMAP_API_KEY` | - | `config.weather` があるときの天気取得キー |
 | `STATUS_BOARD_DEBOUNCE_MS` | - | `#world-status` 更新のデバウンス間隔（ms、既定 `3000`） |
