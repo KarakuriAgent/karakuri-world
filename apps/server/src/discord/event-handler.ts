@@ -1,7 +1,7 @@
 import { formatActionSourceLine, getAvailableActionSourcesWithOptions } from '../domain/actions.js';
 import { buildChoicesPrompt, type BuildChoicesTextOptions } from '../domain/choices.js';
 import { buildMapSummaryText } from '../domain/map-summary.js';
-import { buildPerceptionText, getPerceptionData } from '../domain/perception.js';
+import { buildPerceptionText, getNearbyConversationCount, getPerceptionData } from '../domain/perception.js';
 import {
   type CandidateAgent,
   listConversationStartCandidates,
@@ -1117,11 +1117,12 @@ export class DiscordEventHandler {
     }
 
     const perception = getPerceptionData(this.engine, agentId);
+    const nearbyConversationCount = getNearbyConversationCount(this.engine, agentId);
     const consumedUsedItemId = hiddenItemId && perception.items.some((item) => item.item_id === hiddenItemId && item.quantity > 0)
       ? hiddenItemId
       : null;
     return {
-      text: buildPerceptionText(perception, { hiddenItemId }),
+      text: buildPerceptionText(perception, { hiddenItemId, nearbyConversationCount }),
       consumedUsedItemId,
     };
   }
@@ -1130,7 +1131,8 @@ export class DiscordEventHandler {
     if (!this.engine.state.getLoggedIn(agentId)) {
       return '';
     }
-    return buildPerceptionText(getPerceptionData(this.engine, agentId));
+    const nearbyConversationCount = getNearbyConversationCount(this.engine, agentId);
+    return buildPerceptionText(getPerceptionData(this.engine, agentId), { nearbyConversationCount });
   }
 
   private clearRejectedActionIfCurrent(agentId: string, actionId: string | null): void {

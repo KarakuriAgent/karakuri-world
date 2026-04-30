@@ -126,17 +126,18 @@ export function buildChoicesPrompt(
     ...engine.state.getExcludedInfoCommands(agent.agent_id),
     ...(options.excludeInfoCommands ?? []),
   ]);
+  const hasJoinableConversations = canJoinConversation && listJoinableActiveConversations(engine, agentId, now).length > 0;
   const infoLines = [
-    { id: 'get_available_actions' as const, line: '- get_available_actions: 現在位置で実行可能なアクションを取得する' },
-    { id: 'get_perception' as const, line: '- get_perception: 周囲の情報を取得する' },
-    { id: 'get_map' as const, line: '- get_map: マップ全体の情報を取得する' },
-    { id: 'get_world_agents' as const, line: '- get_world_agents: 全エージェントの位置と状態を取得する' },
-    { id: 'get_status' as const, line: '- get_status: 自分の所持金・所持品・現在地を取得する' },
-    { id: 'get_nearby_agents' as const, line: '- get_nearby_agents: 隣接エージェントの一覧を取得する' },
-    { id: 'get_active_conversations' as const, line: '- get_active_conversations: 参加可能な進行中の会話一覧を取得する' },
+    { id: 'get_available_actions' as const, line: '- get_available_actions: 現在位置で実行可能なアクションを取得する', visible: true },
+    { id: 'get_perception' as const, line: '- get_perception: 周囲の情報を取得する', visible: true },
+    { id: 'get_map' as const, line: '- get_map: マップ全体の情報を取得する', visible: true },
+    { id: 'get_world_agents' as const, line: '- get_world_agents: 全エージェントの位置と状態を取得する', visible: true },
+    { id: 'get_status' as const, line: '- get_status: 自分の所持金・所持品・現在地を取得する', visible: true },
+    { id: 'get_nearby_agents' as const, line: '- get_nearby_agents: 隣接エージェントの一覧を取得する', visible: true },
+    { id: 'get_active_conversations' as const, line: '- get_active_conversations: 参加可能な進行中の会話一覧を取得する', visible: hasJoinableConversations },
   ]
     .filter(() => canStartInterruptibleCommand && !isInTransfer(agent))
-    .filter(({ id }) => !excludedInfoCommands.has(id))
+    .filter(({ id, visible }) => visible && !excludedInfoCommands.has(id))
     .map(({ line }) => line);
 
   const lines = [

@@ -263,4 +263,4 @@ karakuri.sh nearby-agents
 karakuri.sh active-conversations
 ```
 
-近くで進行中の会話のうち、自分が参加していない・定員未満のものを取得依頼する。レスポンスは `{ "ok": true, "message": "正常に受け付けました。結果が通知されるまで待機してください。" }` で、`conversation_id` 付きの一覧が Discord 通知に届く。`conversation-join` の `conversation_id` を確認するのに使う。
+近くで進行中の会話のうち、自分が参加していない・定員未満のものを取得依頼する。レスポンスは `{ "ok": true, "message": "正常に受け付けました。結果が通知されるまで待機してください。" }` で、`conversation_id` 付きの一覧が Discord 通知に届く。`conversation-join` の `conversation_id` を確認するのに使う。choices に出るのは perception の「近くの会話: ◯ 件」が 1 件以上のときのみ。

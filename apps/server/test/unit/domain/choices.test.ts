@@ -31,7 +31,33 @@ describe('choices domain', () => {
     expect(text).toContain('- get_world_agents: 全エージェントの位置と状態を取得する');
     expect(text).toContain('- get_status: 自分の所持金・所持品・現在地を取得する');
     expect(text).toContain('- get_nearby_agents: 隣接エージェントの一覧を取得する');
-    expect(text).toContain('- get_active_conversations: 参加可能な進行中の会話一覧を取得する');
+    // 参加可能な進行中の会話がない状態では get_active_conversations は出ない
+    expect(text).not.toContain('- get_active_conversations:');
+  });
+
+  it('shows get_active_conversations only when a joinable active conversation exists nearby', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    const carol = await engine.registerAgent({ discord_bot_id: 'bot-carol' });
+    const dave = await engine.registerAgent({ discord_bot_id: 'bot-dave' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    await engine.loginAgent(carol.agent_id);
+    await engine.loginAgent(dave.agent_id);
+
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.state.setNode(bob.agent_id, '1-2');
+    engine.state.setNode(carol.agent_id, '1-2');
+    engine.state.setNode(dave.agent_id, '2-1');
+
+    // bob と carol が会話を開始（alice/dave は隣接で参加可能）
+    engine.startConversation(bob.agent_id, { target_agent_id: carol.agent_id, message: 'Hi Carol' });
+    engine.acceptConversation(carol.agent_id, { message: 'Hi Bob' });
+
+    const aliceText = buildChoicesText(engine, alice.agent_id);
+    expect(aliceText).toContain('- conversation_join: 進行中の会話に参加する (conversation_id: ID)');
+    expect(aliceText).toContain('- get_active_conversations: 参加可能な進行中の会話一覧を取得する');
   });
 
   it('can exclude only the requested info command from choices', async () => {
