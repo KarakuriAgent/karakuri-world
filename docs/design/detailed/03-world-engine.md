@@ -196,6 +196,9 @@ type Timer =
 | `idle_reminder_fired` | idle状態継続時の再通知 | `idle_reminder` タイマー発火 |
 | `map_info_requested` | マップ情報取得依頼 | `get_map` API/MCP |
 | `world_agents_info_requested` | エージェント一覧取得依頼 | `get_world_agents` API/MCP |
+| `status_info_requested` | ステータス情報取得依頼 | `get_status` API/MCP |
+| `nearby_agents_info_requested` | 隣接エージェント情報取得依頼 | `get_nearby_agents` API/MCP |
+| `active_conversations_info_requested` | 参加可能会話情報取得依頼 | `get_active_conversations` API/MCP |
 | `perception_requested` | 知覚情報再取得依頼 | `get_perception` API/MCP |
 | `available_actions_requested` | 利用可能アクション再取得依頼 | `get_available_actions` API/MCP |
 
@@ -231,6 +234,9 @@ type EventType =
   | "idle_reminder_fired"
   | "map_info_requested"
   | "world_agents_info_requested"
+  | "status_info_requested"
+  | "nearby_agents_info_requested"
+  | "active_conversations_info_requested"
   | "perception_requested"
   | "available_actions_requested";
 
@@ -241,7 +247,7 @@ interface EventBase {
 }
 ```
 
-`map_info_requested` / `world_agents_info_requested` / `perception_requested` / `available_actions_requested` は特定エージェント向けの内部イベントであり、Discord 通知のトリガーにはなるが、ブラウザ向け公開 snapshot の生成対象や補助 ingest には含めない。
+`map_info_requested` / `world_agents_info_requested` / `status_info_requested` / `nearby_agents_info_requested` / `active_conversations_info_requested` / `perception_requested` / `available_actions_requested` は特定エージェント向けの内部イベントであり、Discord 通知のトリガーにはなるが、ブラウザ向け公開 snapshot の生成対象や補助 ingest には含めない。
 
 各イベントの固有データ:
 
@@ -480,6 +486,21 @@ interface IdleReminderFiredEvent extends EventBase {
   idle_since: number; // idle状態に入った時刻（経過時間算出用）
 }
 
+interface StatusInfoRequestedEvent extends EventBase {
+  type: "status_info_requested";
+  agent_id: string;
+}
+
+interface NearbyAgentsInfoRequestedEvent extends EventBase {
+  type: "nearby_agents_info_requested";
+  agent_id: string;
+}
+
+interface ActiveConversationsInfoRequestedEvent extends EventBase {
+  type: "active_conversations_info_requested";
+  agent_id: string;
+}
+
 type WorldEvent =
   | AgentLoggedInEvent
   | AgentLoggedOutEvent
@@ -506,7 +527,10 @@ type WorldEvent =
   | ConversationEndedEvent
   | ConversationPendingJoinCancelledEvent
   | ServerEventFiredEvent
-  | IdleReminderFiredEvent;
+  | IdleReminderFiredEvent
+  | StatusInfoRequestedEvent
+  | NearbyAgentsInfoRequestedEvent
+  | ActiveConversationsInfoRequestedEvent;
 ```
 
 ## 3. 通知定義
@@ -552,6 +576,9 @@ type WorldEvent =
 | サーバーイベント遅延通知 | `movement_completed`（保留あり） | #agent-{name} | 説明文、強制表示された行動候補、行動促進 |
 | サーバーイベントログ | `server_event_fired` | #world-log | 説明文 |
 | idle再通知 | `idle_reminder` タイマー発火 | #agent-{name} | 経過時間、知覚情報、行動促進 |
+| ステータス情報通知 | `status_info_requested` | #agent-{name} | 所持金、所持品、現在地、行動促進 |
+| 隣接エージェント情報通知 | `nearby_agents_info_requested` | #agent-{name} | conversation / transfer 用候補一覧、行動促進 |
+| 参加可能会話情報通知 | `active_conversations_info_requested` | #agent-{name} | 参加可能な進行中会話一覧、行動促進 |
 
 - ※4 `participant_agent_ids` に含まれる参加者へ送信する。`reason: "participant_logged_out"` では会話終了通知を送信せず、代わりに `agent_logged_out` をトリガーとする会話強制終了通知が残された側にのみ送信される（10-discord-bot.md セクション6.4 #10参照）
 - ※5 `max_turns` 到達時は最終ターンの聞き手へ、サーバーイベントウィンドウによる割り込み時は終了あいさつ担当へ送信（06-conversation.md セクション7.1、7.2参照）
@@ -566,9 +593,10 @@ type WorldEvent =
 |------|------|
 | 現在地 | ノードID、ラベル（ある場合） |
 | 近くのノード | 知覚範囲内の passable ノード（現在地を除く）のIDとラベル |
-| 他エージェント | 知覚範囲内にいる他エージェントの名前と位置 |
+| 他エージェント | 知覚範囲内にいる他エージェント数（詳細は `get_nearby_agents`） |
 | NPC | 知覚範囲内のNPCの名前と位置 |
 | 建物 | 知覚範囲内の建物名とドア位置 |
+| 所持品 | 所持アイテム数（詳細は `get_status`） |
 
 知覚範囲の算出方法は 01-data-model.md セクション7を参照。
 

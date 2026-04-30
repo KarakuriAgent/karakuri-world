@@ -296,5 +296,23 @@ describe('karakuri.sh dry-run payloads', () => {
       const result = await runScript('world-agents');
       expect(result.url).toBe(`${BASE_URL}/agents/world-agents`);
     });
+
+    it('status sends GET /agents/status', async () => {
+      const result = await runScript('status');
+      expect(result.url).toBe(`${BASE_URL}/agents/status`);
+      expect(result.method).toBe('GET');
+    });
+
+    it('nearby-agents sends GET /agents/nearby-agents', async () => {
+      const result = await runScript('nearby-agents');
+      expect(result.url).toBe(`${BASE_URL}/agents/nearby-agents`);
+      expect(result.method).toBe('GET');
+    });
+
+    it('active-conversations sends GET /agents/active-conversations', async () => {
+      const result = await runScript('active-conversations');
+      expect(result.url).toBe(`${BASE_URL}/agents/active-conversations`);
+      expect(result.method).toBe('GET');
+    });
   });
 });

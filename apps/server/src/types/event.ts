@@ -38,6 +38,9 @@ export type EventType =
   | 'idle_reminder_fired'
   | 'map_info_requested'
   | 'world_agents_info_requested'
+  | 'status_info_requested'
+  | 'nearby_agents_info_requested'
+  | 'active_conversations_info_requested'
   | 'perception_requested'
   | 'available_actions_requested';
 
@@ -342,6 +345,21 @@ export interface WorldAgentsInfoRequestedEvent extends EventBase {
   agent_id: string;
 }
 
+export interface StatusInfoRequestedEvent extends EventBase {
+  type: 'status_info_requested';
+  agent_id: string;
+}
+
+export interface NearbyAgentsInfoRequestedEvent extends EventBase {
+  type: 'nearby_agents_info_requested';
+  agent_id: string;
+}
+
+export interface ActiveConversationsInfoRequestedEvent extends EventBase {
+  type: 'active_conversations_info_requested';
+  agent_id: string;
+}
+
 export interface PerceptionRequestedEvent extends EventBase {
   type: 'perception_requested';
   agent_id: string;
@@ -387,5 +405,8 @@ export type WorldEvent =
   | IdleReminderFiredEvent
   | MapInfoRequestedEvent
   | WorldAgentsInfoRequestedEvent
+  | StatusInfoRequestedEvent
+  | NearbyAgentsInfoRequestedEvent
+  | ActiveConversationsInfoRequestedEvent
   | PerceptionRequestedEvent
   | AvailableActionsRequestedEvent;

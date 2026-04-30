@@ -790,6 +790,7 @@ export function startConversation(
   engine.state.conversations.set(conversation);
   cancelIdleReminder(engine, initiator.agent_id);
   engine.state.clearExcludedInfoCommands(initiator.agent_id);
+  engine.state.setLastUsedItem(initiator.agent_id, null);
   clearActiveServerEvent(engine, initiator.agent_id);
   engine.state.setPendingConversation(initiator.agent_id, conversation.conversation_id);
   engine.state.setPendingConversation(target.agent_id, conversation.conversation_id);
@@ -850,6 +851,8 @@ export function acceptConversation(engine: WorldEngine, agentId: string, request
   cancelIdleReminder(engine, target.agent_id);
   engine.state.clearExcludedInfoCommands(initiator.agent_id);
   engine.state.clearExcludedInfoCommands(target.agent_id);
+  engine.state.setLastUsedItem(initiator.agent_id, null);
+  engine.state.setLastUsedItem(target.agent_id, null);
   clearActiveServerEvent(engine, initiator.agent_id);
   clearActiveServerEvent(engine, target.agent_id);
   engine.state.setPendingConversation(initiator.agent_id, null);
@@ -1258,6 +1261,7 @@ export function joinConversation(engine: WorldEngine, agentId: string, request: 
 
   cancelIdleReminder(engine, agentId);
   engine.state.clearExcludedInfoCommands(agentId);
+  engine.state.setLastUsedItem(agentId, null);
   clearActiveServerEvent(engine, agentId);
   conversation.pending_participant_agent_ids.push(agentId);
   engine.state.setCurrentConversation(agentId, conversation.conversation_id);

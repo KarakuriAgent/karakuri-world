@@ -44,6 +44,18 @@ describe('agent guards', () => {
     );
   });
 
+  it('rejects info requests while a transfer offer is pending even during a server-event window', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.setActiveServerEvent(alice.agent_id, 'server-event-1');
+    engine.state.setPendingTransfer(alice.agent_id, 'transfer-pending-1');
+
+    expect(() => requireInfoCommandReadyAgent(engine, alice.agent_id, 'get_status')).toThrow(
+      expect.objectContaining<Partial<WorldError>>({ code: 'state_conflict' }),
+    );
+  });
+
   it('clears the excluded info command set when an agent logs out and re-logs in', async () => {
     const { engine } = createTestWorld();
     const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });

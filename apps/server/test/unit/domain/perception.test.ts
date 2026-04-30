@@ -86,9 +86,10 @@ describe('perception', () => {
     expect(text).toContain('現在時刻: 2026-01-01 09:00 (Asia/Tokyo)');
     expect(text).toContain('現在地: 2-1');
     expect(text).toContain('近くのノード:');
-    expect(text).toContain('bob@3-2');
+    expect(text).toContain('近くのエージェント: 1 人');
     expect(text).toContain('Gatekeeper@1-2');
     expect(text).toContain('Clockwork Workshop');
     expect(text).toContain('所持金: 1,000円');
+    expect(text).toContain('所持品: なし');
   });
 });

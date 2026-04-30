@@ -3,6 +3,7 @@ import type { LoggedInAgent } from '../types/agent.js';
 import type { PerceptionResponse } from '../types/api.js';
 import { WorldError } from '../types/api.js';
 import type { ItemConfig, MapConfig, NodeId } from '../types/data-model.js';
+import { listJoinableActiveConversations } from './info-commands.js';
 import { findBuildingsInNodes, getNodeConfig, getNodesInRange, isPassable, manhattanDistance } from './map-utils.js';
 import { getAgentCurrentNode } from './movement.js';
 import { formatWorldTime } from './time-utils.js';
@@ -43,6 +44,10 @@ export function getPerceptionData(engine: WorldEngine, agentId: string): Percept
     itemConfigs: engine.config.items ?? [],
     weather: engine.getWeatherState() ?? undefined,
   });
+}
+
+export function getNearbyConversationCount(engine: WorldEngine, agentId: string, now = Date.now()): number {
+  return listJoinableActiveConversations(engine, agentId, now).length;
 }
 
 export function buildPerceptionData(
@@ -113,28 +118,34 @@ function summarizeList(title: string, values: string[]): string {
   return `${title}: ${values.length > 0 ? values.join(' / ') : 'なし'}`;
 }
 
-export function buildPerceptionText(data: PerceptionData): string {
+export function buildPerceptionText(
+  data: PerceptionData,
+  options: { hiddenItemId?: string | null; nearbyConversationCount?: number } = {},
+): string {
   const passableNodes = data.nodes
     .filter((node) => node.distance !== 0 && isPassable(node.type))
     .map((node) => `${node.node_id}${node.label ? `(${node.label})` : ''}`)
     .join(', ');
 
-  const itemsText = data.items.length > 0 ? data.items.map((item) => `${item.name} (${item.item_id}) ×${item.quantity}`).join(', ') : 'なし';
+  const itemCount = data.items.reduce((total, item) => total + item.quantity, 0);
+  const visibleItemCount = Math.max(
+    0,
+    itemCount - (options.hiddenItemId && data.items.some((item) => item.item_id === options.hiddenItemId && item.quantity > 0) ? 1 : 0),
+  );
   const weatherText = data.weather ? `天気: ${data.weather.condition} ${data.weather.temperature_celsius}℃` : undefined;
+  const nearbyConversationCount = options.nearbyConversationCount ?? 0;
 
   return [
     `現在時刻: ${data.world_time}`,
     weatherText,
     `現在地: ${data.current_node.node_id}${data.current_node.label ? ` (${data.current_node.label})` : ''}`,
     summarizeList('近くのノード', passableNodes ? [passableNodes] : []),
-    summarizeList(
-      '見えているエージェント',
-      data.agents.map((agent) => `${agent.agent_name}@${agent.node_id}`),
-    ),
+    `近くのエージェント: ${data.agents.length > 0 ? `${data.agents.length} 人` : 'なし'}`,
     summarizeList('近くのNPC', data.npcs.map((npc) => `${npc.name}@${npc.node_id}`)),
     summarizeList('近くの建物', data.buildings.map((building) => `${building.name} [${building.door_nodes.join(', ')}]`)),
+    `近くの会話: ${nearbyConversationCount > 0 ? `${nearbyConversationCount} 件` : 'なし'}`,
     `所持金: ${data.money.toLocaleString('ja-JP')}円`,
-    `アイテム: ${itemsText}`,
+    `所持品: ${visibleItemCount > 0 ? `${visibleItemCount} 個` : 'なし'}`,
   ]
     .filter(Boolean)
     .join('\n');

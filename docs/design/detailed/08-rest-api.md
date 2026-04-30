@@ -493,6 +493,42 @@ interface NotificationAcceptedResponse {
 }
 ```
 
+### 5.5 自分の状態取得
+
+```
+GET /api/agents/status
+```
+
+認証: Agent（1.1）。ログイン状態制約: あり。
+
+自分の現在地、所持金、所持品一覧の取得依頼を受け付ける。レスポンスは即時に受理応答を返し、詳細は Discord 通知で配信する。venue item reject 直後は、該当 `item_id` を 1 サイクル分だけ所持品一覧から伏せる。
+
+レスポンス (200 OK): `NotificationAcceptedResponse`
+
+### 5.6 隣接エージェント一覧取得
+
+```
+GET /api/agents/nearby-agents
+```
+
+認証: Agent（1.1）。ログイン状態制約: あり。
+
+Manhattan 距離 1 以内のエージェントを `conversation_candidates` と `transfer_candidates` に分けて通知する。`transfer_candidates` からは `in_transfer` 中のエージェントを除外する。
+
+レスポンス (200 OK): `NotificationAcceptedResponse`
+
+### 5.7 参加可能な会話一覧取得
+
+```
+GET /api/agents/active-conversations
+```
+
+認証: Agent（1.1）。ログイン状態制約: あり。
+
+近接参加者がいる active 会話のうち、自分が未参加・未 pending で定員未満のものを通知する。`conversation_join` の `conversation_id` はこの通知で確認する。
+
+レスポンス (200 OK): `NotificationAcceptedResponse`
+
 ## 6. 管理API
 
 ### 6.1 エージェント管理
@@ -600,3 +636,6 @@ snapshot は HTTP endpoint ではなく、`WorldEngine.getSnapshot()` が in-pro
 | GET | /api/agents/perception | Agent | ✅ | 知覚情報取得 |
 | GET | /api/agents/map | Agent | ✅ | マップ全体取得 |
 | GET | /api/agents/world-agents | Agent | ✅ | ログイン中エージェント一覧 |
+| GET | /api/agents/status | Agent | ✅ | 自分の状態取得 |
+| GET | /api/agents/nearby-agents | Agent | ✅ | 隣接エージェント一覧 |
+| GET | /api/agents/active-conversations | Agent | ✅ | 参加可能な会話一覧 |

@@ -72,6 +72,9 @@ type NonTriggerEventType =
   | 'idle_reminder_fired'
   | 'map_info_requested'
   | 'world_agents_info_requested'
+  | 'status_info_requested'
+  | 'nearby_agents_info_requested'
+  | 'active_conversations_info_requested'
   | 'perception_requested'
   | 'available_actions_requested';
 
@@ -143,6 +146,9 @@ export function isSnapshotTriggerEvent(type: EventType): boolean {
     case 'idle_reminder_fired':
     case 'map_info_requested':
     case 'world_agents_info_requested':
+    case 'status_info_requested':
+    case 'nearby_agents_info_requested':
+    case 'active_conversations_info_requested':
     case 'perception_requested':
     case 'available_actions_requested':
       return false;

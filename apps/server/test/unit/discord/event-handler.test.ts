@@ -1747,7 +1747,7 @@ describe('DiscordEventHandler', () => {
     handler.dispose();
   });
 
-  it('sends notification-based info responses for map, perception, actions, and world agents', async () => {
+  it('sends notification-based info responses for map, perception, actions, agents, status, nearby agents, and conversations', async () => {
     const { engine } = createTestWorld();
     const bot = new RecordingDiscordBot();
     const handler = new DiscordEventHandler(engine, bot as never);
@@ -1768,9 +1768,12 @@ describe('DiscordEventHandler', () => {
     engine.emitEvent({ type: 'world_agents_info_requested', agent_id: alice.agent_id });
     engine.emitEvent({ type: 'perception_requested', agent_id: alice.agent_id });
     engine.emitEvent({ type: 'available_actions_requested', agent_id: alice.agent_id });
+    engine.emitEvent({ type: 'status_info_requested', agent_id: alice.agent_id });
+    engine.emitEvent({ type: 'nearby_agents_info_requested', agent_id: alice.agent_id });
+    engine.emitEvent({ type: 'active_conversations_info_requested', agent_id: alice.agent_id });
 
     await vi.waitFor(() => {
-      expect(bot.agentMessages).toHaveLength(4);
+      expect(bot.agentMessages).toHaveLength(7);
     });
 
     expect(bot.agentMessages[0]?.content).toContain('マップ: 3行 × 5列');
@@ -1798,11 +1801,66 @@ describe('DiscordEventHandler', () => {
     expect(bot.agentMessages[3]?.content).toContain('- get_perception: 周囲の情報を取得する');
     expect(bot.agentMessages[3]?.content).toContain('- get_map: マップ全体の情報を取得する');
     expect(bot.agentMessages[3]?.content).toContain('- get_world_agents: 全エージェントの位置と状態を取得する');
+    expect(bot.agentMessages[4]?.content).toContain('現在地: 1-1');
+    expect(bot.agentMessages[4]?.content).toContain('所持品: なし');
+    expect(bot.agentMessages[4]?.content).not.toContain('- get_status: 自分の所持金・所持品・現在地を取得する');
+    expect(bot.agentMessages[5]?.content).toContain('conversation_candidates:');
+    expect(bot.agentMessages[5]?.content).toContain(`- Bob (${bob.agent_id}) - idle`);
+    expect(bot.agentMessages[5]?.content).toContain('transfer_candidates:');
+    expect(bot.agentMessages[5]?.content).not.toContain('- get_nearby_agents: 隣接エージェントの一覧を取得する');
+    expect(bot.agentMessages[6]?.content).toContain('参加可能な進行中の会話はありません。');
+    expect(bot.agentMessages[6]?.content).not.toContain('- get_active_conversations: 参加可能な進行中の会話一覧を取得する');
 
     handler.dispose();
   });
 
-  it('hides use-item only on the venue rejection prompt', async () => {
+  it('hides last-used item from get_status once and then restores it', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        items: [
+          { item_id: 'ticket', name: 'チケット', description: 'テスト用チケット', type: 'venue' as const, stackable: false },
+          { item_id: 'pass', name: 'パス', description: 'テスト用パス', type: 'venue' as const, stackable: false },
+        ],
+      },
+    });
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = await registerAgent(engine, 'Alice');
+    await engine.loginAgent(alice.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(1);
+    });
+    bot.agentMessages.length = 0;
+
+    engine.state.setItems(alice.agent_id, [
+      { item_id: 'ticket', quantity: 1 },
+      { item_id: 'pass', quantity: 1 },
+    ]);
+    engine.state.setLastUsedItem(alice.agent_id, 'ticket');
+    engine.emitEvent({ type: 'status_info_requested', agent_id: alice.agent_id });
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(1);
+      expect(engine.state.getLoggedIn(alice.agent_id)?.last_used_item_id).toBeNull();
+    });
+
+    expect(bot.agentMessages[0]?.content).not.toContain('ticket');
+    expect(bot.agentMessages[0]?.content).toContain('pass');
+
+    engine.emitEvent({ type: 'status_info_requested', agent_id: alice.agent_id });
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(2);
+    });
+
+    expect(bot.agentMessages[1]?.content).toContain('ticket');
+    expect(bot.agentMessages[1]?.content).toContain('pass');
+
+    handler.dispose();
+  });
+
+  it('hides the venue item from venue rejection perception and following status once', async () => {
     const { engine } = createTestWorld({
       config: {
         items: [
@@ -1850,22 +1908,34 @@ describe('DiscordEventHandler', () => {
       expect(bot.agentMessages).toHaveLength(1);
     });
 
-    expect(bot.agentMessages[0]?.content).toContain('(item_id: bread)');
-    expect(bot.agentMessages[0]?.content).not.toContain('(item_id: ticket)');
+    expect(bot.agentMessages[0]?.content).toContain('- use-item: アイテムを使用する (item_id: 使用するアイテムのID)');
+    expect(bot.agentMessages[0]?.content).toContain('所持品: 1 個');
 
-    engine.emitEvent({ type: 'perception_requested', agent_id: alice.agent_id });
+    expect(engine.state.getLoggedIn(alice.agent_id)?.last_used_item_id).toBe('ticket');
+
+    engine.emitEvent({ type: 'status_info_requested', agent_id: alice.agent_id });
 
     await vi.waitFor(() => {
       expect(bot.agentMessages).toHaveLength(2);
+      expect(engine.state.getLoggedIn(alice.agent_id)?.last_used_item_id).toBeNull();
     });
 
-    expect(bot.agentMessages[1]?.content).toContain('(item_id: bread)');
-    expect(bot.agentMessages[1]?.content).toContain('(item_id: ticket)');
+    expect(bot.agentMessages[1]?.content).not.toContain('ticket');
+    expect(bot.agentMessages[1]?.content).toContain('bread');
+
+    engine.emitEvent({ type: 'status_info_requested', agent_id: alice.agent_id });
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(3);
+    });
+
+    expect(bot.agentMessages[2]?.content).toContain('ticket');
+    expect(bot.agentMessages[2]?.content).toContain('bread');
 
     handler.dispose();
   });
 
-  it('keeps use-item suppressed for prompts queued before the venue rejection delivery completes', async () => {
+  it('keeps venue item count suppression for prompts queued before the venue rejection delivery completes', async () => {
     const { engine } = createTestWorld({
       config: {
         items: [
@@ -1902,7 +1972,7 @@ describe('DiscordEventHandler', () => {
 
     await vi.waitFor(() => {
       expect(sendCount).toBe(1);
-      expect(bot.agentMessages[0]?.content).not.toContain('- use-item:');
+      expect(bot.agentMessages[0]?.content).toContain('所持品: なし');
     });
 
     engine.emitEvent({ type: 'perception_requested', agent_id: alice.agent_id });
@@ -1913,7 +1983,7 @@ describe('DiscordEventHandler', () => {
       expect(bot.agentMessages).toHaveLength(2);
     });
 
-    expect(bot.agentMessages[1]?.content).not.toContain('(item_id: ticket)');
+    expect(bot.agentMessages[1]?.content).toContain('所持品: なし');
     expect(engine.state.getLoggedIn(alice.agent_id)?.last_used_item_id).toBeNull();
 
     handler.dispose();
@@ -2349,7 +2419,7 @@ describe('DiscordEventHandler', () => {
       expect(bot.agentMessages).toHaveLength(1);
     });
 
-    expect(bot.agentMessages[0]?.content).not.toContain('- use-item:');
+    expect(bot.agentMessages[0]?.content).toContain('所持品: なし');
     expect(engine.state.getLoggedIn(alice.agent_id)?.last_used_item_id).toBeNull();
 
     consoleErrorSpy.mockRestore();
@@ -2414,25 +2484,30 @@ describe('DiscordEventHandler', () => {
     });
 
     expect(bot.agentMessages[1]?.content).toContain('ここでは「チケット」を利用できません。');
-    expect(bot.agentMessages[1]?.content).not.toContain('(item_id: ticket)');
-    expect(bot.agentMessages[1]?.content).toContain('(item_id: pass)');
+    expect(bot.agentMessages[1]?.content).toContain('所持品: 1 個');
     expect(engine.state.getLoggedIn(alice.agent_id)?.last_used_item_id).toBe('pass');
 
     blockedFirstRejectPrompt.resolve();
 
     await vi.waitFor(() => {
       expect(bot.agentMessages).toHaveLength(3);
-      expect(engine.state.getLoggedIn(alice.agent_id)?.last_used_item_id).toBeNull();
     });
 
     expect(bot.agentMessages[2]?.content).toContain('ここでは「パス」を利用できません。');
-    expect(bot.agentMessages[2]?.content).toContain('(item_id: ticket)');
-    expect(bot.agentMessages[2]?.content).not.toContain('(item_id: pass)');
+    expect(bot.agentMessages[2]?.content).toContain('所持品: 1 個');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.last_used_item_id).toBe('pass');
+
+    engine.emitEvent({ type: 'status_info_requested', agent_id: alice.agent_id });
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(4);
+      expect(engine.state.getLoggedIn(alice.agent_id)?.last_used_item_id).toBeNull();
+    });
+    expect(bot.agentMessages[3]?.content).not.toContain('pass');
 
     handler.dispose();
   });
 
-  it('clears rejected-action suppression after delivering a venue rejection prompt', async () => {
+  it('clears rejected-action suppression after delivering a venue rejection prompt while keeping item suppression for status', async () => {
     const baseMap = createTestWorld().config.map;
     const { engine } = createTestWorld({
       config: {
@@ -2500,7 +2575,13 @@ describe('DiscordEventHandler', () => {
 
     expect(bot.agentMessages[0]?.content).not.toContain('expensive-greeting');
     expect(engine.state.getLoggedIn(alice.agent_id)?.last_rejected_action_id).toBeNull();
-    expect(engine.state.getLoggedIn(alice.agent_id)?.last_used_item_id).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.last_used_item_id).toBe('ticket');
+
+    engine.emitEvent({ type: 'status_info_requested', agent_id: alice.agent_id });
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(2);
+      expect(engine.state.getLoggedIn(alice.agent_id)?.last_used_item_id).toBeNull();
+    });
 
     consoleErrorSpy.mockRestore();
     handler.dispose();
@@ -3016,5 +3097,145 @@ describe('DiscordEventHandler', () => {
     });
 
     handler.dispose();
+  });
+
+  it('splits get_nearby_agents candidates so an in_transfer peer is excluded only from transfer_candidates', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        items: [{ item_id: 'apple', name: 'りんご', description: 'りんご', type: 'food' as const, stackable: true }],
+      },
+    });
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = await registerAgent(engine, 'Alice');
+    const bob = await registerAgent(engine, 'Bob');
+    const carol = await registerAgent(engine, 'Carol');
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    await engine.loginAgent(carol.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.worldLogMessages.length).toBeGreaterThanOrEqual(3);
+    });
+    bot.agentMessages.length = 0;
+
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.state.setNode(bob.agent_id, '1-2');
+    engine.state.setNode(carol.agent_id, '1-2');
+    engine.state.setState(bob.agent_id, 'in_action');
+    engine.state.setPendingTransfer(bob.agent_id, 'transfer-pending-1');
+
+    engine.emitEvent({ type: 'nearby_agents_info_requested', agent_id: alice.agent_id });
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toHaveLength(1);
+    });
+
+    const content = bot.agentMessages[0]?.content ?? '';
+    const conversationSection = content.split('transfer_candidates:')[0] ?? '';
+    const transferSection = content.split('transfer_candidates:')[1] ?? '';
+
+    expect(conversationSection).toContain(`Bob (${bob.agent_id})`);
+    expect(conversationSection).toContain(`Carol (${carol.agent_id})`);
+    expect(transferSection).not.toContain(`Bob (${bob.agent_id})`);
+    expect(transferSection).toContain(`Carol (${carol.agent_id})`);
+
+    handler.dispose();
+  });
+
+  it('filters get_active_conversations so a full conversation is not advertised to a nearby observer', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        conversation: {
+          max_turns: 10,
+          max_participants: 2,
+          inactive_check_turns: 10,
+          interval_ms: 500,
+          accept_timeout_ms: 3000,
+          turn_timeout_ms: 4000,
+        },
+      },
+    });
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = await registerAgent(engine, 'Alice');
+    const bob = await registerAgent(engine, 'Bob');
+    const carol = await registerAgent(engine, 'Carol');
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    await engine.loginAgent(carol.agent_id);
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.state.setNode(bob.agent_id, '1-2');
+    engine.state.setNode(carol.agent_id, '1-2');
+
+    engine.startConversation(alice.agent_id, { target_agent_id: bob.agent_id, message: 'Hello Bob' });
+    engine.acceptConversation(bob.agent_id, { message: 'Hi Alice' });
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages.some((message) => message.channelId === 'channel-Carol')).toBe(true);
+    });
+    const previousCarolMessages = bot.agentMessages.filter((message) => message.channelId === 'channel-Carol').length;
+
+    engine.emitEvent({ type: 'active_conversations_info_requested', agent_id: carol.agent_id });
+
+    await vi.waitFor(() => {
+      const carolMessages = bot.agentMessages.filter((message) => message.channelId === 'channel-Carol');
+      expect(carolMessages.length).toBeGreaterThan(previousCarolMessages);
+    });
+
+    const carolMessages = bot.agentMessages.filter((message) => message.channelId === 'channel-Carol');
+    const latest = carolMessages[carolMessages.length - 1]?.content ?? '';
+    expect(latest).toContain('参加可能な進行中の会話はありません。');
+
+    handler.dispose();
+  });
+
+  it('consumes last_used_item_id via the idle_reminder_fired notification', async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine } = createTestWorld({
+        config: {
+          idle_reminder: { interval_ms: 1000 },
+          items: [
+            { item_id: 'ticket', name: 'チケット', description: 'チケット', type: 'venue' as const, stackable: false },
+            { item_id: 'apple', name: 'りんご', description: 'りんご', type: 'food' as const, stackable: true },
+          ],
+        },
+      });
+      const bot = new RecordingDiscordBot();
+      const handler = new DiscordEventHandler(engine, bot as never);
+      handler.register();
+
+      const alice = await registerAgent(engine, 'Alice');
+      await engine.loginAgent(alice.agent_id);
+
+      await vi.waitFor(() => {
+        expect(bot.agentMessages.length).toBeGreaterThanOrEqual(1);
+      });
+      const messagesBeforeReminder = bot.agentMessages.length;
+
+      engine.state.setItems(alice.agent_id, [
+        { item_id: 'ticket', quantity: 1 },
+        { item_id: 'apple', quantity: 1 },
+      ]);
+      engine.state.setLastUsedItem(alice.agent_id, 'ticket');
+
+      await vi.advanceTimersByTimeAsync(1100);
+
+      await vi.waitFor(() => {
+        expect(bot.agentMessages.length).toBeGreaterThan(messagesBeforeReminder);
+        expect(engine.state.getLoggedIn(alice.agent_id)?.last_used_item_id).toBeNull();
+      });
+
+      const reminder = bot.agentMessages[bot.agentMessages.length - 1]?.content ?? '';
+      expect(reminder).toContain('所持品: 1 個');
+
+      handler.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

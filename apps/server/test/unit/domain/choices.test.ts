@@ -23,12 +23,41 @@ describe('choices domain', () => {
     expect(text).toContain('- action: Greet the gatekeeper (action_id: greet-gatekeeper, 1秒) - Gatekeeper');
     expect(text).toContain('- move: ノードIDを指定して移動する (target_node_id: ノードID)');
     expect(text).toContain('- wait: その場で待機する (duration: 1〜6、10分単位)');
-    expect(text).toContain(`- conversation_start: bob に話しかける (target_agent_id: ${bob.agent_id}, message: 最初のメッセージ)`);
-    expect(text).toContain(`- transfer: bob に譲渡する (target_agent_id: ${bob.agent_id}, item: { item_id: apple, quantity: 数量 } または money: 金額)`);
+    expect(text).toContain('- conversation_start: 隣接エージェントに話しかける (target_agent_id: ID, message: 最初のメッセージ)');
+    expect(text).toContain('- transfer: 近くのエージェントにアイテム/お金を譲渡する (target_agent_id: ID, item: { item_id: ID, quantity: N } または money: 金額)');
     expect(text).toContain('- get_perception: 周囲の情報を取得する');
     expect(text).toContain('- get_available_actions: 現在位置で実行可能なアクションを取得する');
     expect(text).toContain('- get_map: マップ全体の情報を取得する');
     expect(text).toContain('- get_world_agents: 全エージェントの位置と状態を取得する');
+    expect(text).toContain('- get_status: 自分の所持金・所持品・現在地を取得する');
+    expect(text).toContain('- get_nearby_agents: 隣接エージェントの一覧を取得する');
+    // 参加可能な進行中の会話がない状態では get_active_conversations は出ない
+    expect(text).not.toContain('- get_active_conversations:');
+  });
+
+  it('shows get_active_conversations only when a joinable active conversation exists nearby', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    const carol = await engine.registerAgent({ discord_bot_id: 'bot-carol' });
+    const dave = await engine.registerAgent({ discord_bot_id: 'bot-dave' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    await engine.loginAgent(carol.agent_id);
+    await engine.loginAgent(dave.agent_id);
+
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.state.setNode(bob.agent_id, '1-2');
+    engine.state.setNode(carol.agent_id, '1-2');
+    engine.state.setNode(dave.agent_id, '2-1');
+
+    // bob と carol が会話を開始（alice/dave は隣接で参加可能）
+    engine.startConversation(bob.agent_id, { target_agent_id: carol.agent_id, message: 'Hi Carol' });
+    engine.acceptConversation(carol.agent_id, { message: 'Hi Bob' });
+
+    const aliceText = buildChoicesText(engine, alice.agent_id);
+    expect(aliceText).toContain('- conversation_join: 進行中の会話に参加する (conversation_id: ID)');
+    expect(aliceText).toContain('- get_active_conversations: 参加可能な進行中の会話一覧を取得する');
   });
 
   it('can exclude only the requested info command from choices', async () => {
@@ -103,7 +132,7 @@ describe('choices domain', () => {
 
     const text = buildChoicesText(engine, alice.agent_id);
 
-    expect(text).not.toContain('conversation_start: bob');
+    expect(text).not.toContain('- conversation_start:');
   });
 
   it('omits unavailable conversation targets', async () => {
@@ -118,7 +147,7 @@ describe('choices domain', () => {
 
     const text = buildChoicesText(engine, alice.agent_id);
 
-    expect(text).not.toContain('conversation_start: bob');
+    expect(text).not.toContain('- conversation_start:');
   });
 
   it('omits state-conflicting commands while moving', async () => {
@@ -137,7 +166,7 @@ describe('choices domain', () => {
     expect(text).not.toContain('- action:');
     expect(text).not.toContain('- move:');
     expect(text).not.toContain('- wait:');
-    expect(text).not.toContain('conversation_start: bob');
+    expect(text).not.toContain('- conversation_start:');
     expect(text).toBe('選択肢:\n');
   });
 
@@ -157,7 +186,7 @@ describe('choices domain', () => {
     expect(text).not.toContain('- action:');
     expect(text).not.toContain('- move:');
     expect(text).not.toContain('- wait:');
-    expect(text).not.toContain('conversation_start: bob');
+    expect(text).not.toContain('- conversation_start:');
     expect(text).toBe('選択肢:\n');
   });
 
@@ -179,7 +208,7 @@ describe('choices domain', () => {
       expect(text).toContain('- action:');
       expect(text).toContain('- move: ノードIDを指定して移動する (target_node_id: ノードID)');
       expect(text).toContain('- wait: その場で待機する (duration: 1〜6、10分単位)');
-      expect(text).not.toContain('conversation_start: bob');
+      expect(text).not.toContain('- conversation_start:');
       expect(text).toContain('- get_perception: 周囲の情報を取得する');
       expect(text).toContain('- get_available_actions: 現在位置で実行可能なアクションを取得する');
       expect(text).toContain('- get_map: マップ全体の情報を取得する');
@@ -208,7 +237,7 @@ describe('choices domain', () => {
 
     const text = buildChoicesText(engine, carol.agent_id, { forceShowActions: true });
 
-    expect(text).toContain('- conversation_join: alice と bob の会話に参加する');
+    expect(text).toContain('- conversation_join: 進行中の会話に参加する (conversation_id: ID)');
   });
 
   it('keeps money- and item-gated actions visible in choices', async () => {
@@ -282,7 +311,7 @@ describe('choices domain', () => {
     expect(engine.state.getLoggedIn(alice.agent_id)?.last_rejected_action_id).toBe('greet-gatekeeper');
   });
 
-  it('hides use-item when only the last rejected item remains', async () => {
+  it('keeps the single use-item row visible even when only the last used item remains', async () => {
     const { engine } = createTestWorld({
       config: {
         items: [{ item_id: 'ticket', name: 'チケット', description: 'チケット', type: 'venue' as const, stackable: false }],
@@ -295,7 +324,7 @@ describe('choices domain', () => {
 
     const text = buildChoicesText(engine, alice.agent_id);
 
-    expect(text).not.toContain('- use-item:');
+    expect(text).toContain('- use-item: アイテムを使用する (item_id: 使用するアイテムのID)');
   });
 
   it('shows accept/reject choices for a pending transfer', async () => {
@@ -321,6 +350,32 @@ describe('choices domain', () => {
 
     expect(text).toContain('- accept_transfer: alice からの譲渡を受け取る');
     expect(text).toContain('- reject_transfer: alice からの譲渡を断る');
+  });
+
+  it('omits info commands for an in_transfer agent even in forced choices', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        items: [{ item_id: 'apple', name: 'りんご', description: 'りんご', type: 'food' as const, stackable: true }],
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.state.setNode(bob.agent_id, '1-2');
+    engine.state.setItems(alice.agent_id, [{ item_id: 'apple', quantity: 1 }]);
+
+    engine.startTransfer(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      item: { item_id: 'apple', quantity: 1 },
+    });
+
+    const text = buildChoicesText(engine, bob.agent_id, { forceShowActions: true });
+
+    expect(text).toContain('- accept_transfer: alice からの譲渡を受け取る');
+    expect(text).not.toContain('- get_status:');
+    expect(text).not.toContain('- get_perception:');
   });
 
   it('hides standalone transfer accept/reject choices during an active server-event window', async () => {
@@ -365,8 +420,28 @@ describe('choices domain', () => {
     const text = buildChoicesText(engine, alice.agent_id);
 
     // server-event window 関係なく in_action は transfer を発信できる仕様。
-    expect(text).toContain(`- transfer: bob に譲渡する (target_agent_id: ${bob.agent_id}, item: { item_id: apple, quantity: 数量 } または money: 金額)`);
+    expect(text).toContain('- transfer: 近くのエージェントにアイテム/お金を譲渡する (target_agent_id: ID, item: { item_id: ID, quantity: N } または money: 金額)');
     expect(text).toContain('- move: ノードIDを指定して移動する');
+  });
+
+  it('advertises standalone transfer to in_action sender without a server-event interrupt window', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.state.setNode(bob.agent_id, '1-2');
+    engine.state.setItems(alice.agent_id, [{ item_id: 'apple', quantity: 1 }]);
+    engine.state.setMoney(alice.agent_id, 100);
+    engine.state.setState(alice.agent_id, 'in_action');
+
+    const text = buildChoicesText(engine, alice.agent_id);
+
+    expect(text).toContain('- transfer: 近くのエージェントにアイテム/お金を譲渡する (target_agent_id: ID, item: { item_id: ID, quantity: N } または money: 金額)');
+    expect(text).not.toContain('- move: ノードIDを指定して移動する');
+    expect(text).not.toContain('- wait: その場で待機する');
+    expect(text).not.toContain('- get_perception: 周囲の情報を取得する');
   });
 
   it('omits transfer choices entirely when sender has neither items nor money', async () => {
@@ -398,8 +473,7 @@ describe('choices domain', () => {
 
     const text = buildChoicesText(engine, alice.agent_id);
 
-    expect(text).toContain(`- transfer: bob に譲渡する (target_agent_id: ${bob.agent_id}, money: 金額)`);
-    expect(text).not.toContain('item: {');
+    expect(text).toContain('- transfer: 近くのエージェントにアイテム/お金を譲渡する (target_agent_id: ID, item: { item_id: ID, quantity: N } または money: 金額)');
   });
 
   it('shows only item part of transfer hint when sender has items but no money', async () => {
@@ -414,11 +488,10 @@ describe('choices domain', () => {
 
     const text = buildChoicesText(engine, alice.agent_id);
 
-    expect(text).toContain(`- transfer: bob に譲渡する (target_agent_id: ${bob.agent_id}, item: { item_id: apple, quantity: 数量 })`);
-    expect(text).not.toContain('money: 金額');
+    expect(text).toContain('- transfer: 近くのエージェントにアイテム/お金を譲渡する (target_agent_id: ID, item: { item_id: ID, quantity: N } または money: 金額)');
   });
 
-  it('joins multiple transferable item_ids with " or " in the hint', async () => {
+  it('does not inline transferable item_ids in the transfer hint', async () => {
     const { engine } = createTestWorld({
       config: {
         items: [
@@ -440,8 +513,8 @@ describe('choices domain', () => {
 
     const text = buildChoicesText(engine, alice.agent_id);
 
-    // item_id は所持の集合を ' or ' で並べる（ソートで安定）
-    expect(text).toContain(`- transfer: bob に譲渡する (target_agent_id: ${bob.agent_id}, item: { item_id: apple or popcorn, quantity: 数量 })`);
+    expect(text).toContain('- transfer: 近くのエージェントにアイテム/お金を譲渡する (target_agent_id: ID, item: { item_id: ID, quantity: N } または money: 金額)');
+    expect(text).not.toContain('apple or popcorn');
   });
 
   it('shows conversation transfer response guidance instead of standalone accept/reject choices', async () => {
@@ -483,6 +556,84 @@ describe('choices domain', () => {
     }
   });
 
+  it('omits transfer when nearby candidate is in_transfer (other transfer in progress)', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        items: [{ item_id: 'apple', name: 'りんご', description: 'りんご', type: 'food' as const, stackable: true }],
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    const carol = await engine.registerAgent({ discord_bot_id: 'bot-carol' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    await engine.loginAgent(carol.agent_id);
+
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.state.setNode(bob.agent_id, '1-2');
+    engine.state.setNode(carol.agent_id, '1-2');
+    engine.state.setItems(alice.agent_id, [{ item_id: 'apple', quantity: 1 }]);
+    engine.state.setItems(bob.agent_id, [{ item_id: 'apple', quantity: 1 }]);
+
+    engine.startTransfer(bob.agent_id, {
+      target_agent_id: carol.agent_id,
+      item: { item_id: 'apple', quantity: 1 },
+    });
+
+    const text = buildChoicesText(engine, alice.agent_id);
+
+    expect(text).not.toContain('- transfer:');
+    expect(text).not.toContain('- conversation_start:');
+  });
+
+  it('keeps conversation_start when target has pending transfer offer (in_transfer state via offer side-effect)', async () => {
+    // pending_transfer を持つ in_action 候補は、conversation_start 候補に残るが transfer_candidates から落ちる仕様。
+    const { engine } = createTestWorld({
+      config: {
+        items: [{ item_id: 'apple', name: 'りんご', description: 'りんご', type: 'food' as const, stackable: true }],
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.state.setNode(bob.agent_id, '1-2');
+    engine.state.setItems(alice.agent_id, [{ item_id: 'apple', quantity: 1 }]);
+    // in_action + pending_transfer_id の組み合わせは startTransfer では作れないため直接 setter で組み立てる
+    engine.state.setState(bob.agent_id, 'in_action');
+    engine.state.setPendingTransfer(bob.agent_id, 'transfer-pending-1');
+
+    const text = buildChoicesText(engine, alice.agent_id);
+
+    expect(text).toContain('- conversation_start: 隣接エージェントに話しかける (target_agent_id: ID, message: 最初のメッセージ)');
+    expect(text).not.toContain('- transfer:');
+  });
+
+  it('excludes transfer candidates that have a pending conversation', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        items: [{ item_id: 'apple', name: 'りんご', description: 'りんご', type: 'food' as const, stackable: true }],
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+
+    engine.state.setNode(alice.agent_id, '1-1');
+    engine.state.setNode(bob.agent_id, '1-2');
+    engine.state.setItems(alice.agent_id, [{ item_id: 'apple', quantity: 1 }]);
+    engine.state.setPendingConversation(bob.agent_id, 'conversation-xyz');
+
+    const text = buildChoicesText(engine, alice.agent_id);
+
+    // pending_conversation_id を持つ候補は conversation_start / transfer 双方から落ちる
+    expect(text).not.toContain('- conversation_start:');
+    expect(text).not.toContain('- transfer:');
+  });
+
   it('keeps use-item visible when another usable item remains', async () => {
     const { engine } = createTestWorld({
       config: {
@@ -502,7 +653,7 @@ describe('choices domain', () => {
 
     const text = buildChoicesText(engine, alice.agent_id);
 
-    expect(text).toContain('(item_id: apple)');
+    expect(text).toContain('- use-item: アイテムを使用する (item_id: 使用するアイテムのID)');
     expect(text).not.toContain('(item_id: ticket)');
   });
 });

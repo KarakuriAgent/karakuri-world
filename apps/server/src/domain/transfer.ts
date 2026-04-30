@@ -407,6 +407,7 @@ export function startTransfer(
   });
   if (mode === 'standalone') {
     engine.state.clearExcludedInfoCommands(from.agent_id);
+    engine.state.setLastUsedItem(from.agent_id, null);
   }
   return { transfer_id };
 }
