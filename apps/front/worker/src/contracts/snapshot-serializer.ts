@@ -92,11 +92,17 @@ const spectatorMapSnapshotSchema = z.object({
   }
 });
 
-const spectatorRecentServerEventSchema = z.object({
-  server_event_id: z.string(),
+const spectatorRecentServerAnnouncementSchema = z.object({
+  server_announcement_id: z.string(),
   description: z.string(),
   occurred_at: z.number().int().nonnegative(),
   is_active: z.boolean(),
+});
+
+const spectatorActiveServerEventSchema = z.object({
+  server_event_id: z.string(),
+  description: z.string(),
+  created_at: z.number().int().nonnegative(),
 });
 
 const snapshotWeatherSchema = z.object({
@@ -175,7 +181,8 @@ export const spectatorSnapshotSchema = z
     agents: z.array(spectatorAgentSnapshotSchema),
     known_agents: z.array(spectatorKnownAgentSchema),
     conversations: z.array(spectatorConversationSnapshotSchema),
-    recent_server_events: z.array(spectatorRecentServerEventSchema),
+    active_server_events: z.array(spectatorActiveServerEventSchema).optional(),
+    recent_server_announcements: z.array(spectatorRecentServerAnnouncementSchema),
     generated_at: z.number().int().nonnegative(),
     published_at: z.number().int().nonnegative(),
     last_publish_error_at: z.number().int().nonnegative().optional(),

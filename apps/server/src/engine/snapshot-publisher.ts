@@ -64,7 +64,9 @@ type SnapshotTriggerEventType =
   | 'transfer_timeout'
   | 'transfer_cancelled'
   | 'transfer_escrow_lost'
-  | 'server_event_fired';
+  | 'server_announcement_fired'
+  | 'server_event_created'
+  | 'server_event_cleared';
 
 type NonTriggerEventType =
   | 'conversation_inactive_check'
@@ -75,6 +77,7 @@ type NonTriggerEventType =
   | 'status_info_requested'
   | 'nearby_agents_info_requested'
   | 'active_conversations_info_requested'
+  | 'server_events_info_requested'
   | 'perception_requested'
   | 'available_actions_requested';
 
@@ -139,7 +142,9 @@ export function isSnapshotTriggerEvent(type: EventType): boolean {
     case 'transfer_timeout':
     case 'transfer_cancelled':
     case 'transfer_escrow_lost':
-    case 'server_event_fired':
+    case 'server_announcement_fired':
+    case 'server_event_created':
+    case 'server_event_cleared':
       return true;
     case 'conversation_inactive_check':
     case 'conversation_pending_join_cancelled':
@@ -149,6 +154,7 @@ export function isSnapshotTriggerEvent(type: EventType): boolean {
     case 'status_info_requested':
     case 'nearby_agents_info_requested':
     case 'active_conversations_info_requested':
+    case 'server_events_info_requested':
     case 'perception_requested':
     case 'available_actions_requested':
       return false;

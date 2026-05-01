@@ -70,7 +70,7 @@ function createMapRenderSnapshot(): SpectatorSnapshot {
     agents: [],
     known_agents: [],
     conversations: [],
-    recent_server_events: [],
+    recent_server_announcements: [],
     generated_at: 1_780_000_000_000,
     published_at: 1_780_000_005_000,
   };

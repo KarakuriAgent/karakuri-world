@@ -42,7 +42,9 @@ const STATUS_TRIGGERING_EVENTS = new Set<EventType>([
   'transfer_timeout',
   'transfer_cancelled',
   'transfer_escrow_lost',
-  'server_event_fired',
+  'server_announcement_fired',
+  'server_event_created',
+  'server_event_cleared',
 ]);
 
 export class StatusBoard {

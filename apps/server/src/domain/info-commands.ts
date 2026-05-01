@@ -129,6 +129,9 @@ export function emitInfoRequest(
     case 'get_active_conversations':
       engine.emitEvent({ type: 'active_conversations_info_requested', agent_id: agentId });
       break;
+    case 'get_event':
+      engine.emitEvent({ type: 'server_events_info_requested', agent_id: agentId });
+      break;
     default: {
       const exhaustive: never = command;
       throw new Error(`Unhandled info command: ${String(exhaustive)}`);

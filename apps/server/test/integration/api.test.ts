@@ -424,13 +424,13 @@ describe('REST API', () => {
     expect(ended.response.status).toBe(200);
     expect(ended.data.turn).toBe(4);
 
-    const fired = await requestJson(app, '/api/admin/server-events/fire', {
+    const fired = await requestJson(app, '/api/admin/server-announcements/fire', {
       method: 'POST',
       headers: { 'X-Admin-Key': ADMIN_KEY },
       body: JSON.stringify({ description: 'Dark clouds gather.' }),
     });
     expect(fired.response.status).toBe(200);
-    expect(fired.data.server_event_id).toMatch(/^server-event-/);
+    expect(fired.data.server_announcement_id).toMatch(/^server-announcement-/);
   });
 
   it('emits info-request events for notification-based read endpoints', async () => {
@@ -459,12 +459,62 @@ describe('REST API', () => {
     await requestJson(app, '/api/agents/world-agents', {
       headers: { Authorization: `Bearer ${registered.data.api_key}` },
     });
+    engine.createServerEvent('Festival');
+    await requestJson(app, '/api/agents/event', {
+      headers: { Authorization: `Bearer ${registered.data.api_key}` },
+    });
     unsubscribe();
 
     expect(eventTypes).toContain('perception_requested');
     expect(eventTypes).toContain('available_actions_requested');
     expect(eventTypes).toContain('map_info_requested');
     expect(eventTypes).toContain('world_agents_info_requested');
+    expect(eventTypes).toContain('server_events_info_requested');
+  });
+
+  it('manages persistent server events through admin API without clearing history from memory', async () => {
+    const { engine } = createTestWorld();
+    const { app } = createApp(engine, { adminKey: ADMIN_KEY, publicBaseUrl: PUBLIC_BASE_URL });
+
+    const created = await requestJson(app, '/api/admin/server-events', {
+      method: 'POST',
+      headers: { 'X-Admin-Key': ADMIN_KEY },
+      body: JSON.stringify({ description: 'Festival' }),
+    });
+    expect(created.response.status).toBe(201);
+    expect(created.data.server_event_id).toMatch(/^server-event-/);
+    expect(engine.getSnapshot().active_server_events).toHaveLength(1);
+
+    const listed = await requestJson(app, '/api/admin/server-events', {
+      headers: { 'X-Admin-Key': ADMIN_KEY },
+    });
+    expect(listed.data.events).toHaveLength(1);
+
+    const cleared = await requestJson(app, `/api/admin/server-events/${created.data.server_event_id}`, {
+      method: 'DELETE',
+      headers: { 'X-Admin-Key': ADMIN_KEY },
+    });
+    expect(cleared.response.status).toBe(204);
+    expect(engine.getSnapshot().active_server_events).toEqual([]);
+
+    const listedWithCleared = await requestJson(app, '/api/admin/server-events?include_cleared=true', {
+      headers: { 'X-Admin-Key': ADMIN_KEY },
+    });
+    expect(listedWithCleared.data.events[0].cleared_at).toBeTypeOf('number');
+
+    const alreadyCleared = await requestJson(app, `/api/admin/server-events/${created.data.server_event_id}`, {
+      method: 'DELETE',
+      headers: { 'X-Admin-Key': ADMIN_KEY },
+    });
+    expect(alreadyCleared.response.status).toBe(409);
+    expect(alreadyCleared.data.error).toBe('already_cleared');
+
+    const missing = await requestJson(app, '/api/admin/server-events/missing', {
+      method: 'DELETE',
+      headers: { 'X-Admin-Key': ADMIN_KEY },
+    });
+    expect(missing.response.status).toBe(404);
+    expect(missing.data.error).toBe('not_found');
   });
 
   it('accepts conversation leave without a request body', async () => {

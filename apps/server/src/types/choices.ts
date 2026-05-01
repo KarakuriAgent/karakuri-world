@@ -5,4 +5,5 @@ export type InfoCommandChoice =
   | 'get_world_agents'
   | 'get_status'
   | 'get_nearby_agents'
-  | 'get_active_conversations';
+  | 'get_active_conversations'
+  | 'get_event';

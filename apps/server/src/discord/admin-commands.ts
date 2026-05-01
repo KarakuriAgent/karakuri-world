@@ -43,8 +43,19 @@ const commands = [
         .setAutocomplete(true),
     ),
   new SlashCommandBuilder()
-    .setName('fire-event')
-    .setDescription('サーバーイベントを発火します')
+    .setName('fire-announcement')
+    .setDescription('サーバーアナウンスを発火します')
+    .setDefaultMemberPermissions(null)
+    .addStringOption((option) =>
+      option
+        .setName('description')
+        .setDescription('アナウンス説明')
+        .setRequired(true)
+        .setMaxLength(1000),
+    ),
+  new SlashCommandBuilder()
+    .setName('create-event')
+    .setDescription('永続サーバーイベントを開始します')
     .setDefaultMemberPermissions(null)
     .addStringOption((option) =>
       option
@@ -53,6 +64,21 @@ const commands = [
         .setRequired(true)
         .setMaxLength(1000),
     ),
+  new SlashCommandBuilder()
+    .setName('clear-event')
+    .setDescription('永続サーバーイベントを終了します')
+    .setDefaultMemberPermissions(null)
+    .addStringOption((option) =>
+      option
+        .setName('event_id')
+        .setDescription('終了するイベント ID')
+        .setRequired(true)
+        .setAutocomplete(true),
+    ),
+  new SlashCommandBuilder()
+    .setName('list-event')
+    .setDescription('実施中の永続サーバーイベントを一覧表示します')
+    .setDefaultMemberPermissions(null),
   new SlashCommandBuilder()
     .setName('login-agent')
     .setDescription('エージェントをログインさせます')
@@ -256,14 +282,43 @@ export class AdminCommandHandler {
           await this.sendReply(interaction, `エージェントを削除しました: ${agent.agent_name}`);
           return;
         }
-        case 'fire-event': {
+        case 'fire-announcement': {
           const description = interaction.options.getString('description', true).trim();
           if (!description) {
             throw new WorldError(400, 'validation_error', 'description は必須です。');
           }
 
-          const result = this.engine.fireServerEvent(description);
-          await this.sendReply(interaction, `サーバーイベントを発火しました: ${result.server_event_id}`);
+          const result = this.engine.fireServerAnnouncement(description);
+          await this.sendReply(interaction, `サーバーアナウンスを発火しました: ${result.server_announcement_id}`);
+          return;
+        }
+        case 'create-event': {
+          const description = interaction.options.getString('description', true).trim();
+          if (!description) {
+            throw new WorldError(400, 'validation_error', 'description は必須です。');
+          }
+          const result = this.engine.createServerEvent(description);
+          await this.sendReply(interaction, `サーバーイベントを開始しました: ${result.server_event_id}`);
+          return;
+        }
+        case 'clear-event': {
+          const eventId = interaction.options.getString('event_id', true).trim();
+          this.engine.clearServerEvent(eventId);
+          await this.sendReply(interaction, `サーバーイベントを終了しました: ${eventId}`);
+          return;
+        }
+        case 'list-event': {
+          const events = this.engine.listServerEvents(false).events;
+          if (events.length === 0) {
+            await this.sendReply(interaction, '実施中のサーバーイベントはありません。');
+            return;
+          }
+          const lines = [
+            '| event_id | description |',
+            '| --- | --- |',
+            ...events.map((event) => `| ${escapeTableValue(event.server_event_id)} | ${escapeTableValue(event.description)} |`),
+          ];
+          await this.sendReply(interaction, lines.join('\n'));
           return;
         }
         case 'login-agent': {
@@ -314,6 +369,15 @@ export class AdminCommandHandler {
     }
 
     const query = String(interaction.options.getFocused()).toLowerCase();
+    if (interaction.commandName === 'clear-event') {
+      await interaction.respond(
+        this.engine.listServerEvents(false).events
+          .filter((event) => event.server_event_id.toLowerCase().includes(query) || event.description.toLowerCase().includes(query))
+          .slice(0, AUTOCOMPLETE_LIMIT)
+          .map((event) => ({ name: `${event.server_event_id} ${event.description}`.slice(0, 100), value: event.server_event_id })),
+      );
+      return;
+    }
     const candidates = this.getAutocompleteCandidates(interaction.commandName)
       .filter((agent) => agent.agent_name.toLowerCase().includes(query))
       .slice(0, AUTOCOMPLETE_LIMIT)

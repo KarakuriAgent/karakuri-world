@@ -71,8 +71,8 @@ export class AgentStateStore {
       current_conversation_id: null,
       active_transfer_id: null,
       pending_transfer_id: null,
-      pending_server_event_ids: [],
-      active_server_event_id: null,
+      pending_server_announcement_ids: [],
+      active_server_announcement_id: null,
       last_action_id: null,
       last_rejected_action_id: null,
       last_used_item_id: null,
@@ -143,34 +143,34 @@ export class AgentStateStore {
     return loggedInAgent;
   }
 
-  addPendingServerEvent(agentId: string, serverEventId: string): LoggedInAgent {
+  addPendingServerAnnouncement(agentId: string, serverAnnouncementId: string): LoggedInAgent {
     const loggedInAgent = this.mustGetLoggedIn(agentId);
-    if (!loggedInAgent.pending_server_event_ids.includes(serverEventId)) {
-      loggedInAgent.pending_server_event_ids.push(serverEventId);
+    if (!loggedInAgent.pending_server_announcement_ids.includes(serverAnnouncementId)) {
+      loggedInAgent.pending_server_announcement_ids.push(serverAnnouncementId);
     }
     return loggedInAgent;
   }
 
-  removePendingServerEvent(agentId: string, serverEventId: string): LoggedInAgent {
+  removePendingServerAnnouncement(agentId: string, serverAnnouncementId: string): LoggedInAgent {
     const loggedInAgent = this.mustGetLoggedIn(agentId);
-    loggedInAgent.pending_server_event_ids = loggedInAgent.pending_server_event_ids.filter((id) => id !== serverEventId);
+    loggedInAgent.pending_server_announcement_ids = loggedInAgent.pending_server_announcement_ids.filter((id) => id !== serverAnnouncementId);
     return loggedInAgent;
   }
 
-  clearPendingServerEvents(agentId: string): LoggedInAgent {
+  clearPendingServerAnnouncements(agentId: string): LoggedInAgent {
     const loggedInAgent = this.mustGetLoggedIn(agentId);
-    loggedInAgent.pending_server_event_ids = [];
+    loggedInAgent.pending_server_announcement_ids = [];
     return loggedInAgent;
   }
 
-  setActiveServerEvent(agentId: string, serverEventId: string | null): LoggedInAgent {
+  setActiveServerAnnouncement(agentId: string, serverAnnouncementId: string | null): LoggedInAgent {
     const loggedInAgent = this.mustGetLoggedIn(agentId);
-    loggedInAgent.active_server_event_id = serverEventId;
+    loggedInAgent.active_server_announcement_id = serverAnnouncementId;
     return loggedInAgent;
   }
 
-  clearActiveServerEvent(agentId: string): LoggedInAgent {
-    return this.setActiveServerEvent(agentId, null);
+  clearActiveServerAnnouncement(agentId: string): LoggedInAgent {
+    return this.setActiveServerAnnouncement(agentId, null);
   }
 
   setLastAction(agentId: string, actionId: string | null): LoggedInAgent {
@@ -200,6 +200,12 @@ export class AgentStateStore {
 
   clearExcludedInfoCommands(agentId: string): void {
     this.excludedInfoCommandsByAgent.delete(agentId);
+  }
+
+  clearInfoCommandFromAllAgents(command: InfoCommandChoice): void {
+    for (const commands of this.excludedInfoCommandsByAgent.values()) {
+      commands.delete(command);
+    }
   }
 
   getExcludedInfoCommands(agentId: string): ReadonlySet<InfoCommandChoice> {

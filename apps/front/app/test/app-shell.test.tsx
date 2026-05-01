@@ -803,15 +803,15 @@ describe('App shell bootstrap', () => {
           status_emoji: '🚶',
         },
       ],
-      recent_server_events: [
+      recent_server_announcements: [
         {
-          server_event_id: 'event-1',
+          server_announcement_id: 'event-1',
           description: 'Harvest Festival',
           occurred_at: 1_780_000_000_000,
           is_active: true,
         },
         {
-          server_event_id: 'event-2',
+          server_announcement_id: 'event-2',
           description: 'Market Closing Bell',
           occurred_at: 1_779_999_900_000,
           is_active: false,
@@ -828,6 +828,7 @@ describe('App shell bootstrap', () => {
 
     expect(screen.getByTestId('mobile-bottom-sheet')).toHaveAttribute('data-sheet-mode', 'list');
     expect(screen.getByTestId('mobile-list-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('mobile-server-announcements-tab')).toHaveAttribute('aria-selected', 'true');
     expect(screen.getAllByTestId('mobile-server-event-item')).toHaveLength(2);
 
     const buttons = within(screen.getByTestId('mobile-agent-list')).getAllByRole('button');
@@ -839,17 +840,56 @@ describe('App shell bootstrap', () => {
     ]);
   });
 
-  it('renders recent server events from recent_server_events with timestamps', () => {
+  it('auto-selects the mobile active server events tab when active events exist', () => {
     const snapshot = createReadySnapshot({
-      recent_server_events: [
+      active_server_events: [
         {
-          server_event_id: 'event-1',
+          server_event_id: 'server-event-1',
+          description: '停電中',
+          created_at: 1_780_000_010_000,
+        },
+      ],
+      recent_server_announcements: [
+        {
+          server_announcement_id: 'announcement-1',
+          description: '臨時メンテナンスのお知らせ',
+          occurred_at: 1_780_000_000_000,
+          is_active: false,
+        },
+      ],
+    });
+    const store = createSnapshotStore({
+      snapshotUrl: env.snapshotUrl,
+      authMode: env.authMode,
+      initialSnapshot: snapshot,
+    });
+
+    render(<App env={env} store={store} autoStartPolling={false} />);
+
+    expect(screen.getByTestId('mobile-active-server-events-tab')).toHaveTextContent('実施中のイベント (1)');
+    expect(screen.getByTestId('mobile-server-announcements-tab')).toHaveTextContent('アナウンス (1)');
+    expect(screen.getByTestId('mobile-active-server-events-tab')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('mobile-active-server-event-item')).toHaveTextContent('停電中');
+    expect(screen.queryByTestId('mobile-server-announcements-panel')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('mobile-server-announcements-tab'));
+
+    expect(screen.getByTestId('mobile-server-announcements-tab')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('mobile-server-event-item')).toHaveTextContent('臨時メンテナンスのお知らせ');
+    expect(screen.queryByTestId('mobile-active-server-events-panel')).not.toBeInTheDocument();
+  });
+
+  it('renders recent server events from recent_server_announcements with timestamps', () => {
+    const snapshot = createReadySnapshot({
+      recent_server_announcements: [
+        {
+          server_announcement_id: 'event-1',
           description: 'First event',
           occurred_at: 1_780_000_100_000,
           is_active: false,
         },
         {
-          server_event_id: 'event-2',
+          server_announcement_id: 'event-2',
           description: 'Second event',
           occurred_at: 1_780_000_090_000,
           is_active: true,
@@ -878,12 +918,12 @@ describe('App shell bootstrap', () => {
     expect(screen.queryByTestId('desktop-sidebar-server-event-count')).not.toBeInTheDocument();
   });
 
-  it('shows empty server events message when recent_server_events is empty', async () => {
+  it('shows empty server events message when recent_server_announcements is empty', async () => {
     const store = createSnapshotStore({
       snapshotUrl: env.snapshotUrl,
       authMode: env.authMode,
       initialSnapshot: createReadySnapshot({
-        recent_server_events: [],
+        recent_server_announcements: [],
       }),
     });
 
@@ -891,7 +931,7 @@ describe('App shell bootstrap', () => {
 
     // Should show empty state message in the desktop sidebar, no fallback content
     const sidebar = screen.getByTestId('desktop-sidebar');
-    expect(within(sidebar).getByText('サーバーイベントはまだありません')).toBeInTheDocument();
+    expect(within(sidebar).getByText('サーバーアナウンスはまだありません')).toBeInTheDocument();
     expect(screen.queryByTestId('desktop-server-events-fallback-badge')).not.toBeInTheDocument();
     expect(screen.queryByTestId('desktop-server-events-fallback-note')).not.toBeInTheDocument();
   });
@@ -957,7 +997,7 @@ describe('App shell bootstrap', () => {
       authMode: env.authMode,
       initialSnapshot: createReadySnapshot({
         agents: [],
-        recent_server_events: [],
+        recent_server_announcements: [],
       }),
       initialStatus: 'error',
     });
@@ -969,7 +1009,7 @@ describe('App shell bootstrap', () => {
     render(<App env={env} store={store} autoStartPolling={false} />);
 
     const sidebar = screen.getByTestId('desktop-sidebar');
-    expect(within(sidebar).getByText('サーバーイベントはまだありません')).toBeInTheDocument();
+    expect(within(sidebar).getByText('サーバーアナウンスはまだありません')).toBeInTheDocument();
     expect(within(sidebar).getByText('エージェントが接続するとここに一覧が表示されます')).toBeInTheDocument();
     expect(screen.getByTestId('snapshot-stale-badge')).toHaveTextContent('接続遅延中');
     expect(screen.getByTestId('snapshot-error-badge')).toHaveTextContent('更新の取得に失敗しました');

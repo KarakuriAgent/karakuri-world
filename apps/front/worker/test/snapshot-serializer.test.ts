@@ -66,7 +66,7 @@ const worldSnapshot: WorldSnapshot = {
     },
   ],
   conversations: [],
-  recent_server_events: [],
+  recent_server_announcements: [],
   generated_at: 1_750_000_000_000,
 };
 
@@ -74,7 +74,7 @@ describe('spectator snapshot serializer', () => {
   it('round-trips schema_version=1 snapshots', () => {
     const snapshot = buildSpectatorSnapshot({
       world_snapshot: worldSnapshot,
-      recent_server_events: [],
+      recent_server_announcements: [],
       published_at: 1_750_000_005_000,
       last_publish_error_at: 1_750_000_004_000,
     });
@@ -99,7 +99,7 @@ describe('spectator snapshot serializer', () => {
     const encoded = JSON.stringify({
       ...buildSpectatorSnapshot({
         world_snapshot: worldSnapshot,
-        recent_server_events: [],
+        recent_server_announcements: [],
         published_at: 1_750_000_005_000,
       }),
       schema_version: 2,
@@ -112,7 +112,7 @@ describe('spectator snapshot serializer', () => {
     const encoded = JSON.stringify({
       ...buildSpectatorSnapshot({
         world_snapshot: worldSnapshot,
-        recent_server_events: [],
+        recent_server_announcements: [],
         published_at: 1_750_000_005_000,
       }),
       timezone: 'UTC',
@@ -125,7 +125,7 @@ describe('spectator snapshot serializer', () => {
     const encoded = JSON.stringify({
       ...buildSpectatorSnapshot({
         world_snapshot: worldSnapshot,
-        recent_server_events: [],
+        recent_server_announcements: [],
         published_at: 1_750_000_005_000,
       }),
       map: {
@@ -146,7 +146,7 @@ describe('spectator snapshot serializer', () => {
     const encoded = JSON.stringify({
       ...buildSpectatorSnapshot({
         world_snapshot: worldSnapshot,
-        recent_server_events: [],
+        recent_server_announcements: [],
         published_at: 1_750_000_005_000,
       }),
       map: {
@@ -171,7 +171,7 @@ describe('spectator snapshot serializer', () => {
     const encoded = JSON.stringify({
       ...buildSpectatorSnapshot({
         world_snapshot: worldSnapshot,
-        recent_server_events: [],
+        recent_server_announcements: [],
         published_at: 1_750_000_005_000,
       }),
       map: {
@@ -190,7 +190,7 @@ describe('spectator snapshot serializer', () => {
     const encoded = JSON.stringify({
       ...buildSpectatorSnapshot({
         world_snapshot: worldSnapshot,
-        recent_server_events: [],
+        recent_server_announcements: [],
         published_at: 1_750_000_005_000,
       }),
       map: {

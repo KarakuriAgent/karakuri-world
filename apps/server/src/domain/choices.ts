@@ -33,7 +33,7 @@ export function buildChoicesPrompt(
 
   const now = Date.now();
   const canStartInterruptibleCommand = options.forceShowActions
-    || agent.active_server_event_id !== null
+    || agent.active_server_announcement_id !== null
     || (agent.state === 'idle' && agent.pending_conversation_id === null && !isInTransfer(agent));
   // standalone transfer は idle / in_action（wait/action/use-item 中）から開始可能。
   // 進行中の活動は transfer 開始時に中断される（domain/transfer.ts acquireTransferRolesPair 参照）。
@@ -92,7 +92,7 @@ export function buildChoicesPrompt(
             '- end_conversation: 会話を終える場合も transfer_response: accept または reject を同時指定する',
           ];
         }
-        if (agent.active_server_event_id !== null) {
+        if (agent.active_server_announcement_id !== null) {
           return [] as string[];
         }
         return [
@@ -127,6 +127,7 @@ export function buildChoicesPrompt(
     ...(options.excludeInfoCommands ?? []),
   ]);
   const hasJoinableConversations = canJoinConversation && listJoinableActiveConversations(engine, agentId, now).length > 0;
+  const hasActiveServerEvents = engine.state.serverEvents.listActive().length > 0;
   const infoLines = [
     { id: 'get_available_actions' as const, line: '- get_available_actions: 現在位置で実行可能なアクションを取得する', visible: true },
     { id: 'get_perception' as const, line: '- get_perception: 周囲の情報を取得する', visible: true },
@@ -135,6 +136,7 @@ export function buildChoicesPrompt(
     { id: 'get_status' as const, line: '- get_status: 自分の所持金・所持品・現在地を取得する', visible: true },
     { id: 'get_nearby_agents' as const, line: '- get_nearby_agents: 隣接エージェントの一覧を取得する', visible: true },
     { id: 'get_active_conversations' as const, line: '- get_active_conversations: 参加可能な進行中の会話一覧を取得する', visible: hasJoinableConversations },
+    { id: 'get_event' as const, line: '- get_event: 実施中のサーバーイベント一覧を取得する', visible: hasActiveServerEvents },
   ]
     .filter(() => canStartInterruptibleCommand && !isInTransfer(agent))
     .filter(({ id, visible }) => visible && !excludedInfoCommands.has(id))

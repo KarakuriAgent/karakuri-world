@@ -1,5 +1,10 @@
 import type { NodeId } from '../types/data-model.js';
-import type { AgentSnapshot, ConversationSnapshot, WorldSnapshot } from '../types/snapshot.js';
+import type {
+  ActiveServerEventSnapshot,
+  AgentSnapshot,
+  ConversationSnapshot,
+  WorldSnapshot,
+} from '../types/snapshot.js';
 
 const MESSAGE_CHAR_LIMIT = 1900;
 
@@ -63,6 +68,10 @@ function formatConversation(conversation: ConversationSnapshot, agentNames: Map<
   const closingSuffix = conversation.status === 'closing' ? ', 終了処理中' : '';
   const displayedTurn = Math.min(conversation.current_turn, conversation.max_turns);
   return `- ${summary} (ターン ${displayedTurn}/${conversation.max_turns}, ${speakerName}の番${closingSuffix})`;
+}
+
+function formatServerEvent(event: ActiveServerEventSnapshot, timezone: string): string {
+  return `- ${event.description} (開始 ${formatTime(event.created_at, timezone)})`;
 }
 
 function buildSection(title: string, lines: string[]): string {
@@ -151,10 +160,16 @@ export function formatStatusBoard(snapshot: WorldSnapshot, timezone: string): st
     ? conversations.map((conversation) => formatConversation(conversation, agentNames))
     : ['_進行中の会話はありません。_'];
 
+  const serverEvents = snapshot.active_server_events;
+  const serverEventLines = serverEvents.length > 0
+    ? serverEvents.map((event) => formatServerEvent(event, timezone))
+    : ['_実施中のサーバーイベントはありません。_'];
+
   const sections = [
     header,
     buildSection(`エージェント状況 (${agents.length}名ログイン中)`, agentLines),
     buildSection(`進行中の会話 (${conversations.length}件)`, conversationLines),
+    buildSection(`実施中のサーバーイベント (${serverEvents.length}件)`, serverEventLines),
     `---\n最終更新: ${formatTime(snapshot.generated_at, timezone)}`,
   ];
 

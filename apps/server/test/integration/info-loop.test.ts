@@ -63,14 +63,14 @@ describe('info loop integration', () => {
     expect(afterMove.response.status).toBe(200);
   });
 
-  it('keeps the server-event window open across info commands until an executable command closes it', async () => {
+  it('keeps the server announcement window open across info commands until an executable command closes it', async () => {
     const { engine } = createTestWorld();
     const { app } = createApp(engine, { adminKey: 'admin', publicBaseUrl: 'http://localhost:3000' });
     const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
     await engine.loginAgent(alice.agent_id);
     const auth = { Authorization: `Bearer ${alice.api_key}` };
 
-    const fired = engine.fireServerEvent('Dark clouds gather.');
+    const fired = engine.fireServerAnnouncement('Dark clouds gather.');
 
     for (const path of [
       '/api/agents/perception',
@@ -83,13 +83,13 @@ describe('info loop integration', () => {
     ]) {
       const result = await requestJson(app, path, { headers: auth });
       expect(result.response.status).toBe(200);
-      expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBe(fired.server_event_id);
+      expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBe(fired.server_announcement_id);
     }
 
     const repeated = await requestJson(app, '/api/agents/map', { headers: auth });
     expect(repeated.response.status).toBe(409);
     expect(repeated.data.error).toBe('info_already_consumed');
-    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBe(fired.server_event_id);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBe(fired.server_announcement_id);
 
     const waited = await requestJson(app, '/api/agents/wait', {
       method: 'POST',
@@ -97,10 +97,10 @@ describe('info loop integration', () => {
       body: JSON.stringify({ duration: 1 }),
     });
     expect(waited.response.status).toBe(200);
-    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
   });
 
-  it('closes the server-event window when an executable command is rejected after validation', async () => {
+  it('closes the server announcement window when an executable command is rejected after validation', async () => {
     const { engine } = createTestWorld({
       config: {
         economy: { initial_money: 100 },
@@ -136,39 +136,39 @@ describe('info loop integration', () => {
     engine.state.setItems(alice.agent_id, [{ item_id: 'ticket', quantity: 1 }]);
     const auth = { Authorization: `Bearer ${alice.api_key}` };
 
-    const firedForAction = engine.fireServerEvent('Dark clouds gather.');
+    const firedForAction = engine.fireServerAnnouncement('Dark clouds gather.');
     const rejectedAction = await requestJson(app, '/api/agents/action', {
       method: 'POST',
       headers: auth,
       body: JSON.stringify({ action_id: 'expensive-greeting' }),
     });
     expect(rejectedAction.response.status).toBe(200);
-    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
     const afterRejectedAction = await requestJson(app, '/api/agents/perception', { headers: auth });
     expect(afterRejectedAction.response.status).toBe(200);
-    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
     expect(
-      engine.state.recentServerEvents
+      engine.state.recentServerAnnouncements
         .list()
-        .find((event) => event.server_event_id === firedForAction.server_event_id)
+        .find((event) => event.server_announcement_id === firedForAction.server_announcement_id)
         ?.is_active,
     ).toBe(false);
 
-    const firedForVenue = engine.fireServerEvent('A horn sounds.');
+    const firedForVenue = engine.fireServerAnnouncement('A horn sounds.');
     const rejectedVenue = await requestJson(app, '/api/agents/use-item', {
       method: 'POST',
       headers: auth,
       body: JSON.stringify({ item_id: 'ticket' }),
     });
     expect(rejectedVenue.response.status).toBe(200);
-    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
     const afterRejectedVenue = await requestJson(app, '/api/agents/map', { headers: auth });
     expect(afterRejectedVenue.response.status).toBe(200);
-    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
     expect(
-      engine.state.recentServerEvents
+      engine.state.recentServerAnnouncements
         .list()
-        .find((event) => event.server_event_id === firedForVenue.server_event_id)
+        .find((event) => event.server_announcement_id === firedForVenue.server_announcement_id)
         ?.is_active,
     ).toBe(false);
   });

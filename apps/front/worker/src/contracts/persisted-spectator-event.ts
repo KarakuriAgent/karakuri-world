@@ -20,7 +20,7 @@ export type PersistedSpectatorMovementStartedEvent = PersistedEventPick<
 >;
 export type PersistedSpectatorMovementCompletedEvent = PersistedEventPick<
   'movement_completed',
-  'type' | 'agent_id' | 'agent_name' | 'node_id' | 'delivered_server_event_ids'
+  'type' | 'agent_id' | 'agent_name' | 'node_id' | 'delivered_server_announcement_ids'
 >;
 export type PersistedSpectatorActionStartedEvent = PersistedEventPick<
   'action_started',
@@ -126,10 +126,12 @@ export type PersistedSpectatorTransferEscrowLostEvent = PersistedEventPick<
   'transfer_escrow_lost',
   'type' | 'transfer_id' | 'from_agent_id' | 'from_agent_name' | 'to_agent_id' | 'to_agent_name' | 'item' | 'money' | 'mode' | 'reason'
 >;
-export type PersistedSpectatorServerEventFiredEvent = PersistedEventPick<
-  'server_event_fired',
-  'type' | 'server_event_id' | 'description' | 'delivered_agent_ids' | 'pending_agent_ids' | 'delayed'
+export type PersistedSpectatorServerAnnouncementFiredEvent = PersistedEventPick<
+  'server_announcement_fired',
+  'type' | 'server_announcement_id' | 'description' | 'delivered_agent_ids' | 'pending_agent_ids' | 'delayed'
 >;
+export type PersistedSpectatorServerEventCreatedEvent = PersistedEventPick<'server_event_created', 'type' | 'server_event'>;
+export type PersistedSpectatorServerEventClearedEvent = PersistedEventPick<'server_event_cleared', 'type' | 'server_event'>;
 
 export type PersistedSpectatorEvent =
   | PersistedSpectatorAgentLoggedInEvent
@@ -162,7 +164,9 @@ export type PersistedSpectatorEvent =
   | PersistedSpectatorTransferTimeoutEvent
   | PersistedSpectatorTransferCancelledEvent
   | PersistedSpectatorTransferEscrowLostEvent
-  | PersistedSpectatorServerEventFiredEvent;
+  | PersistedSpectatorServerAnnouncementFiredEvent
+  | PersistedSpectatorServerEventCreatedEvent
+  | PersistedSpectatorServerEventClearedEvent;
 
 export type PersistedSpectatorEventType = PersistedSpectatorEvent['type'];
 
@@ -175,7 +179,7 @@ const PERSISTED_EVENT_FIELDS = {
   agent_logged_in: ['type', 'agent_id', 'agent_name', 'node_id'],
   agent_logged_out: ['type', 'agent_id', 'agent_name', 'node_id', 'cancelled_state', 'cancelled_action_name'],
   movement_started: ['type', 'agent_id', 'agent_name', 'from_node_id', 'to_node_id', 'path', 'arrives_at'],
-  movement_completed: ['type', 'agent_id', 'agent_name', 'node_id', 'delivered_server_event_ids'],
+  movement_completed: ['type', 'agent_id', 'agent_name', 'node_id', 'delivered_server_announcement_ids'],
   action_started: ['type', 'agent_id', 'agent_name', 'action_id', 'action_name', 'duration_ms', 'completes_at'],
   action_completed: ['type', 'agent_id', 'agent_name', 'action_id', 'action_name'],
   action_rejected: ['type', 'agent_id', 'agent_name', 'action_id', 'action_name', 'rejection_reason'],
@@ -235,7 +239,9 @@ const PERSISTED_EVENT_FIELDS = {
   transfer_timeout: ['type', 'transfer_id', 'from_agent_id', 'from_agent_name', 'to_agent_id', 'to_agent_name', 'item', 'money', 'mode'],
   transfer_cancelled: ['type', 'transfer_id', 'from_agent_id', 'from_agent_name', 'to_agent_id', 'to_agent_name', 'item', 'money', 'mode', 'reason'],
   transfer_escrow_lost: ['type', 'transfer_id', 'from_agent_id', 'from_agent_name', 'to_agent_id', 'to_agent_name', 'item', 'money', 'mode', 'reason'],
-  server_event_fired: ['type', 'server_event_id', 'description', 'delivered_agent_ids', 'pending_agent_ids', 'delayed'],
+  server_announcement_fired: ['type', 'server_announcement_id', 'description', 'delivered_agent_ids', 'pending_agent_ids', 'delayed'],
+  server_event_created: ['type', 'server_event'],
+  server_event_cleared: ['type', 'server_event'],
 } as const satisfies Record<PersistedSpectatorEventType, readonly string[]>;
 
 export const PERSISTED_SPECTATOR_EVENT_TYPES = Object.freeze(

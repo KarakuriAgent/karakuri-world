@@ -17,6 +17,7 @@ import { SnapshotPublisher } from './engine/snapshot-publisher.js';
 import { WorldEngine } from './engine/world-engine.js';
 import { McpServerManager } from './mcp/server.js';
 import { loadAgents, saveAgents } from './storage/agent-storage.js';
+import { loadServerEvents, saveServerEvents } from './storage/server-events.js';
 
 export interface RuntimeOptions {
   adminKey: string;
@@ -83,7 +84,19 @@ export function resolveRuntimeOptions(env: NodeJS.ProcessEnv = process.env): Run
 export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
   const config = await loadConfigFromFile(options.configPath);
   const agentsFilePath = join(options.dataDir, 'agents.json');
+  const serverEventsFilePath = join(options.dataDir, 'server-events.json');
   const initialRegistrations = loadAgents(agentsFilePath);
+  let initialServerEvents;
+  try {
+    initialServerEvents = loadServerEvents(serverEventsFilePath);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      `Failed to load persisted server events from ${serverEventsFilePath}. ` +
+        `If the file is corrupted, move it aside and restart. Reason: ${message}`,
+    );
+    throw error;
+  }
   const discordBot = await DiscordBot.create({
     token: options.discordToken,
     guildId: options.discordGuildId,
@@ -121,7 +134,9 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
     });
     const engine = new WorldEngine(config, discordBot, {
       initialRegistrations,
+      initialServerEvents,
       onRegistrationChanged: (agents) => saveAgents(agentsFilePath, agents),
+      onServerEventsChanged: (events) => saveServerEvents(serverEventsFilePath, events),
       weatherService: weatherService ?? undefined,
       onError: reportError,
       snapshotPublisher,

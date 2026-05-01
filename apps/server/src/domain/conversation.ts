@@ -26,7 +26,7 @@ import { cancelActiveAction } from './actions.js';
 import { cancelIdleReminder, startIdleReminder } from './idle-reminder.js';
 import { acceptTransfer, cancelPendingTransfersForAgent, cancelTransfer, clearTransferState, rejectTransfer, startTransfer, toTransferPayload } from './transfer.js';
 import { manhattanDistance } from './map-utils.js';
-import { clearActiveServerEvent } from './server-events.js';
+import { clearActiveServerAnnouncement } from './server-announcements.js';
 import { cancelActiveItemUse } from './use-item.js';
 import { cancelActiveWait } from './wait.js';
 
@@ -84,7 +84,7 @@ function emitConversationTurnStarted(engine: WorldEngine, conversation: Conversa
 function emitConversationClosing(
   engine: WorldEngine,
   conversation: ConversationData,
-  reason: Extract<ConversationClosureReason, 'ended_by_agent' | 'max_turns' | 'server_event'>,
+  reason: Extract<ConversationClosureReason, 'ended_by_agent' | 'max_turns' | 'server_announcement'>,
 ): void {
   engine.emitEvent({
     type: 'conversation_closing',
@@ -101,7 +101,7 @@ function emitConversationLeave(
   conversation: ConversationData,
   agentId: string,
   agentName: string,
-  reason: 'voluntary' | 'inactive' | 'logged_out' | 'server_event',
+  reason: 'voluntary' | 'inactive' | 'logged_out' | 'server_announcement',
   nextSpeakerAgentId?: string,
   message?: string,
 ): void {
@@ -119,11 +119,11 @@ function emitConversationLeave(
 
 function toClosingEventReason(
   reason?: ConversationClosureReason,
-): Extract<ConversationClosureReason, 'ended_by_agent' | 'max_turns' | 'server_event'> {
-  if (reason === 'ended_by_agent' || reason === 'max_turns' || reason === 'server_event') {
+): Extract<ConversationClosureReason, 'ended_by_agent' | 'max_turns' | 'server_announcement'> {
+  if (reason === 'ended_by_agent' || reason === 'max_turns' || reason === 'server_announcement') {
     return reason;
   }
-  return 'server_event';
+  return 'server_announcement';
 }
 
 function emitConversationIntervalInterrupted(
@@ -791,7 +791,7 @@ export function startConversation(
   cancelIdleReminder(engine, initiator.agent_id);
   engine.state.clearExcludedInfoCommands(initiator.agent_id);
   engine.state.setLastUsedItem(initiator.agent_id, null);
-  clearActiveServerEvent(engine, initiator.agent_id);
+  clearActiveServerAnnouncement(engine, initiator.agent_id);
   engine.state.setPendingConversation(initiator.agent_id, conversation.conversation_id);
   engine.state.setPendingConversation(target.agent_id, conversation.conversation_id);
   engine.timerManager.create({
@@ -853,8 +853,8 @@ export function acceptConversation(engine: WorldEngine, agentId: string, request
   engine.state.clearExcludedInfoCommands(target.agent_id);
   engine.state.setLastUsedItem(initiator.agent_id, null);
   engine.state.setLastUsedItem(target.agent_id, null);
-  clearActiveServerEvent(engine, initiator.agent_id);
-  clearActiveServerEvent(engine, target.agent_id);
+  clearActiveServerAnnouncement(engine, initiator.agent_id);
+  clearActiveServerAnnouncement(engine, target.agent_id);
   engine.state.setPendingConversation(initiator.agent_id, null);
   engine.state.setPendingConversation(target.agent_id, null);
   engine.state.setCurrentConversation(initiator.agent_id, conversation.conversation_id);
@@ -925,13 +925,13 @@ export function rejectConversation(engine: WorldEngine, agentId: string): OkResp
   if (initiator) {
     engine.state.setPendingConversation(initiator.agent_id, null);
     engine.state.clearExcludedInfoCommands(initiator.agent_id);
-    clearActiveServerEvent(engine, initiator.agent_id);
+    clearActiveServerAnnouncement(engine, initiator.agent_id);
     startIdleReminder(engine, initiator.agent_id);
   }
   if (target) {
     engine.state.setPendingConversation(target.agent_id, null);
     engine.state.clearExcludedInfoCommands(target.agent_id);
-    clearActiveServerEvent(engine, target.agent_id);
+    clearActiveServerAnnouncement(engine, target.agent_id);
   }
 
   engine.emitEvent({
@@ -953,7 +953,7 @@ export function handleAcceptTimeout(engine: WorldEngine, timer: ConversationAcce
 
   for (const agentId of timer.agent_ids) {
     engine.state.clearExcludedInfoCommands(agentId);
-    clearActiveServerEvent(engine, agentId);
+    clearActiveServerAnnouncement(engine, agentId);
   }
 
   engine.state.conversations.delete(conversation.conversation_id);
@@ -1002,7 +1002,7 @@ export function speak(engine: WorldEngine, agentId: string, request: Conversatio
 
   // Stage B: 発話本体 (副作用あり、ここまで成功すれば speak は反映されたとみなす)
   engine.state.clearExcludedInfoCommands(agentId);
-  clearActiveServerEvent(engine, agentId);
+  clearActiveServerAnnouncement(engine, agentId);
   engine.timerManager.cancel(turnTimer.timer_id);
   const listeners = getOtherParticipants(conversation, agentId);
   const turn = conversation.current_turn + 1;
@@ -1106,7 +1106,7 @@ export function endConversationByAgent(engine: WorldEngine, agentId: string, req
 
   // Stage B: 発話本体 (退出処理 / emit / timer)
   engine.state.clearExcludedInfoCommands(agentId);
-  clearActiveServerEvent(engine, agentId);
+  clearActiveServerAnnouncement(engine, agentId);
 
   if (conversation.participant_agent_ids.length <= 2) {
     engine.timerManager.cancel(turnTimer.timer_id);
@@ -1262,7 +1262,7 @@ export function joinConversation(engine: WorldEngine, agentId: string, request: 
   cancelIdleReminder(engine, agentId);
   engine.state.clearExcludedInfoCommands(agentId);
   engine.state.setLastUsedItem(agentId, null);
-  clearActiveServerEvent(engine, agentId);
+  clearActiveServerAnnouncement(engine, agentId);
   conversation.pending_participant_agent_ids.push(agentId);
   engine.state.setCurrentConversation(agentId, conversation.conversation_id);
   engine.state.setState(agentId, 'in_conversation');
@@ -1275,7 +1275,7 @@ export function stayInConversation(engine: WorldEngine, agentId: string): OkResp
     throw new WorldError(409, 'state_conflict', 'Agent is not awaiting an inactive-check response.');
   }
   engine.state.clearExcludedInfoCommands(agentId);
-  clearActiveServerEvent(engine, agentId);
+  clearActiveServerAnnouncement(engine, agentId);
   conversation.inactive_check_pending_agent_ids = conversation.inactive_check_pending_agent_ids.filter((id) => id !== agentId);
   conversation.last_spoken_turns[agentId] = conversation.current_turn;
   resumeAfterInactiveCheck(engine, conversation);
@@ -1290,7 +1290,7 @@ export function leaveConversation(engine: WorldEngine, agentId: string, request:
   const agent = requireLoggedInAgent(engine, agentId);
   const message = request.message?.trim() || undefined;
   engine.state.clearExcludedInfoCommands(agentId);
-  clearActiveServerEvent(engine, agentId);
+  clearActiveServerAnnouncement(engine, agentId);
   removeParticipant(conversation, agentId);
   cleanupParticipant(engine, conversation, agentId);
   // inactive 退出は会話自体は継続しうるので、退出 agent の transfer は participant_inactive で精算する
@@ -1425,7 +1425,7 @@ export function handleConversationInterval(engine: WorldEngine, timer: Conversat
     emitConversationClosing(
       engine,
       conversation,
-      conversation.closing_reason === 'server_event' ? 'server_event' : 'max_turns',
+      conversation.closing_reason === 'server_announcement' ? 'server_announcement' : 'max_turns',
     );
     return;
   }
@@ -1473,7 +1473,7 @@ export function beginClosingConversation(
   engine: WorldEngine,
   conversationId: string,
   speakerAgentId: string,
-  reason: Extract<ConversationClosureReason, 'server_event' | 'max_turns'>,
+  reason: Extract<ConversationClosureReason, 'server_announcement' | 'max_turns'>,
   departingAgentId?: string,
 ): void {
   const conversation = engine.state.conversations.get(conversationId);
@@ -1504,7 +1504,7 @@ export function beginClosingConversation(
       conversation,
       departingAgentId,
       departingAgentName,
-      'server_event',
+      'server_announcement',
       nextSpeakerAgentId,
     );
   }
@@ -1543,13 +1543,13 @@ export function detachParticipantFromClosingConversation(
       conversation,
       agentId,
       agent?.agent_name ?? agentId,
-      'server_event',
+      'server_announcement',
       nextSpeakerAgentId,
     );
   }
 
   if (conversation.participant_agent_ids.length <= 1) {
-    endConversation(engine, conversationId, conversation.closing_reason ?? 'server_event');
+    endConversation(engine, conversationId, conversation.closing_reason ?? 'server_announcement');
     return;
   }
 
@@ -1559,13 +1559,13 @@ export function detachParticipantFromClosingConversation(
 
   cancelConversationTimers(engine, conversationId);
   if (!nextSpeakerAgentId) {
-    endConversation(engine, conversationId, conversation.closing_reason ?? 'server_event');
+    endConversation(engine, conversationId, conversation.closing_reason ?? 'server_announcement');
     return;
   }
 
   scheduleTurnTimer(engine, conversation, nextSpeakerAgentId);
-  if (conversation.closing_reason === 'server_event') {
-    emitConversationClosing(engine, conversation, 'server_event');
+  if (conversation.closing_reason === 'server_announcement') {
+    emitConversationClosing(engine, conversation, 'server_announcement');
     return;
   }
 
@@ -1609,7 +1609,7 @@ export function cancelPendingConversation(engine: WorldEngine, agentId: string):
   }
 }
 
-export function cancelPendingConversationForServerEvent(engine: WorldEngine, agentId: string): void {
+export function cancelPendingConversationForServerAnnouncement(engine: WorldEngine, agentId: string): void {
   const conversation = findConversationByAgent(engine, agentId, ['pending']);
   if (!conversation) {
     return;
@@ -1641,7 +1641,7 @@ export function cancelPendingConversationForServerEvent(engine: WorldEngine, age
     conversation_id: conversation.conversation_id,
     initiator_agent_id: conversation.initiator_agent_id,
     target_agent_id: targetAgentId,
-    reason: 'server_event',
+    reason: 'server_announcement',
   });
 }
 
@@ -1731,8 +1731,8 @@ export function forceEndConversation(
     );
   }
   scheduleTurnTimer(engine, conversation, nextSpeakerAgentId);
-  if (conversation.closing_reason === 'server_event') {
-    emitConversationClosing(engine, conversation, 'server_event');
+  if (conversation.closing_reason === 'server_announcement') {
+    emitConversationClosing(engine, conversation, 'server_announcement');
     return;
   }
   emitConversationTurnStarted(engine, conversation, nextSpeakerAgentId);

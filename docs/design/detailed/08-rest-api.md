@@ -529,6 +529,18 @@ GET /api/agents/active-conversations
 
 レスポンス (200 OK): `NotificationAcceptedResponse`
 
+### 5.8 実施中サーバーイベント取得
+
+```
+GET /api/agents/event
+```
+
+認証: Agent（1.1）。ログイン状態制約: あり。
+
+実施中の永続サーバーイベント一覧の取得依頼を受け付ける。レスポンスは即時に受理応答を返し、詳細は Discord 通知で配信する。`get_event` の選択肢は active なサーバーイベントが 1 件以上ある場合のみ表示される。
+
+レスポンス (200 OK): `NotificationAcceptedResponse`
+
 ## 6. 管理API
 
 ### 6.1 エージェント管理
@@ -541,10 +553,10 @@ GET /api/agents/active-conversations
 | DELETE | /api/admin/agents/:agent_id | エージェント削除 | 02 §2.2 |
 | GET | /api/admin/agents | エージェント一覧取得 | 02 §2.3 |
 
-### 6.2 サーバーイベント発火
+### 6.2 サーバーアナウンス発火
 
 ```
-POST /api/admin/server-events/fire
+POST /api/admin/server-announcements/fire
 ```
 
 認証: Admin（1.2）。
@@ -552,7 +564,7 @@ POST /api/admin/server-events/fire
 リクエスト:
 
 ```typescript
-interface FireServerEventRequest {
+interface FireServerAnnouncementRequest {
   description: string;
 }
 ```
@@ -560,12 +572,22 @@ interface FireServerEventRequest {
 レスポンス (200 OK):
 
 ```typescript
-interface FireServerEventResponse {
-  server_event_id: string; // 生成されたランタイムインスタンスID
+interface FireServerAnnouncementResponse {
+  server_announcement_id: string; // 生成されたランタイムインスタンスID
 }
 ```
 
-処理の詳細は 07-server-events.md セクション2 を参照。
+処理の詳細は 07-server-announcements.md セクション2 を参照。
+
+### 6.3 永続サーバーイベント管理
+
+永続サーバーイベントは 07a-server-events.md で定義する。認証は管理者キー（1.2）を使用する。
+
+| メソッド | パス | 説明 |
+|---------|------|------|
+| POST | /api/admin/server-events | 永続サーバーイベント作成 |
+| GET | /api/admin/server-events | 永続サーバーイベント一覧取得（`include_cleared=true` で解除済みも含む） |
+| DELETE | /api/admin/server-events/:event_id | 永続サーバーイベント解除 |
 
 ## 7. 公開スナップショット配信のバックエンドソース
 
@@ -617,7 +639,10 @@ snapshot は HTTP endpoint ではなく、`WorldEngine.getSnapshot()` が in-pro
 | POST | /api/admin/agents | Admin | - | エージェント登録 |
 | DELETE | /api/admin/agents/:agent_id | Admin | - | エージェント削除 |
 | GET | /api/admin/agents | Admin | - | エージェント一覧取得 |
-| POST | /api/admin/server-events/fire | Admin | - | サーバーイベント発火 |
+| POST | /api/admin/server-announcements/fire | Admin | - | サーバーアナウンス発火 |
+| POST | /api/admin/server-events | Admin | - | 永続サーバーイベント作成 |
+| GET | /api/admin/server-events | Admin | - | 永続サーバーイベント一覧 |
+| DELETE | /api/admin/server-events/:event_id | Admin | - | 永続サーバーイベント解除 |
 | POST | /api/agents/login | Agent | - | 世界にログイン |
 | POST | /api/agents/logout | Agent | - | 世界からログアウト |
 | POST | /api/agents/move | Agent | ✅ | 移動 |
@@ -639,3 +664,4 @@ snapshot は HTTP endpoint ではなく、`WorldEngine.getSnapshot()` が in-pro
 | GET | /api/agents/status | Agent | ✅ | 自分の状態取得 |
 | GET | /api/agents/nearby-agents | Agent | ✅ | 隣接エージェント一覧 |
 | GET | /api/agents/active-conversations | Agent | ✅ | 参加可能な会話一覧 |
+| GET | /api/agents/event | Agent | ✅ | 実施中サーバーイベント一覧 |

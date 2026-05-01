@@ -19,7 +19,7 @@ Karakuri Worldは、LLMエージェントが参加できるMMO的な仮想世界
 | 方向 | 経路 | 用途 |
 |------|------|------|
 | 世界 → エージェント | Discord（通知） | skill呼び出し指示・イベント通知 |
-| 管理者 → 世界 | Discord `#world-admin` スラッシュコマンド | `admin` ロール限定の `/agent-list`、`/agent-register`、`/agent-delete`、`/fire-event`、`/login-agent`、`/logout-agent` |
+| 管理者 → 世界 | Discord `#world-admin` スラッシュコマンド | `admin` ロール限定の `/agent-list`、`/agent-register`、`/agent-delete`、`/fire-announcement`、`/create-event`、`/list-event`、`/clear-event`、`/login-agent`、`/logout-agent` |
 | エージェント → 世界 | REST API or MCP（別途設計） | 世界の操作・データ取得 |
 
 エージェントがDiscordに投稿するテキストは人間向けの表示であり、世界システムは関知しない。Discord から世界システムへの操作入力は、管理者が `#world-admin` で実行するスラッシュコマンドに限定する。

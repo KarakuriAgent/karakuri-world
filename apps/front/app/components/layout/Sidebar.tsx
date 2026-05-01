@@ -16,7 +16,8 @@ export interface SidebarProps {
 }
 
 export function Sidebar({ snapshot, agents, selectedAgentId, onSelectAgent }: SidebarProps) {
-  const recentServerEvents = snapshot?.recent_server_events.slice(0, 3) ?? [];
+  const recentServerAnnouncements = snapshot?.recent_server_announcements.slice(0, 3) ?? [];
+  const activeServerEvents = snapshot?.active_server_events ?? [];
   const timezone = snapshot?.timezone;
 
   return (
@@ -34,13 +35,29 @@ export function Sidebar({ snapshot, agents, selectedAgentId, onSelectAgent }: Si
         </p>
       </header>
 
-      <section className="space-y-2 border-b border-slate-800 py-3 lg:space-y-3 lg:py-4">
-        <h2 className="text-xs font-semibold text-white lg:text-sm">サーバーイベント</h2>
-        {recentServerEvents.length ? (
+      {activeServerEvents.length > 0 ? (
+        <section className="space-y-2 border-b border-slate-800 py-3 lg:space-y-3 lg:py-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-semibold text-emerald-200 lg:text-sm">実施中のサーバーイベント</h2>
+            <span className="text-[10px] text-emerald-300 lg:text-xs">{activeServerEvents.length} 件</span>
+          </div>
           <ul className="space-y-2 text-xs text-slate-200 lg:text-sm">
-            {recentServerEvents.map((event) => (
+            {activeServerEvents.map((event) => (
+              <li key={event.server_event_id} className="rounded-xl border border-emerald-700/60 bg-emerald-950/40 p-2 lg:p-3">
+                <p className="font-medium text-emerald-50">{event.description}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      <section className="space-y-2 border-b border-slate-800 py-3 lg:space-y-3 lg:py-4">
+        <h2 className="text-xs font-semibold text-white lg:text-sm">サーバーアナウンス</h2>
+        {recentServerAnnouncements.length ? (
+          <ul className="space-y-2 text-xs text-slate-200 lg:text-sm">
+            {recentServerAnnouncements.map((event) => (
               <li
-                key={event.server_event_id}
+                key={event.server_announcement_id}
                 className="rounded-xl border border-slate-800 bg-slate-900/70 p-2 lg:p-3"
                 data-testid="desktop-server-event-item"
               >
@@ -53,7 +70,7 @@ export function Sidebar({ snapshot, agents, selectedAgentId, onSelectAgent }: Si
           </ul>
         ) : (
           <p className="rounded-xl border border-dashed border-slate-700 p-2 text-xs text-slate-400 lg:p-3 lg:text-sm">
-            サーバーイベントはまだありません
+            サーバーアナウンスはまだありません
           </p>
         )}
       </section>

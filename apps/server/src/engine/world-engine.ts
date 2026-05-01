@@ -34,10 +34,15 @@ import {
 } from '../domain/transfer.js';
 import { getNodeConfig, isNodeWithinBounds, isPassable } from '../domain/map-utils.js';
 import {
-  cleanupServerEventsForAgent,
-  fireServerEvent as fireRuntimeServerEvent,
-  handleServerEventInterruption,
+  clearServerEvent,
+  createServerEvent,
+  listServerEvents,
 } from '../domain/server-events.js';
+import {
+  cleanupServerAnnouncementsForAgent,
+  fireServerAnnouncement as fireRuntimeServerAnnouncement,
+  handleServerAnnouncementInterruption,
+} from '../domain/server-announcements.js';
 import {
   executeValidatedMove,
   getAgentCurrentNode,
@@ -63,8 +68,11 @@ import type {
   ConversationStartResponse,
   TransferActionResponse,
   TransferRequest,
-  FireServerEventRequest,
-  FireServerEventResponse,
+  FireServerAnnouncementRequest,
+  FireServerAnnouncementResponse,
+  CreateServerEventRequest,
+  CreateServerEventResponse,
+  ListServerEventsResponse,
   LoginResponse,
   LogoutResponse,
   MoveRequest,
@@ -80,6 +88,7 @@ import type {
 import type { AgentRegistration, AgentState } from '../types/agent.js';
 import type { MapConfig, NodeId, ServerConfig } from '../types/data-model.js';
 import type { WorldEvent } from '../types/event.js';
+import type { ServerEvent } from '../types/server-event.js';
 import type { WorldSnapshot } from '../types/snapshot.js';
 import type { ActionTimer, ItemUseTimer, WaitTimer } from '../types/timer.js';
 import { mergeItems } from '../domain/inventory.js';
@@ -161,7 +170,9 @@ export interface DiscordRuntimeAdapter {
 
 export interface WorldEngineOptions {
   initialRegistrations?: AgentRegistration[];
+  initialServerEvents?: ServerEvent[];
   onRegistrationChanged?: (agents: AgentRegistration[]) => void;
+  onServerEventsChanged?: (events: ServerEvent[]) => void;
   weatherService?: WeatherService;
   onError?: (message: string) => void;
   snapshotPublisher?: SnapshotPublisher;
@@ -173,6 +184,7 @@ export class WorldEngine {
   readonly eventBus = new EventBus();
   readonly state: WorldState;
   private readonly onRegistrationChanged?: (agents: AgentRegistration[]) => void;
+  private readonly onServerEventsChanged?: (events: ServerEvent[]) => void;
   private readonly onError?: (message: string) => void;
   private readonly registeringAgentIds = new Set<string>();
   private readonly loggingInAgentIds = new Set<string>();
@@ -190,7 +202,9 @@ export class WorldEngine {
     options: WorldEngineOptions = {},
   ) {
     this.state = new WorldState(options.initialRegistrations);
+    this.state.serverEvents.restoreFromSnapshot(options.initialServerEvents ?? []);
     this.onRegistrationChanged = options.onRegistrationChanged;
+    this.onServerEventsChanged = options.onServerEventsChanged;
     this.onError = options.onError;
     this.weatherService = options.weatherService ?? null;
     this.snapshotPublisher = options.snapshotPublisher ?? null;
@@ -402,9 +416,9 @@ export class WorldEngine {
       this.persistLoggedInAgentState(agentId);
       recoverRefundFailedTransfersForAgent(this, agentId);
       this.timerManager.cancelByAgent(agentId);
-      cleanupServerEventsForAgent(this, agentId);
+      cleanupServerAnnouncementsForAgent(this, agentId);
       this.state.setPendingConversation(agentId, null);
-      this.state.clearPendingServerEvents(agentId);
+      this.state.clearPendingServerAnnouncements(agentId);
       this.state.logout(agentId);
 
       this.emitEvent({
@@ -425,7 +439,7 @@ export class WorldEngine {
 
   move(agentId: string, request: MoveRequest): MoveResponse {
     const { agent, to_node_id, path } = validateMove(this, agentId, request);
-    handleServerEventInterruption(this, agentId);
+    handleServerAnnouncementInterruption(this, agentId);
     return executeValidatedMove(this, agent, to_node_id, path);
   }
 
@@ -442,29 +456,29 @@ export class WorldEngine {
         action_name: result.source.action.name,
         rejection_reason: result.rejection_reason,
       });
-      handleServerEventInterruption(this, agentId);
+      handleServerAnnouncementInterruption(this, agentId);
       return { ok: true, message: '正常に受け付けました。結果が通知されるまで待機してください。' };
     }
 
-    handleServerEventInterruption(this, agentId);
+    handleServerAnnouncementInterruption(this, agentId);
     return executeValidatedAction(this, result.agent, result.source, result.duration_ms);
   }
 
   executeWait(agentId: string, request: WaitRequest): WaitResponse {
     const { agent, duration_ms } = validateWait(this, agentId, request);
-    handleServerEventInterruption(this, agentId);
+    handleServerAnnouncementInterruption(this, agentId);
     return executeValidatedWait(this, agent, duration_ms);
   }
 
   useItem(agentId: string, request: UseItemRequest): NotificationAcceptedResponse {
     const validated = validateUseItem(this, agentId, request);
-    handleServerEventInterruption(this, agentId);
+    handleServerAnnouncementInterruption(this, agentId);
     return executeValidatedUseItem(this, validated);
   }
 
   startTransfer(agentId: string, request: TransferRequest): TransferActionResponse {
     const payload = toTransferPayload(request);
-    handleServerEventInterruption(this, agentId);
+    handleServerAnnouncementInterruption(this, agentId);
     // 検証は startTransferRequest 内の validateTransfer で行う（move/action と同じ validate→execute パターン）。
     const result = startTransferRequest(this, agentId, request.target_agent_id, payload, 'standalone');
     return { ok: true, message: '正常に受け付けました。結果が通知されるまで待機してください。', transfer_status: 'pending', transfer_id: result.transfer_id };
@@ -472,7 +486,7 @@ export class WorldEngine {
 
   acceptTransfer(agentId: string): TransferActionResponse {
     const transferId = this.requirePendingTransferId(agentId);
-    handleServerEventInterruption(this, agentId);
+    handleServerAnnouncementInterruption(this, agentId);
     const result = acceptTransferRequest(this, transferId, agentId);
     if (result.outcome === 'completed') {
       return { ok: true, message: '正常に受け付けました。結果が通知されるまで待機してください。', transfer_status: 'completed', transfer_id: result.transfer_id };
@@ -485,7 +499,7 @@ export class WorldEngine {
 
   rejectTransfer(agentId: string): TransferActionResponse {
     const transferId = this.requirePendingTransferId(agentId);
-    handleServerEventInterruption(this, agentId);
+    handleServerAnnouncementInterruption(this, agentId);
     const result = rejectTransferRequest(this, transferId, agentId, { kind: 'rejected_by_receiver' });
     // refund_failed の場合は escrow 返却が失敗して offer が refund_failed 状態で残るため、
     // caller に「受理されたが裏で失敗した」ことを伝えるために failed/persist_failed を返す。
@@ -549,9 +563,27 @@ export class WorldEngine {
     return endConversationByAgent(this, agentId, request);
   }
 
-  fireServerEvent(request: FireServerEventRequest | string): FireServerEventResponse {
+  fireServerAnnouncement(request: FireServerAnnouncementRequest | string): FireServerAnnouncementResponse {
     const description = typeof request === 'string' ? request : request.description;
-    return fireRuntimeServerEvent(this, description);
+    return fireRuntimeServerAnnouncement(this, description);
+  }
+
+  createServerEvent(request: CreateServerEventRequest | string): CreateServerEventResponse {
+    const description = typeof request === 'string' ? request : request.description;
+    const event = createServerEvent(this, description);
+    return { server_event_id: event.server_event_id };
+  }
+
+  listServerEvents(includeCleared = false): ListServerEventsResponse {
+    return { events: listServerEvents(this, includeCleared) };
+  }
+
+  clearServerEvent(eventId: string): void {
+    clearServerEvent(this, eventId);
+  }
+
+  persistServerEvents(): void {
+    this.onServerEventsChanged?.(this.state.serverEvents.serializeForPersistence());
   }
 
   getPerception(agentId: string): PerceptionResponse {
@@ -713,7 +745,12 @@ export class WorldEngine {
         actionable_speaker_agent_id: getConversationActionableSpeaker(conversation) ?? conversation.current_speaker_agent_id,
         closing_reason: conversation.closing_reason,
       })),
-      recent_server_events: this.state.recentServerEvents.list(),
+      active_server_events: this.state.serverEvents.listActive().map((event) => ({
+        server_event_id: event.server_event_id,
+        description: event.description,
+        created_at: event.created_at,
+      })),
+      recent_server_announcements: this.state.recentServerAnnouncements.list(),
       generated_at: now,
       ...(snapshotPublisherStats
         ? {

@@ -74,7 +74,7 @@ function createWorldSnapshot(generatedAt = 1_750_000_000_000) {
     agents: [],
     known_agents: [],
     conversations: [],
-    recent_server_events: [],
+    recent_server_announcements: [],
     generated_at: generatedAt,
   };
 }

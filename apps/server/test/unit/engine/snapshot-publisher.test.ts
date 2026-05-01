@@ -37,7 +37,8 @@ function createMinimalSnapshot(generatedAt = 1_000): WorldSnapshot {
     agents: [],
     known_agents: [],
     conversations: [],
-    recent_server_events: [],
+    active_server_events: [],
+    recent_server_announcements: [],
     generated_at: generatedAt,
   };
 }

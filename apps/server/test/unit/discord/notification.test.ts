@@ -13,7 +13,7 @@ import {
   formatConversationRejectedMessage,
   formatConversationRequestedMessage,
   formatConversationReplyPromptMessage,
-  formatConversationServerEventClosingPromptMessage,
+  formatConversationServerAnnouncementClosingPromptMessage,
   formatConversationTurnClosingPromptMessage,
   formatConversationTurnPromptMessage,
   formatIdleReminderMessage,
@@ -21,7 +21,7 @@ import {
   formatMapInfoMessage,
   formatMovementCompletedMessage,
   formatPerceptionInfoMessage,
-  formatServerEventMessage,
+  formatServerAnnouncementMessage,
   formatTransferAcceptedMessage,
   formatTransferRejectedMessage,
   formatWaitCompletedMessage,
@@ -30,7 +30,6 @@ import {
   formatWorldLogLoggedOut,
   type WorldContext,
 } from '../../../src/discord/notification.js';
-
 const worldContext: WorldContext = {
   worldName: '桜木町',
   worldDescription: '歯車と蒸気が行き交う町です。',
@@ -53,15 +52,15 @@ describe('discord notifications', () => {
       formatWaitCompletedMessage(worldContext, 1000, '現在地: 2-2', skillName, choicesText),
       formatConversationRequestedMessage(worldContext, 'Bob', 'こんにちは。', skillName),
       formatConversationRejectedMessage(worldContext, 'Bob', 'rejected', '現在地: 2-2', skillName, choicesText),
-      formatConversationRejectedMessage(worldContext, 'Bob', 'server_event', '現在地: 2-2', skillName, choicesText),
+      formatConversationRejectedMessage(worldContext, 'Bob', 'server_announcement', '現在地: 2-2', skillName, choicesText),
       formatConversationReplyPromptMessage(worldContext, 'Bob', 'こんにちは。', skillName),
       formatConversationClosingPromptMessage(worldContext, 'Bob', 'またね。', skillName),
       formatConversationEndedMessage(worldContext, 'max_turns', '現在地: 2-2', skillName, choicesText),
       formatConversationForcedEndedMessage(worldContext, 'Bob', '現在地: 2-2', skillName, choicesText),
       formatConversationPendingJoinCancelledMessage(worldContext, 'participant_logged_out', '現在地: 2-2', skillName, choicesText),
-      formatServerEventMessage(worldContext, '古い装置が動き出しました。', skillName, choicesText),
+      formatServerAnnouncementMessage(worldContext, '古い装置が動き出しました。', skillName, choicesText),
       formatIdleReminderMessage(worldContext, 60000, '現在地: 2-2', skillName, choicesText),
-      formatConversationServerEventClosingPromptMessage(worldContext, skillName),
+      formatConversationServerAnnouncementClosingPromptMessage(worldContext, skillName),
       formatMapInfoMessage(worldContext, 'マップ: 3行 × 5列', skillName, choicesText),
       formatWorldAgentsInfoMessage(worldContext, '- Alice (agent-1) - 位置: 2-2 - 状態: idle', skillName, choicesText),
       formatPerceptionInfoMessage(worldContext, '現在地: 2-2', skillName, choicesText),
@@ -166,7 +165,7 @@ describe('discord notifications', () => {
     const closing = formatConversationClosingPromptMessage(worldContext, 'Alice', 'またね。', skillName);
     const turnPrompt = formatConversationTurnPromptMessage(worldContext, skillName, participants);
     const closingTurnPrompt = formatConversationTurnClosingPromptMessage(worldContext, skillName, participants);
-    const serverEventClosing = formatConversationServerEventClosingPromptMessage(
+    const serverAnnouncementClosing = formatConversationServerAnnouncementClosingPromptMessage(
       worldContext,
       skillName,
       participants,
@@ -189,12 +188,12 @@ describe('discord notifications', () => {
     const interrupted = formatConversationRejectedMessage(
       worldContext,
       'Alice',
-      'server_event',
+      'server_announcement',
       '現在地: 2-2',
       skillName,
       '選択肢:\n- move: ノードIDを指定して移動する',
     );
-    expect(interrupted).toContain('Alice との会話開始はサーバーイベントにより中断されました。');
+    expect(interrupted).toContain('Alice との会話開始はサーバーアナウンスにより中断されました。');
 
     expectWorldContextHeader(closing);
     expect(closing).toContain('Alice: 「またね。」');
@@ -213,13 +212,13 @@ describe('discord notifications', () => {
     expect(closingTurnPrompt).toContain('次の話者ID');
     expect(closingTurnPrompt).toContain('conversation_speak');
 
-    expectWorldContextHeader(serverEventClosing);
-    expect(serverEventClosing).toContain('サーバーイベントにより会話が終了します。');
-    expect(serverEventClosing).toContain('参加者: Alice (id: alice)、Bob (id: bob)、Carol (id: carol)');
-    expect(serverEventClosing).toContain('選択肢:');
-    expect(serverEventClosing).toContain('conversation_speak');
-    expect(serverEventClosing).toContain('次の話者ID');
-    expect(serverEventClosing).toContain('karakuri-world スキルで次の行動を選択してください。');
+    expectWorldContextHeader(serverAnnouncementClosing);
+    expect(serverAnnouncementClosing).toContain('サーバーアナウンスにより会話が終了します。');
+    expect(serverAnnouncementClosing).toContain('参加者: Alice (id: alice)、Bob (id: bob)、Carol (id: carol)');
+    expect(serverAnnouncementClosing).toContain('選択肢:');
+    expect(serverAnnouncementClosing).toContain('conversation_speak');
+    expect(serverAnnouncementClosing).toContain('次の話者ID');
+    expect(serverAnnouncementClosing).toContain('karakuri-world スキルで次の行動を選択してください。');
   });
 
   it('formats conversation FYI messages for non-speakers', () => {
@@ -229,20 +228,20 @@ describe('discord notifications', () => {
     expect(formatConversationFYIMessage('Alice', 'こんにちは。')).toBe('Alice: 「こんにちは。」');
   });
 
-  it('formats server event messages with the action prompt', () => {
-    const serverEvent = formatServerEventMessage(
+  it('formats server announcement messages with the action prompt', () => {
+    const serverAnnouncement = formatServerAnnouncementMessage(
       worldContext,
       '古い装置が動き出しました。',
       'karakuri-world',
       '選択肢:\n- action: 調べる',
     );
 
-    expectWorldContextHeader(serverEvent);
-    expect(serverEvent).toContain('【サーバーイベント】');
-    expect(serverEvent).toContain('古い装置が動き出しました。');
-    expect(serverEvent).toContain('選択肢:\n- action: 調べる');
-    expect(serverEvent).toContain('現在の行動をキャンセルして選択するか、この通知を無視してください。');
-    expect(serverEvent).toContain('karakuri-world スキルで行動を選択してください。');
+    expectWorldContextHeader(serverAnnouncement);
+    expect(serverAnnouncement).toContain('【サーバーアナウンス】');
+    expect(serverAnnouncement).toContain('古い装置が動き出しました。');
+    expect(serverAnnouncement).toContain('選択肢:\n- action: 調べる');
+    expect(serverAnnouncement).toContain('現在の行動をキャンセルして選択するか、この通知を無視してください。');
+    expect(serverAnnouncement).toContain('karakuri-world スキルで行動を選択してください。');
   });
 
   it('formats world log conversation messages', () => {

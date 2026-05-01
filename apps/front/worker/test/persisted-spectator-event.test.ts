@@ -4,7 +4,7 @@ import type {
   ActionCompletedEvent,
   ActionStartedEvent,
   ConversationEndedEvent,
-  ServerEventFiredEvent,
+  ServerAnnouncementFiredEvent,
   WorldEvent,
 } from '../src/contracts/world-event.js';
 import { createEventSanitizer, sanitize } from '../src/contracts/persisted-spectator-event.js';
@@ -13,7 +13,7 @@ import type {
   PersistedSpectatorActionStartedEvent,
   PersistedSpectatorConversationEndedEvent,
   PersistedSpectatorEvent,
-  PersistedSpectatorServerEventFiredEvent,
+  PersistedSpectatorServerAnnouncementFiredEvent,
 } from '../src/contracts/persisted-spectator-event.js';
 
 describe('persisted spectator event sanitizer', () => {
@@ -68,9 +68,9 @@ describe('persisted spectator event sanitizer', () => {
       }),
       sanitize({
         event_id: 'evt-5',
-        type: 'server_event_fired',
+        type: 'server_announcement_fired',
         occurred_at: 500,
-        server_event_id: 'event-1',
+        server_announcement_id: 'event-1',
         description: 'Harvest Festival',
         delivered_agent_ids: ['alice'],
         pending_agent_ids: ['bob'],
@@ -123,8 +123,8 @@ describe('persisted spectator event sanitizer', () => {
           "pending_agent_ids": [
             "bob",
           ],
-          "server_event_id": "event-1",
-          "type": "server_event_fired",
+          "server_announcement_id": "event-1",
+          "type": "server_announcement_fired",
         },
       ]
     `);
@@ -204,8 +204,8 @@ describe('persisted spectator event sanitizer', () => {
         'type' | 'conversation_id' | 'initiator_agent_id' | 'participant_agent_ids' | 'reason' | 'final_message' | 'final_speaker_agent_id'
       >
     >();
-    expectTypeOf<PersistedSpectatorServerEventFiredEvent>().toEqualTypeOf<
-      Pick<ServerEventFiredEvent, 'type' | 'server_event_id' | 'description' | 'delivered_agent_ids' | 'pending_agent_ids' | 'delayed'>
+    expectTypeOf<PersistedSpectatorServerAnnouncementFiredEvent>().toEqualTypeOf<
+      Pick<ServerAnnouncementFiredEvent, 'type' | 'server_announcement_id' | 'description' | 'delivered_agent_ids' | 'pending_agent_ids' | 'delayed'>
     >();
   });
 });

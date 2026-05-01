@@ -33,6 +33,30 @@ async function runScript(...args: string[]): Promise<DryRunResult> {
   return JSON.parse(stdout.trim());
 }
 
+interface RawRunResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}
+
+async function runScriptRaw(...args: string[]): Promise<RawRunResult> {
+  try {
+    const { stdout, stderr } = await execFileAsync('bash', [KARAKURI_SCRIPT, ...args], {
+      env: {
+        ...process.env,
+        KARAKURI_DRY_RUN: '1',
+        KARAKURI_API_BASE_URL: BASE_URL,
+        KARAKURI_API_KEY: API_KEY,
+        PATH: process.env.PATH ?? '',
+      },
+    });
+    return { exitCode: 0, stdout, stderr };
+  } catch (error) {
+    const err = error as { code?: number; stdout?: string; stderr?: string };
+    return { exitCode: err.code ?? 1, stdout: err.stdout ?? '', stderr: err.stderr ?? '' };
+  }
+}
+
 describe('karakuri.sh dry-run payloads', () => {
   describe('move', () => {
     it('builds POST /agents/move payload with target_node_id', async () => {
@@ -313,6 +337,19 @@ describe('karakuri.sh dry-run payloads', () => {
       const result = await runScript('active-conversations');
       expect(result.url).toBe(`${BASE_URL}/agents/active-conversations`);
       expect(result.method).toBe('GET');
+    });
+
+    it('event sends GET /agents/event', async () => {
+      const result = await runScript('event');
+      expect(result.url).toBe(`${BASE_URL}/agents/event`);
+      expect(result.method).toBe('GET');
+    });
+
+    it('event with extra args exits non-zero with a clear error message', async () => {
+      const result = await runScriptRaw('event', 'create', '停電中');
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain("'event' takes no arguments");
+      expect(result.stdout).toBe('');
     });
   });
 });

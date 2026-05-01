@@ -12,7 +12,7 @@ const registerAgentSchema = z.object({
   discord_bot_id: z.string().min(1),
 });
 
-const fireServerEventSchema = z.object({
+const descriptionSchema = z.object({
   description: z.string().trim().min(1),
 });
 
@@ -54,8 +54,35 @@ export function registerAdminRoutes(
     return c.json({ status: 'ok' });
   });
 
-  app.post('/api/admin/server-events/fire', adminAuth(options.adminKey), validateBody(fireServerEventSchema), (c) => {
-    const body = c.get('validatedBody') as z.infer<typeof fireServerEventSchema>;
-    return c.json(engine.fireServerEvent(body));
+  app.post('/api/admin/server-announcements/fire', adminAuth(options.adminKey), validateBody(descriptionSchema), (c) => {
+    const body = c.get('validatedBody') as z.infer<typeof descriptionSchema>;
+    return c.json(engine.fireServerAnnouncement(body));
+  });
+
+  app.post('/api/admin/server-events', adminAuth(options.adminKey), validateBody(descriptionSchema), (c) => {
+    const body = c.get('validatedBody') as z.infer<typeof descriptionSchema>;
+    return c.json(engine.createServerEvent(body), 201);
+  });
+
+  app.get('/api/admin/server-events', adminAuth(options.adminKey), (c) => {
+    return c.json(engine.listServerEvents(c.req.query('include_cleared') === 'true'));
+  });
+
+  app.delete('/api/admin/server-events/:event_id', adminAuth(options.adminKey), (c) => {
+    const eventId = c.req.param('event_id');
+    try {
+      engine.clearServerEvent(eventId);
+    } catch (error) {
+      if (error instanceof WorldError) {
+        if (error.code === 'not_found') {
+          console.warn('server_event_not_found', { event_id: eventId });
+        }
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      engine.reportError(`/api/admin/server-events DELETE で予期せぬエラー (event_id=${eventId}): ${message}`);
+      throw error;
+    }
+    return c.body(null, 204);
   });
 }

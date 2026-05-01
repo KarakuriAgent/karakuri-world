@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import type {
   SpectatorAgentSnapshot,
@@ -24,6 +24,8 @@ export interface BottomSheetProps {
   onToggleConversationExpanded?: (conversationId: string, expanded?: boolean) => void;
 }
 
+type ServerPanelTab = 'events' | 'announcements';
+
 export function BottomSheet({
   snapshot,
   agents,
@@ -37,7 +39,15 @@ export function BottomSheet({
   onClearSelectedAgent,
   onToggleConversationExpanded,
 }: BottomSheetProps) {
-  const recentServerEvents = useMemo(() => snapshot?.recent_server_events.slice(0, 3) ?? [], [snapshot]);
+  const recentServerAnnouncements = useMemo(() => snapshot?.recent_server_announcements.slice(0, 3) ?? [], [snapshot]);
+  const activeServerEvents = useMemo(() => snapshot?.active_server_events ?? [], [snapshot]);
+  const [serverPanelTab, setServerPanelTab] = useState<ServerPanelTab>(() =>
+    activeServerEvents.length > 0 ? 'events' : 'announcements',
+  );
+
+  useEffect(() => {
+    setServerPanelTab(activeServerEvents.length > 0 ? 'events' : 'announcements');
+  }, [activeServerEvents.length]);
 
   return (
     <section
@@ -49,30 +59,79 @@ export function BottomSheet({
         {mode === 'list' ? (
           <div className="flex h-full flex-col gap-4 overflow-hidden" data-testid="mobile-list-panel">
             <section className="space-y-2">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-sm font-medium text-slate-200">直近サーバーイベント</h2>
-                <span className="text-xs text-slate-400">{recentServerEvents.length} 件</span>
+              <div className="flex gap-2" role="tablist" aria-label="サーバー情報">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={serverPanelTab === 'events'}
+                  className={`flex-1 rounded-full px-3 py-2 text-xs font-medium transition-colors ${
+                    serverPanelTab === 'events'
+                      ? 'bg-emerald-500 text-emerald-950'
+                      : 'bg-slate-900 text-slate-300 hover:bg-slate-800'
+                  }`}
+                  data-testid="mobile-active-server-events-tab"
+                  onClick={() => setServerPanelTab('events')}
+                >
+                  実施中のイベント ({activeServerEvents.length})
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={serverPanelTab === 'announcements'}
+                  className={`flex-1 rounded-full px-3 py-2 text-xs font-medium transition-colors ${
+                    serverPanelTab === 'announcements'
+                      ? 'bg-sky-500 text-sky-950'
+                      : 'bg-slate-900 text-slate-300 hover:bg-slate-800'
+                  }`}
+                  data-testid="mobile-server-announcements-tab"
+                  onClick={() => setServerPanelTab('announcements')}
+                >
+                  アナウンス ({recentServerAnnouncements.length})
+                </button>
               </div>
-              {recentServerEvents.length ? (
-                <div className="space-y-2">
-                  {recentServerEvents.map((event) => (
-                    <div
-                      key={event.server_event_id}
-                      className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3 text-sm"
-                      data-testid="mobile-server-event-item"
-                    >
-                      <p className="text-slate-100">{event.description}</p>
-                      <time className="mt-1 block text-xs text-slate-500">
-                        {formatHistoryTimestamp(event.occurred_at, snapshot?.timezone)}
-                      </time>
+
+              {serverPanelTab === 'events' ? (
+                <div className="space-y-2" role="tabpanel" data-testid="mobile-active-server-events-panel">
+                  {activeServerEvents.length ? (
+                    activeServerEvents.map((event) => (
+                      <div
+                        key={event.server_event_id}
+                        className="rounded-2xl border border-emerald-700/60 bg-emerald-950/40 p-3 text-sm"
+                        data-testid="mobile-active-server-event-item"
+                      >
+                        <p className="text-emerald-50">{event.description}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-700 p-3 text-sm text-slate-400">
+                      実施中のサーバーイベントはありません
                     </div>
-                  ))}
+                  )}
                 </div>
-              ) : (
-                <div className="rounded-2xl border border-dashed border-slate-700 p-3 text-sm text-slate-400">
-                  サーバーイベントはまだありません
+              ) : null}
+
+              {serverPanelTab === 'announcements' ? (
+                <div className="space-y-2" role="tabpanel" data-testid="mobile-server-announcements-panel">
+                  {recentServerAnnouncements.length ? (
+                    recentServerAnnouncements.map((event) => (
+                      <div
+                        key={event.server_announcement_id}
+                        className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3 text-sm"
+                        data-testid="mobile-server-event-item"
+                      >
+                        <p className="text-slate-100">{event.description}</p>
+                        <time className="mt-1 block text-xs text-slate-500">
+                          {formatHistoryTimestamp(event.occurred_at, snapshot?.timezone)}
+                        </time>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-700 p-3 text-sm text-slate-400">
+                      サーバーアナウンスはまだありません
+                    </div>
+                  )}
                 </div>
-              )}
+              ) : null}
             </section>
 
             <section className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">

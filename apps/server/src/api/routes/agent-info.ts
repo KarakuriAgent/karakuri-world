@@ -36,4 +36,9 @@ export function registerAgentInfoRoutes(app: Hono<ApiEnv>, engine: WorldEngine):
     const agentId = c.get('agentId') as string;
     return c.json(emitInfoRequest(engine, agentId, 'get_active_conversations'));
   });
+
+  app.get('/api/agents/event', agentAuth(engine), requireLoggedIn(engine), (c) => {
+    const agentId = c.get('agentId') as string;
+    return c.json(emitInfoRequest(engine, agentId, 'get_event'));
+  });
 }

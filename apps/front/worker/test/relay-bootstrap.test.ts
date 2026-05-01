@@ -111,7 +111,7 @@ function createWorldSnapshot(generatedAt = 1_750_000_000_000, overrides: Record<
         initiator_agent_id: 'alice',
       },
     ],
-    recent_server_events: [],
+    recent_server_announcements: [],
     generated_at: generatedAt,
     ...overrides,
   };
@@ -263,7 +263,7 @@ describe('relay bootstrap', () => {
     });
   });
 
-  it('forwards recent_server_events from the pushed body to the published spectator snapshot', async () => {
+  it('forwards recent_server_announcements from the pushed body to the published spectator snapshot', async () => {
     const now = 1_750_000_050_000;
     const state = new FakeDurableObjectState();
     const publishSnapshot = vi.fn<(input: SnapshotPublishCall) => Promise<void>>(async () => undefined);
@@ -279,9 +279,9 @@ describe('relay bootstrap', () => {
     const response = await bridge.fetch(
       publishSnapshotRequest(
         createWorldSnapshot(1_750_000_010_000, {
-          recent_server_events: [
+          recent_server_announcements: [
             {
-              server_event_id: 'festival',
+              server_announcement_id: 'festival',
               description: 'Harvest Festival',
               occurred_at: 1_750_000_005_000,
               is_active: true,
@@ -295,9 +295,9 @@ describe('relay bootstrap', () => {
     const firstPayload = decodeSpectatorSnapshot(publishSnapshot.mock.calls[0]![0].body);
     expect(firstPayload).toMatchObject({
       generated_at: 1_750_000_010_000,
-      recent_server_events: [
+      recent_server_announcements: [
         {
-          server_event_id: 'festival',
+          server_announcement_id: 'festival',
           description: 'Harvest Festival',
           occurred_at: 1_750_000_005_000,
           is_active: true,

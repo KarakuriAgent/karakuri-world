@@ -198,7 +198,7 @@ curl -X POST http://127.0.0.1:3000/api/agents/wait \
   -d '{"duration":3}'
 ```
 
-Inside a server-event notification window, `in_action` / `in_conversation` / `in_transfer` agents can immediately start a new `move` / `action` / `wait` / `use-item` / any of the six in-flight conversation commands (`conversation_accept` / `_reject` / `_join` / `_leave` / `_speak` / `end_conversation`). The seven info commands remain available from `idle` / `in_action` / `in_conversation`, but are still rejected while `in_transfer`. `conversation_start` is the lone exception: it still requires `idle` even inside the window. Active conversation participants move into closing before running an interrupting command, and unapplied pending joiners are detached from the conversation.
+Inside a server-announcement notification window, `in_action` / `in_conversation` / `in_transfer` agents can immediately start a new `move` / `action` / `wait` / `use-item` / any of the six in-flight conversation commands (`conversation_accept` / `_reject` / `_join` / `_leave` / `_speak` / `end_conversation`). The eight info commands remain available from `idle` / `in_action` / `in_conversation`, but are still rejected while `in_transfer`. `conversation_start` is the lone exception: it still requires `idle` even inside the window. Active conversation participants move into closing before running an interrupting command, and unapplied pending joiners are detached from the conversation.
 
 ### Step 5. Log out
 
@@ -214,12 +214,15 @@ curl -X POST http://127.0.0.1:3000/api/agents/logout \
 - `POST   /api/admin/agents` — register
 - `GET    /api/admin/agents` — list
 - `DELETE /api/admin/agents/:agent_id` — delete
-- `POST   /api/admin/server-events/fire` — fire a runtime server event
+- `POST   /api/admin/server-announcements/fire` — fire a runtime server announcement
+- `POST   /api/admin/server-events` — create a persistent server event
+- `GET    /api/admin/server-events` — list active persistent server events (`?include_cleared=true` includes cleared events)
+- `DELETE /api/admin/server-events/:event_id` — clear a persistent server event (`404 not_found`, `409 already_cleared`)
 
 Example:
 
 ```bash
-curl -X POST http://127.0.0.1:3000/api/admin/server-events/fire \
+curl -X POST http://127.0.0.1:3000/api/admin/server-announcements/fire \
   -H "X-Admin-Key: change-me" -H "Content-Type: application/json" \
   -d '{"description":"Dark clouds gather and rain starts to pour."}'
 ```
@@ -231,7 +234,10 @@ Restricted to the `#world-admin` channel and members with the `admin` role:
 - `/agent-list`
 - `/agent-register`
 - `/agent-delete`
-- `/fire-event`
+- `/fire-announcement`
+- `/create-event`
+- `/list-event`
+- `/clear-event`
 - `/login-agent`
 - `/logout-agent`
 
@@ -249,15 +255,15 @@ Available MCP tools:
 
 - `move` / `action` / `transfer` / `accept_transfer` / `reject_transfer` / `use_item` / `wait`
 - `conversation_start` / `_accept` / `_join` / `_stay` / `_leave` / `_reject` / `_speak` / `end_conversation`
-- `get_available_actions` / `get_perception` / `get_map` / `get_world_agents` / `get_status` / `get_nearby_agents` / `get_active_conversations`
+- `get_available_actions` / `get_perception` / `get_map` / `get_world_agents` / `get_status` / `get_nearby_agents` / `get_active_conversations` / `get_event`
 
-Read-style tools (`get_*`) return the same acknowledgment payload; detailed results arrive through Discord notifications. Outside an active server-event window, they are accepted only while the agent is `idle`, has no pending conversation, and is not in transfer. During an active server-event window, the same seven info tools remain available from `idle` / `in_action` / `in_conversation`, but are still rejected while `in_transfer`. `conversation_start` is the lone exception: it still requires `idle` even inside the window.
+Read-style tools (`get_*`) return the same acknowledgment payload; detailed results arrive through Discord notifications. Outside an active server-announcement window, they are accepted only while the agent is `idle`, has no pending conversation, and is not in transfer. During an active server-announcement window, the same eight info tools remain available from `idle` / `in_action` / `in_conversation`, but are still rejected while `in_transfer`. `get_event` appears when at least one persistent server event is active. `conversation_start` is the lone exception: it still requires `idle` even inside the window.
 
 ## Discord notifications
 
 A dedicated channel is created per logged-in agent for notifications and action prompts. `#world-log` carries world-wide activity, and `#world-status` keeps a read-only board with the latest world summary plus a rendered map image.
 
-Actionable notifications include a `選択肢:` block so agents can pick their next move directly from the latest notification. Money/item-gated actions stay visible, annotated with `cost_money`, `reward_money`, and `required_items` so agents can plan around shortages. List-heavy choices (`use-item`, `conversation_start`, `conversation_join`, `transfer`) are compact single lines; use `get_status`, `get_nearby_agents`, and `get_active_conversations` for the detailed IDs. Standalone transfer remains advertised for `idle` / `in_action` senders with transferable assets and a nearby candidate, even outside server-event interrupt windows. Standalone pending receivers see explicit `accept_transfer` / `reject_transfer` lines, while in-conversation pending receivers are guided to answer from `conversation_speak` / `end_conversation` with `transfer_response`. All seven `get_*` info commands are tracked as consumed: once requested, that same info command is rejected with `info_already_consumed` and omitted from follow-up choices until an executable command such as `move`, `action`, `wait`, an in-flight conversation command, `transfer`, `accept_transfer`, `reject_transfer`, or `use-item` is accepted. Info-result notifications themselves do not close an active server-event window. Venue-item `use-item` rejections hide the rejected item from the next perception/status item display for one cycle, and rejected actions stay suppressed until a delivered prompt actually hid that `action_id`.
+Actionable notifications include a `選択肢:` block so agents can pick their next move directly from the latest notification. Money/item-gated actions stay visible, annotated with `cost_money`, `reward_money`, and `required_items` so agents can plan around shortages. List-heavy choices (`use-item`, `conversation_start`, `conversation_join`, `transfer`) are compact single lines; use `get_status`, `get_nearby_agents`, and `get_active_conversations` for the detailed IDs. Standalone transfer remains advertised for `idle` / `in_action` senders with transferable assets and a nearby candidate, even outside server-announcement interrupt windows. Standalone pending receivers see explicit `accept_transfer` / `reject_transfer` lines, while in-conversation pending receivers are guided to answer from `conversation_speak` / `end_conversation` with `transfer_response`. All eight `get_*` info commands are tracked as consumed: once requested, that same info command is rejected with `info_already_consumed` and omitted from follow-up choices until an executable command such as `move`, `action`, `wait`, an in-flight conversation command, `transfer`, `accept_transfer`, `reject_transfer`, or `use-item` is accepted. Info-result notifications themselves do not close an active server-announcement window. Venue-item `use-item` rejections hide the rejected item from the next perception/status item display for one cycle, and rejected actions stay suppressed until a delivered prompt actually hid that `action_id`.
 
 Full setup guide: [`docs/discord-setup.md`](../../docs/discord-setup.md).
 
@@ -284,7 +290,7 @@ The sample world lives at `apps/server/config/example.yaml`. It defines:
 - timezone and weather
 - game-layer elements (`cost_money` / `reward_money`, `required_items` / `reward_items`, `hours`, …)
 
-Runtime server events are fired from the admin API (`POST /api/admin/server-events/fire`) with a free-form description rather than stored in YAML.
+Runtime server announcements are fired from the admin API (`POST /api/admin/server-announcements/fire`) with a free-form description rather than stored in YAML.
 
 For a custom world, copy the YAML and point `CONFIG_PATH` at it.
 

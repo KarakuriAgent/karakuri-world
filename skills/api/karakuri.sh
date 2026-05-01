@@ -45,6 +45,7 @@ Commands:
   status                                         Request own status (money / items / current node) via notification
   nearby-agents                                  Request nearby agents (conversation / transfer candidates) via notification
   active-conversations                           Request joinable active conversations via notification
+  event                                          Request active persistent server events via notification
 EOF
 }
 
@@ -62,13 +63,16 @@ if [ -z "${KARAKURI_API_BASE_URL:-}" ]; then
   echo "Error: KARAKURI_API_BASE_URL is not set" >&2
   exit 1
 fi
-if [ -z "${KARAKURI_API_KEY:-}" ]; then
-  echo "Error: KARAKURI_API_KEY is not set" >&2
-  exit 1
-fi
 
 BASE_URL="${KARAKURI_API_BASE_URL%/}"
-AUTH_HEADER="Authorization: Bearer ${KARAKURI_API_KEY}"
+AUTH_HEADER="Authorization: Bearer ${KARAKURI_API_KEY:-}"
+
+require_agent_api_key() {
+  if [ -z "${KARAKURI_API_KEY:-}" ]; then
+    echo "Error: KARAKURI_API_KEY is not set" >&2
+    exit 1
+  fi
+}
 
 require_positive_int() {
   # Args: <flag_label> <value>
@@ -118,6 +122,7 @@ do_request() {
 }
 
 do_get() {
+  require_agent_api_key
   do_request -H "${AUTH_HEADER}" "${BASE_URL}$1"
 }
 
@@ -126,6 +131,7 @@ do_notification_get() {
 }
 
 do_post() {
+  require_agent_api_key
   do_request -X POST -H "${AUTH_HEADER}" -H "Content-Type: application/json" -d "$2" "${BASE_URL}$1"
 }
 
@@ -382,6 +388,13 @@ case "${command}" in
     ;;
   active-conversations)
     do_notification_get "/agents/active-conversations"
+    ;;
+  event|get-event)
+    if [ $# -gt 0 ]; then
+      echo "Error: '${command}' takes no arguments. Persistent server events are managed via Discord slash commands or /api/admin/server-events*." >&2
+      exit 1
+    fi
+    do_notification_get "/agents/event"
     ;;
   *)
     echo "Error: Unknown command '${command}'" >&2

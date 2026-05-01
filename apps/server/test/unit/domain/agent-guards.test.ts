@@ -5,7 +5,7 @@ import { WorldError } from '../../../src/types/api.js';
 import { createTestWorld } from '../../helpers/test-world.js';
 
 describe('agent guards', () => {
-  it('allows actionable agents while idle or during an active server event', async () => {
+  it('allows actionable agents while idle or during an active server announcement', async () => {
     const { engine } = createTestWorld();
     const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
     await engine.loginAgent(alice.agent_id);
@@ -13,7 +13,7 @@ describe('agent guards', () => {
     expect(requireActionableAgent(engine, alice.agent_id).agent_id).toBe(alice.agent_id);
 
     engine.state.setState(alice.agent_id, 'in_action');
-    engine.state.setActiveServerEvent(alice.agent_id, 'server-event-1');
+    engine.state.setActiveServerAnnouncement(alice.agent_id, 'server-announcement-1');
     expect(requireActionableAgent(engine, alice.agent_id).agent_id).toBe(alice.agent_id);
   });
 
@@ -44,11 +44,11 @@ describe('agent guards', () => {
     );
   });
 
-  it('rejects info requests while a transfer offer is pending even during a server-event window', async () => {
+  it('rejects info requests while a transfer offer is pending even during a server announcement window', async () => {
     const { engine } = createTestWorld();
     const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
     await engine.loginAgent(alice.agent_id);
-    engine.state.setActiveServerEvent(alice.agent_id, 'server-event-1');
+    engine.state.setActiveServerAnnouncement(alice.agent_id, 'server-announcement-1');
     engine.state.setPendingTransfer(alice.agent_id, 'transfer-pending-1');
 
     expect(() => requireInfoCommandReadyAgent(engine, alice.agent_id, 'get_status')).toThrow(

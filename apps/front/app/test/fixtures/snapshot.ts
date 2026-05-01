@@ -104,9 +104,9 @@ export function createFixtureSnapshot(): SpectatorSnapshot {
         current_speaker_agent_id: 'alice',
       },
     ],
-    recent_server_events: [
+    recent_server_announcements: [
       {
-        server_event_id: 'event-1',
+        server_announcement_id: 'event-1',
         description: 'Harvest Festival',
         occurred_at: 1_780_000_000_000,
         is_active: true,
