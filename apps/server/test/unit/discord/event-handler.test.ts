@@ -177,13 +177,8 @@ describe('DiscordEventHandler', () => {
     handler.dispose();
   });
 
-  it('still notifies agents when server event world-log posting fails', async () => {
-    const errorReports: string[] = [];
-    const { engine } = createTestWorld({
-      engineOptions: {
-        onError: (message) => errorReports.push(message),
-      },
-    });
+  it('posts a world-log message but does not DM agents on server event create', async () => {
+    const { engine } = createTestWorld();
     const bot = new RecordingDiscordBot();
     const handler = new DiscordEventHandler(engine, bot as never);
     handler.register();
@@ -197,32 +192,20 @@ describe('DiscordEventHandler', () => {
     });
     bot.agentMessages.length = 0;
     bot.worldLogMessages.length = 0;
-    bot.sendWorldLogOverride = async () => {
-      throw new Error('world log unavailable');
-    };
 
     engine.createServerEvent({ description: '停電中' });
 
     await vi.waitFor(() => {
-      expect(bot.agentMessages).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            channelId: 'channel-Alice',
-            content: expect.stringContaining('サーバーイベントが開始されました。\n停電中'),
-          }),
-          expect.objectContaining({
-            channelId: 'channel-Bob',
-            content: expect.stringContaining('サーバーイベントが開始されました。\n停電中'),
-          }),
-        ]),
-      );
-      expect(errorReports.some((message) => message.includes('server_event_created の world-log 投稿に失敗しました'))).toBe(true);
+      expect(bot.worldLogMessages).toContain('【サーバーイベント開始】停電中');
     });
+    expect(
+      bot.agentMessages.some((message) => message.content.includes('サーバーイベントが開始されました')),
+    ).toBe(false);
 
     handler.dispose();
   });
 
-  it('reports failed agent deliveries via reportError but still delivers to remaining agents', async () => {
+  it('reports an error when server-event create world-log posting fails', async () => {
     const errorReports: string[] = [];
     const { engine } = createTestWorld({
       engineOptions: {
@@ -234,43 +217,29 @@ describe('DiscordEventHandler', () => {
     handler.register();
 
     const alice = await registerAgent(engine, 'Alice');
-    const bob = await registerAgent(engine, 'Bob');
-    const carol = await registerAgent(engine, 'Carol');
     await engine.loginAgent(alice.agent_id);
-    await engine.loginAgent(bob.agent_id);
-    await engine.loginAgent(carol.agent_id);
     await vi.waitFor(() => {
-      expect(bot.worldLogMessages.length).toBeGreaterThanOrEqual(3);
+      expect(bot.worldLogMessages).toHaveLength(1);
     });
     bot.agentMessages.length = 0;
     bot.worldLogMessages.length = 0;
-    bot.sendAgentMessageOverride = async (channelId: string, content: string) => {
-      if (channelId === 'channel-Bob') {
-        throw new Error('bob DM channel deleted');
-      }
-      bot.agentMessages.push({ channelId, content });
+    bot.sendWorldLogOverride = async () => {
+      throw new Error('world log unavailable');
     };
 
     engine.createServerEvent({ description: '停電中' });
 
     await vi.waitFor(() => {
-      expect(bot.agentMessages.map((message) => message.channelId)).toEqual(
-        expect.arrayContaining(['channel-Alice', 'channel-Carol']),
-      );
-      expect(bot.agentMessages.map((message) => message.channelId)).not.toContain('channel-Bob');
-      const summary = errorReports.find((message) =>
-        message.includes('server_event_created の通知配信に失敗しました'),
-      );
-      expect(summary).toBeDefined();
-      expect(summary).toContain('1 件');
-      expect(summary).toContain(bob.agent_id);
-      expect(summary).toContain('bob DM channel deleted');
+      expect(errorReports.some((message) => message.includes('server_event_created の world-log 投稿に失敗しました'))).toBe(true);
     });
+    expect(
+      bot.agentMessages.some((message) => message.content.includes('サーバーイベントが開始されました')),
+    ).toBe(false);
 
     handler.dispose();
   });
 
-  it('still notifies agents when server event clear world-log posting fails', async () => {
+  it('posts a world-log message but does not DM agents on server event clear', async () => {
     const errorReports: string[] = [];
     const { engine } = createTestWorld({
       engineOptions: {
@@ -288,7 +257,43 @@ describe('DiscordEventHandler', () => {
     });
     const { server_event_id: serverEventId } = engine.createServerEvent({ description: '停電中' });
     await vi.waitFor(() => {
-      expect(bot.agentMessages.some((message) => message.content.includes('サーバーイベントが開始されました。'))).toBe(true);
+      expect(bot.worldLogMessages).toContain('【サーバーイベント開始】停電中');
+    });
+    bot.agentMessages.length = 0;
+    bot.worldLogMessages.length = 0;
+
+    engine.clearServerEvent(serverEventId);
+
+    await vi.waitFor(() => {
+      expect(bot.worldLogMessages).toContain('【サーバーイベント終了】停電中');
+    });
+    expect(
+      bot.agentMessages.some((message) => message.content.includes('サーバーイベントが終了しました')),
+    ).toBe(false);
+    expect(errorReports).toEqual([]);
+
+    handler.dispose();
+  });
+
+  it('reports an error when server-event clear world-log posting fails', async () => {
+    const errorReports: string[] = [];
+    const { engine } = createTestWorld({
+      engineOptions: {
+        onError: (message) => errorReports.push(message),
+      },
+    });
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = await registerAgent(engine, 'Alice');
+    await engine.loginAgent(alice.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.worldLogMessages).toHaveLength(1);
+    });
+    const { server_event_id: serverEventId } = engine.createServerEvent({ description: '停電中' });
+    await vi.waitFor(() => {
+      expect(bot.worldLogMessages).toContain('【サーバーイベント開始】停電中');
     });
     bot.agentMessages.length = 0;
     bot.worldLogMessages.length = 0;
@@ -299,16 +304,34 @@ describe('DiscordEventHandler', () => {
     engine.clearServerEvent(serverEventId);
 
     await vi.waitFor(() => {
-      expect(bot.agentMessages).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            channelId: 'channel-Alice',
-            content: expect.stringContaining('サーバーイベントが終了しました。\n停電中'),
-          }),
-        ]),
-      );
       expect(errorReports.some((message) => message.includes('server_event_cleared の world-log 投稿に失敗しました'))).toBe(true);
     });
+    expect(
+      bot.agentMessages.some((message) => message.content.includes('サーバーイベントが終了しました')),
+    ).toBe(false);
+
+    handler.dispose();
+  });
+
+  it('does not append the legacy active-server-event hint to agent notifications', async () => {
+    const { engine } = createTestWorld();
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    engine.createServerEvent({ description: '停電中' });
+    const alice = await registerAgent(engine, 'Alice');
+    await engine.loginAgent(alice.agent_id);
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages.length).toBeGreaterThan(0);
+    });
+
+    expect(bot.agentMessages[0].content).toContain('サーバーイベント: 1 件');
+    for (const message of bot.agentMessages) {
+      expect(message.content).not.toContain('現在、サーバーイベントが');
+      expect(message.content).not.toContain('詳細は `get_event` で確認');
+    }
 
     handler.dispose();
   });

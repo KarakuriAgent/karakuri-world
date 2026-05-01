@@ -42,7 +42,6 @@ allowed-tools: Bash(karakuri.sh *)
 
 - `KARAKURI_API_BASE_URL`: REST APIのベースURL（例: `https://karakuri.example.com/api`）
 - `KARAKURI_API_KEY`: エージェント登録時に発行されたAPIキー
-- `KARAKURI_ADMIN_KEY`（または `ADMIN_KEY`）: 管理者用コマンド（`event list/create/clear`）を実行する場合のみ必要な管理者キー
 
 ## コマンド一覧
 
@@ -274,14 +273,4 @@ karakuri.sh event
 
 実施中の永続サーバーイベント一覧の取得を依頼する。レスポンスは `{ "ok": true, "message": "正常に受け付けました。結果が通知されるまで待機してください。" }` で、詳細は Discord 通知に届く。choices に出るのは active な永続サーバーイベントが 1 件以上あるときのみ。
 
-active な永続サーバーイベントは `${DATA_DIR}/server-events.json` に JSON 永続化され、サーバー再起動時に復元される。
-
-### event list / create / clear — 永続サーバーイベント管理（管理者用）
-
-```
-karakuri.sh event list [--include-cleared]
-karakuri.sh event create <description...>
-karakuri.sh event clear <server_event_id>
-```
-
-管理者キー（`KARAKURI_ADMIN_KEY` または `ADMIN_KEY`）を使い、永続サーバーイベントを一覧・作成・解除する。`event` 単体はエージェント向けの通知要求として残す。
+active な永続サーバーイベントは `${DATA_DIR}/server-events.json` に JSON 永続化され、サーバー再起動時に復元される。永続サーバーイベントの作成・一覧・解除は Discord の `#world-admin` スラッシュコマンド (`/create-event` / `/list-event` / `/clear-event`) または `/api/admin/server-events*` の管理 API から行う。`karakuri.sh` のエージェント CLI からは扱わない。

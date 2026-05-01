@@ -1,5 +1,4 @@
 import { buildPerceptionText } from '../domain/perception.js';
-import type { WorldEngine } from '../engine/world-engine.js';
 import type { AgentState } from '../types/agent.js';
 import type { PerceptionResponse } from '../types/api.js';
 import type { ConversationClosureReason, ConversationRejectionReason, PendingJoinCancelReason } from '../types/conversation.js';
@@ -494,19 +493,6 @@ export function formatServerAnnouncementMessage(
     '現在の行動をキャンセルして選択するか、この通知を無視してください。',
     `${skillName} スキルで行動を選択してください。`,
   );
-}
-
-export function formatActiveServerEventCountHint(engine: WorldEngine): string | null {
-  const count = engine.state.serverEvents.listActive().length;
-  if (count === 0) {
-    return null;
-  }
-  return `現在、サーバーイベントが ${count} 件実施中です。詳細は \`get_event\` で確認してください。`;
-}
-
-export function appendActiveServerEventHint(content: string, engine: WorldEngine): string {
-  const hint = formatActiveServerEventCountHint(engine);
-  return hint ? joinSections(content, hint) : content;
 }
 
 export function formatServerEventsInfoMessage(

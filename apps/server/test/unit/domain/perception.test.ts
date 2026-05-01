@@ -89,7 +89,22 @@ describe('perception', () => {
     expect(text).toContain('近くのエージェント: 1 人');
     expect(text).toContain('Gatekeeper@1-2');
     expect(text).toContain('Clockwork Workshop');
+    expect(text).toContain('近くの会話: なし');
+    expect(text).toContain('サーバーイベント: なし');
     expect(text).toContain('所持金: 1,000円');
     expect(text).toContain('所持品: なし');
+  });
+
+  it('shows active server event count when present', async () => {
+    const data = buildPerceptionData(loggedInAgents[0], loggedInAgents, createTestMapConfig(), 3, {
+      timezone: 'Asia/Tokyo',
+      now: new Date('2026-01-01T00:00:00Z'),
+      itemConfigs: [],
+    });
+    const text = buildPerceptionText(data, { serverEventCount: 2 });
+    const lines = text.split('\n');
+    const conversationIndex = lines.findIndex((line) => line.startsWith('近くの会話: '));
+    expect(conversationIndex).toBeGreaterThanOrEqual(0);
+    expect(lines[conversationIndex + 1]).toBe('サーバーイベント: 2 件');
   });
 });

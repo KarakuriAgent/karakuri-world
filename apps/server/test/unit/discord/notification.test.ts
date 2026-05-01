@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  appendActiveServerEventHint,
   formatActionCompletedMessage,
-  formatActiveServerEventCountHint,
   formatAvailableActionsInfoMessage,
   formatAgentLoggedInMessage,
   formatAgentLoggedOutMessage,
@@ -32,8 +30,6 @@ import {
   formatWorldLogLoggedOut,
   type WorldContext,
 } from '../../../src/discord/notification.js';
-import { createTestWorld } from '../../helpers/test-world.js';
-
 const worldContext: WorldContext = {
   worldName: '桜木町',
   worldDescription: '歯車と蒸気が行き交う町です。',
@@ -250,37 +246,5 @@ describe('discord notifications', () => {
 
   it('formats world log conversation messages', () => {
     expect(formatWorldLogConversationMessage('こんにちは。')).toBe('「こんにちは。」');
-  });
-
-  describe('formatActiveServerEventCountHint', () => {
-    it.each([
-      [0, null as string | null],
-      [1, '現在、サーバーイベントが 1 件実施中です。詳細は `get_event` で確認してください。'],
-      [2, '現在、サーバーイベントが 2 件実施中です。詳細は `get_event` で確認してください。'],
-      [3, '現在、サーバーイベントが 3 件実施中です。詳細は `get_event` で確認してください。'],
-    ])('returns the right hint for N=%i', (count, expected) => {
-      const { engine } = createTestWorld();
-      for (let i = 0; i < count; i += 1) {
-        engine.state.serverEvents.create(`event-${i}`);
-      }
-      expect(formatActiveServerEventCountHint(engine)).toBe(expected);
-    });
-  });
-
-  describe('appendActiveServerEventHint', () => {
-    it('returns content unchanged when no active server events exist', () => {
-      const { engine } = createTestWorld();
-      const original = '行動が完了しました。';
-      expect(appendActiveServerEventHint(original, engine)).toBe(original);
-    });
-
-    it('appends the hint as a separate section when active events exist', () => {
-      const { engine } = createTestWorld();
-      engine.state.serverEvents.create('停電中');
-      const result = appendActiveServerEventHint('行動が完了しました。', engine);
-      expect(result).toContain('行動が完了しました。');
-      expect(result).toContain('現在、サーバーイベントが 1 件実施中です。');
-      expect(result.split('\n\n').length).toBeGreaterThanOrEqual(2);
-    });
   });
 });

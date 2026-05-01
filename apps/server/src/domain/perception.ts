@@ -120,7 +120,7 @@ function summarizeList(title: string, values: string[]): string {
 
 export function buildPerceptionText(
   data: PerceptionData,
-  options: { hiddenItemId?: string | null; nearbyConversationCount?: number } = {},
+  options: { hiddenItemId?: string | null; nearbyConversationCount?: number; serverEventCount?: number } = {},
 ): string {
   const passableNodes = data.nodes
     .filter((node) => node.distance !== 0 && isPassable(node.type))
@@ -134,6 +134,7 @@ export function buildPerceptionText(
   );
   const weatherText = data.weather ? `天気: ${data.weather.condition} ${data.weather.temperature_celsius}℃` : undefined;
   const nearbyConversationCount = options.nearbyConversationCount ?? 0;
+  const serverEventCount = options.serverEventCount ?? 0;
 
   return [
     `現在時刻: ${data.world_time}`,
@@ -144,6 +145,7 @@ export function buildPerceptionText(
     summarizeList('近くのNPC', data.npcs.map((npc) => `${npc.name}@${npc.node_id}`)),
     summarizeList('近くの建物', data.buildings.map((building) => `${building.name} [${building.door_nodes.join(', ')}]`)),
     `近くの会話: ${nearbyConversationCount > 0 ? `${nearbyConversationCount} 件` : 'なし'}`,
+    `サーバーイベント: ${serverEventCount > 0 ? `${serverEventCount} 件` : 'なし'}`,
     `所持金: ${data.money.toLocaleString('ja-JP')}円`,
     `所持品: ${visibleItemCount > 0 ? `${visibleItemCount} 個` : 'なし'}`,
   ]

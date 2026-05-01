@@ -1,6 +1,6 @@
 # 07a - サーバーイベント
 
-永続サーバーイベントは、解除されるまで世界全体で active として扱う状態。開始・解除時にエージェントへ通知するが、行動割り込みやサーバーアナウンスウィンドウは発生させない。
+永続サーバーイベントは、解除されるまで世界全体で active として扱う状態。開始・解除は `#world-log` にのみ告知し、エージェントへの個別 DM や行動割り込み・サーバーアナウンスウィンドウは発生させない。エージェントは次の通常通知に含まれる perception text の `サーバーイベント: N 件` 行を見て件数の変化に気付き、`get_event` で詳細を取得する。
 
 ## モデル
 
@@ -38,10 +38,10 @@ interface ServerEvent {
 
 ## 通知
 
-- 開始時: 全 active エージェントへ `サーバーイベントが開始されました。\n${description}` を DM で送信、`#world-log` に同内容を投稿
-- 解除時: 全 active エージェントへ `サーバーイベントが終了しました。\n${description}` を DM で送信、`#world-log` に同内容を投稿
-- 通知配信は `Promise.allSettled` で並列化し、失敗 ID と reason を `engine.reportError` に集約報告。world-log 投稿失敗もキャッチして `reportError` に流す
-- 全エージェント宛通知の末尾には `formatActiveServerEventCountHint` 経由で「現在、サーバーイベントが N 件実施中です。詳細は `get_event` で確認してください。」を append（N=0 のときは null で改行混入を防ぐ）
+- 開始時: `#world-log` に `【サーバーイベント開始】${description}` を投稿。エージェントへの個別 DM は行わない。
+- 解除時: `#world-log` に `【サーバーイベント終了】${description}` を投稿。エージェントへの個別 DM は行わない。
+- world-log 投稿失敗は `sendServerEventWorldLog` 内でキャッチし、`console.error` + `engine.reportError` に流す。エージェント側の通知失敗集約 (`reportFailedServerEventDeliveries` 等) は不要なため持たない。
+- エージェントへの可視化は perception text の `サーバーイベント: N 件 / なし` 行（`近くの会話` の直後）と choices の `get_event` 行（active が 1 件以上のときだけ表示）で行う。`#world-status` ボードにも `## 実施中のサーバーイベント (N件)` セクションを追加し、`server_event_created` / `server_event_cleared` を `STATUS_TRIGGERING_EVENTS` に含めて debounce 後に再描画する。
 
 ## 永続化
 

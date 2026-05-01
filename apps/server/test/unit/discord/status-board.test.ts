@@ -181,6 +181,42 @@ describe('StatusBoard', () => {
     expect(channel.sendMessage).toHaveBeenCalled();
   });
 
+  it('refreshes when a persistent server event is created and cleared', async () => {
+    const { engine } = createTestWorld();
+    const channel = createMockChannel();
+    const board = new StatusBoard(engine, channel, {
+      debounceMs: 3000,
+      mapImage: null,
+    });
+
+    board.register();
+    await flushAsyncWork();
+    channel.fetchMessages.mockClear();
+    channel.sendMessage.mockClear();
+
+    const { server_event_id } = engine.createServerEvent({ description: '停電中' });
+    await vi.advanceTimersByTimeAsync(3000);
+    await flushAsyncWork();
+
+    expect(channel.fetchMessages).toHaveBeenCalled();
+    expect(channel.sendMessage).toHaveBeenCalled();
+    const createMessage = channel.sendMessage.mock.calls.at(-1)?.[0] as string | undefined;
+    expect(createMessage).toContain('## 実施中のサーバーイベント (1件)');
+    expect(createMessage).toMatch(/- 停電中 \(開始 \d{2}:\d{2}\)/);
+
+    channel.fetchMessages.mockClear();
+    channel.sendMessage.mockClear();
+
+    engine.clearServerEvent(server_event_id);
+    await vi.advanceTimersByTimeAsync(3000);
+    await flushAsyncWork();
+
+    expect(channel.sendMessage).toHaveBeenCalled();
+    const clearMessage = channel.sendMessage.mock.calls.at(-1)?.[0] as string | undefined;
+    expect(clearMessage).toContain('## 実施中のサーバーイベント (0件)');
+    expect(clearMessage).toContain('_実施中のサーバーイベントはありません。_');
+  });
+
   it('refreshes when a conversation enters closing state', async () => {
     const { engine } = createTestWorld({
       config: {

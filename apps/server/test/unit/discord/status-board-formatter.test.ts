@@ -112,7 +112,8 @@ describe('formatStatusBoard', () => {
     expect(message).toContain('- **hana** - 2-4 (Workshop Interior) - 行動中:「お茶を淹れる」');
     expect(message).toContain('## 進行中の会話 (1件)');
     expect(message).toContain('- sakura と taro (ターン 3/10, sakuraの番)');
-    expect(message).not.toContain('サーバーイベント');
+    expect(message).toContain('## 実施中のサーバーイベント (0件)');
+    expect(message).toContain('_実施中のサーバーイベントはありません。_');
     expect(message).toContain('最終更新: 14:30');
   });
 
@@ -125,7 +126,29 @@ describe('formatStatusBoard', () => {
 
     expect(message).toContain('_ログイン中のエージェントはいません。_');
     expect(message).toContain('_進行中の会話はありません。_');
-    expect(message).not.toContain('サーバーイベント');
+    expect(message).toContain('_実施中のサーバーイベントはありません。_');
+  });
+
+  it('lists active server events when present', () => {
+    const snapshot = createSnapshot();
+    snapshot.active_server_events = [
+      {
+        server_event_id: 'server-event-1',
+        description: '停電中',
+        created_at: Date.UTC(2026, 0, 1, 5, 0, 0),
+      },
+      {
+        server_event_id: 'server-event-2',
+        description: '夏祭り開催中',
+        created_at: Date.UTC(2026, 0, 1, 5, 15, 0),
+      },
+    ];
+
+    const [message] = formatStatusBoard(snapshot, 'Asia/Tokyo');
+
+    expect(message).toContain('## 実施中のサーバーイベント (2件)');
+    expect(message).toContain('- 停電中 (開始 14:00)');
+    expect(message).toContain('- 夏祭り開催中 (開始 14:15)');
   });
 
   it('clamps displayed turn progress while a conversation is closing', () => {
