@@ -146,7 +146,7 @@ function createWorldSnapshot(): WorldSnapshot<
         initiator_agent_id: 'alice',
       },
     ],
-    recent_server_events: [],
+    recent_server_announcements: [],
     generated_at: 1_750_000_000_000,
   };
 }
@@ -206,9 +206,9 @@ describe('spectator snapshot contract helpers', () => {
   it('builds a schema_version=1 spectator snapshot with timezone duplication and publish metadata', () => {
     const spectatorSnapshot = buildSpectatorSnapshot({
       world_snapshot: createWorldSnapshot(),
-      recent_server_events: [
+      recent_server_announcements: [
         {
-          server_event_id: 'event-1',
+          server_announcement_id: 'event-1',
           description: 'Harvest Festival',
           occurred_at: 1_750_000_000_100,
           is_active: true,
@@ -255,9 +255,9 @@ describe('spectator snapshot contract helpers', () => {
       generated_at: 1_750_000_000_000,
       published_at: 1_750_000_005_000,
       last_publish_error_at: 1_750_000_004_500,
-      recent_server_events: [
+      recent_server_announcements: [
         {
-          server_event_id: 'event-1',
+          server_announcement_id: 'event-1',
           is_active: true,
         },
       ],
@@ -297,7 +297,7 @@ describe('spectator snapshot contract helpers', () => {
           },
         ],
       },
-      recent_server_events: [],
+      recent_server_announcements: [],
       published_at: 1_750_000_005_000,
     });
 
@@ -331,7 +331,7 @@ describe('spectator snapshot contract helpers', () => {
           },
         ],
       },
-      recent_server_events: [],
+      recent_server_announcements: [],
       published_at: 1_750_000_005_000,
     });
 

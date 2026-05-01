@@ -2,11 +2,11 @@ import type { AgentState, NodeId } from './world-snapshot.js';
 import type { EventType as BackendEventType } from '../../../../server/src/types/event.js';
 
 export type ItemType = 'general' | 'food' | 'drink' | 'venue';
-export type ConversationRejectionReason = 'rejected' | 'timeout' | 'target_logged_out' | 'server_event';
+export type ConversationRejectionReason = 'rejected' | 'timeout' | 'target_logged_out' | 'server_announcement';
 export type ConversationClosureReason =
   | 'max_turns'
   | 'turn_timeout'
-  | 'server_event'
+  | 'server_announcement'
   | 'ended_by_agent'
   | 'participant_logged_out';
 export type PendingJoinCancelReason = ConversationClosureReason | 'agent_unavailable';
@@ -16,7 +16,7 @@ export type TransferRejectReason =
   | { kind: 'unanswered_speak' }
   | { kind: 'inventory_full'; dropped_item: AgentItem | null };
 export type TransferCancelReason =
-  | 'server_event'
+  | 'server_announcement'
   | 'sender_logged_out'
   | 'receiver_logged_out'
   | 'conversation_closing'
@@ -60,13 +60,16 @@ export type EventType =
   | 'transfer_timeout'
   | 'transfer_cancelled'
   | 'transfer_escrow_lost'
-  | 'server_event_fired'
+  | 'server_announcement_fired'
+  | 'server_event_created'
+  | 'server_event_cleared'
   | 'idle_reminder_fired'
   | 'map_info_requested'
   | 'world_agents_info_requested'
   | 'status_info_requested'
   | 'nearby_agents_info_requested'
   | 'active_conversations_info_requested'
+  | 'server_events_info_requested'
   | 'perception_requested'
   | 'available_actions_requested';
 
@@ -117,7 +120,7 @@ export interface MovementCompletedEvent extends EventBase {
   agent_id: string;
   agent_name: string;
   node_id: NodeId;
-  delivered_server_event_ids: string[];
+  delivered_server_announcement_ids: string[];
 }
 
 export interface ActionStartedEvent extends EventBase {
@@ -241,7 +244,7 @@ export interface ConversationLeaveEvent extends EventBase {
   conversation_id: string;
   agent_id: string;
   agent_name: string;
-  reason: 'voluntary' | 'inactive' | 'logged_out' | 'server_event';
+  reason: 'voluntary' | 'inactive' | 'logged_out' | 'server_announcement';
   participant_agent_ids: string[];
   message?: string;
   next_speaker_agent_id?: string;
@@ -276,7 +279,7 @@ export interface ConversationClosingEvent extends EventBase {
   initiator_agent_id: string;
   participant_agent_ids: string[];
   current_speaker_agent_id: string;
-  reason: Extract<ConversationClosureReason, 'ended_by_agent' | 'max_turns' | 'server_event'>;
+  reason: Extract<ConversationClosureReason, 'ended_by_agent' | 'max_turns' | 'server_announcement'>;
 }
 
 export interface ConversationEndedEvent extends EventBase {
@@ -348,13 +351,33 @@ export interface TransferEscrowLostEvent extends TransferEventBase {
   dropped_item?: AgentItem | null;
 }
 
-export interface ServerEventFiredEvent extends EventBase {
-  type: 'server_event_fired';
-  server_event_id: string;
+export interface ServerAnnouncementFiredEvent extends EventBase {
+  type: 'server_announcement_fired';
+  server_announcement_id: string;
   description: string;
   delivered_agent_ids: string[];
   pending_agent_ids: string[];
   delayed: boolean;
+}
+
+export interface ServerEventCreatedEvent extends EventBase {
+  type: 'server_event_created';
+  server_event: {
+    server_event_id: string;
+    description: string;
+    created_at: number;
+    cleared_at: number | null;
+  };
+}
+
+export interface ServerEventClearedEvent extends EventBase {
+  type: 'server_event_cleared';
+  server_event: {
+    server_event_id: string;
+    description: string;
+    created_at: number;
+    cleared_at: number | null;
+  };
 }
 
 export interface IdleReminderFiredEvent extends EventBase {
@@ -386,6 +409,11 @@ export interface NearbyAgentsInfoRequestedEvent extends EventBase {
 
 export interface ActiveConversationsInfoRequestedEvent extends EventBase {
   type: 'active_conversations_info_requested';
+  agent_id: string;
+}
+
+export interface ServerEventsInfoRequestedEvent extends EventBase {
+  type: 'server_events_info_requested';
   agent_id: string;
 }
 
@@ -430,12 +458,15 @@ export type WorldEvent =
   | TransferTimeoutEvent
   | TransferCancelledEvent
   | TransferEscrowLostEvent
-  | ServerEventFiredEvent
+  | ServerAnnouncementFiredEvent
+  | ServerEventCreatedEvent
+  | ServerEventClearedEvent
   | IdleReminderFiredEvent
   | MapInfoRequestedEvent
   | WorldAgentsInfoRequestedEvent
   | StatusInfoRequestedEvent
   | NearbyAgentsInfoRequestedEvent
   | ActiveConversationsInfoRequestedEvent
+  | ServerEventsInfoRequestedEvent
   | PerceptionRequestedEvent
   | AvailableActionsRequestedEvent;

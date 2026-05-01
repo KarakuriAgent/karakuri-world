@@ -14,7 +14,7 @@ export function requireActionableAgent(
     throw new WorldError(403, 'not_logged_in', `Agent is not logged in: ${agentId}`);
   }
 
-  if (agent.active_server_event_id !== null) {
+  if (agent.active_server_announcement_id !== null) {
     return agent;
   }
 

@@ -29,7 +29,7 @@ Issue #60 / #64 以降の正本経路は **Node.js backend → Worker publish AP
 - `POST /api/publish-snapshot`
   - `Authorization: Bearer ${SNAPSHOT_PUBLISH_AUTH_KEY}` 必須
   - 未設定なら 503、不一致なら 401
-  - body は `WorldSnapshot` JSON（`recent_server_events` を含む）
+  - body は `WorldSnapshot` JSON（`recent_server_announcements` を含む）
   - body parse 失敗 / schema 不一致は 400
   - DO 内部失敗は 5xx で backend に返し、backend 側 retry を有効にする
 - `POST /api/publish-agent-history`
@@ -56,7 +56,7 @@ interface BridgeState {
 - `publish_alarm_at`: R2 publish retry backoff 用
 - `last_publish_error_at`: SPA stale banner へ伝播する publish failure marker
 
-pull / refresh 用のフィールドは持たない。`recent_server_events` は常に push された body 側から `SpectatorSnapshot.recent_server_events` に反映されるため DO 側でキャッシュする必要がない。
+pull / refresh 用のフィールドは持たない。`recent_server_announcements` は常に push された body 側から `SpectatorSnapshot.recent_server_announcements` に反映されるため DO 側でキャッシュする必要がない。
 
 ### 3.3 alarm の責務
 
@@ -66,7 +66,7 @@ pull / refresh 用のフィールドは持たない。`recent_server_events` は
 
 ### 4.1 body push → transform → publish
 
-1. backend が可視 state 変化イベントを観測し、`WorldSnapshot`（`recent_server_events` を含む）を組み立てて Worker `/api/publish-snapshot` に body として送る。起動時にも 1 回 `requestPublish()` が発火し、静穏期の再起動でも UI が空のままにならない
+1. backend が可視 state 変化イベントを観測し、`WorldSnapshot`（`recent_server_announcements` を含む）を組み立てて Worker `/api/publish-snapshot` に body として送る。起動時にも 1 回 `requestPublish()` が発火し、静穏期の再起動でも UI が空のままにならない
 2. DO は body の `WorldSnapshot` を zod で検証し、そのまま `applySnapshot` に渡す。`generated_at` が既存 snapshot より古ければ破棄する
 3. `WorldSnapshot` を `SpectatorSnapshot` へ変換する
 4. alias object `snapshot/latest.json` 1 本に `Cache-Control: public, max-age=5` で publish する
@@ -84,9 +84,9 @@ SPA は以下を使って stale を判断する。
 
 `last_publish_error_at > published_at` の snapshot は「last good publish より後に publish error が発生した」ことを示すため、年齢条件を待たずに stale 扱いにする。
 
-### 4.3 `recent_server_events`
+### 4.3 `recent_server_announcements`
 
-サーバーイベントは `maybeCleanupServerEvent` によって削除されても UI サイドバーに一定期間残す必要があるため、backend は `WorldEngine.state.recentServerEvents` に 10 件の FIFO リングバッファを保持し、すべての `WorldSnapshot` に `recent_server_events: RecentServerEventSnapshot[]` を含める。各要素は `{ server_event_id, description, occurred_at, is_active }` で、cleanup 時は `is_active=false` に切り替わる。
+サーバーアナウンスは `maybeCleanupServerAnnouncement`（エージェント単位の整理では `cleanupServerAnnouncementsForAgent`）によって active 状態が解除されても UI サイドバーに一定期間残す必要があるため、backend は `WorldEngine.state.recentServerAnnouncements`（`RecentServerAnnouncementsStore`）に 10 件の FIFO リングバッファを保持し、すべての `WorldSnapshot` に `recent_server_announcements: RecentServerAnnouncementSnapshot[]` を含める。各要素は `{ server_announcement_id, description, occurred_at, is_active }` で、cleanup 時は `is_active=false` に切り替わる。永続 active server events については引き続き `active_server_events` 側で `server_event_id` を保持する。
 
 ## 5. history publish / read
 

@@ -7,7 +7,7 @@ import type { MovementTimer } from '../types/timer.js';
 import { requireActionableAgent } from './agent-guards.js';
 import { cancelIdleReminder, startIdleReminder } from './idle-reminder.js';
 import { findPath, getNodeConfig, isNodeWithinBounds, isPassable } from './map-utils.js';
-import { handlePendingServerEvents } from './server-events.js';
+import { handlePendingServerAnnouncements } from './server-announcements.js';
 
 function requireMoveReadyAgent(engine: WorldEngine, agentId: string): LoggedInAgent {
   return requireActionableAgent(engine, agentId, { activityLabel: 'move' });
@@ -143,13 +143,13 @@ export function handleMovementCompleted(engine: WorldEngine, timer: MovementTime
   engine.state.setNode(timer.agent_id, timer.to_node_id);
   engine.state.setState(timer.agent_id, 'idle');
   startIdleReminder(engine, timer.agent_id);
-  const deliveredServerEventIds = handlePendingServerEvents(engine, timer.agent_id);
+  const deliveredServerAnnouncementIds = handlePendingServerAnnouncements(engine, timer.agent_id);
 
   engine.emitEvent({
     type: 'movement_completed',
     agent_id: agent.agent_id,
     agent_name: agent.agent_name,
     node_id: timer.to_node_id,
-    delivered_server_event_ids: deliveredServerEventIds,
+    delivered_server_announcement_ids: deliveredServerAnnouncementIds,
   });
 }

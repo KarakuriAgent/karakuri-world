@@ -1,11 +1,11 @@
 export type ConversationStatus = 'pending' | 'active' | 'closing';
 
-export type ConversationRejectionReason = 'rejected' | 'timeout' | 'target_logged_out' | 'server_event';
+export type ConversationRejectionReason = 'rejected' | 'timeout' | 'target_logged_out' | 'server_announcement';
 
 export type ConversationClosureReason =
   | 'max_turns'
   | 'turn_timeout'
-  | 'server_event'
+  | 'server_announcement'
   | 'ended_by_agent'
   | 'participant_logged_out';
 

@@ -84,11 +84,17 @@ export interface ConversationSnapshot {
   closing_reason?: ConversationClosureReason;
 }
 
-export interface RecentServerEventSnapshot {
-  server_event_id: string;
+export interface RecentServerAnnouncementSnapshot {
+  server_announcement_id: string;
   description: string;
   occurred_at: number;
   is_active: boolean;
+}
+
+export interface ActiveServerEventSnapshot {
+  server_event_id: string;
+  description: string;
+  created_at: number;
 }
 
 export interface KnownAgentSnapshot {
@@ -106,7 +112,8 @@ export interface WorldSnapshot {
   agents: AgentSnapshot[];
   known_agents: KnownAgentSnapshot[];
   conversations: ConversationSnapshot[];
-  recent_server_events: RecentServerEventSnapshot[];
+  active_server_events: ActiveServerEventSnapshot[];
+  recent_server_announcements: RecentServerAnnouncementSnapshot[];
   generated_at: number;
   runtime?: {
     snapshot_publisher: SnapshotPublisherStats;

@@ -194,7 +194,7 @@ POST /api/agents/logout
 2. ログイン中であることを確認
 3. ログアウト前のエージェント状態とアクティブなタイマーを取得（ログアウト通知のキャンセル情報に使用）
 4. 会話受諾待ちの発信リクエストがあればキャンセルし、相手への着信通知を取り消す
-5. 関連するすべてのタイマーおよびサーバーイベント保留リストをクリーンアップ（詳細は 03-world-engine.md セクション6を参照）
+5. 関連するすべてのタイマーおよび `pending_server_announcement_ids`（サーバーアナウンス保留リスト）をクリーンアップ（詳細は 03-world-engine.md セクション6を参照）
 6. `in_conversation` 中の場合、会話相手を強制的に `idle` に戻し、相手のDiscordチャンネルに通知
 7. エージェントを世界から除去（位置・状態情報をクリア）
 8. `discord_channel_id` と `last_node_id` に加え、最新の `money` / `items` をエージェント登録情報に永続化
@@ -228,8 +228,8 @@ type AgentState = "idle" | "moving" | "in_action" | "in_conversation";
 |------|------|
 | idle | 待機中。移動・アクション・アイテム使用・待機・会話開始が可能 |
 | moving | 移動中。移動タイマー発火で idle に戻る。割り込み不可 |
-| in_action | アクション / 待機 / 通常アイテム使用（`item_use`）の実行中。会話着信の受諾、サーバーイベントウィンドウでのmove/action/use_item/wait実行で割り込み可 |
-| in_conversation | 会話中。サーバーイベントウィンドウでのmove/action/use_item/wait実行で割り込み可 |
+| in_action | アクション / 待機 / 通常アイテム使用（`item_use`）の実行中。会話着信の受諾、サーバーアナウンスウィンドウでのmove/action/use_item/wait実行で割り込み可 |
+| in_conversation | 会話中。サーバーアナウンスウィンドウでのmove/action/use_item/wait実行で割り込み可 |
 
 ### 4.2 状態遷移表
 
@@ -247,17 +247,17 @@ type AgentState = "idle" | "moving" | "in_action" | "in_conversation";
 | moving | 移動タイマー発火 | idle | |
 | in_action | アクション/待機/item_use タイマー発火 | idle | `item_use` 完了時のみアイテムを1件消費 |
 | in_action | 会話受諾 | in_conversation | アクション / 待機 / item_use タイマーをキャンセル |
-| in_action | サーバーイベントウィンドウでのmove/action/use_item/wait実行 | idle → 新コマンドの状態 | アクション / 待機 / item_use タイマーをキャンセル後、新コマンド実行 |
+| in_action | サーバーアナウンスウィンドウでのmove/action/use_item/wait実行 | idle → 新コマンドの状態 | アクション / 待機 / item_use タイマーをキャンセル後、新コマンド実行 |
 | in_conversation | `ConversationConfig.max_turns` 到達 | idle | 終了あいさつ生成後 |
 | in_conversation | 会話相手logout | idle | 強制終了 |
-| in_conversation | サーバーイベントウィンドウでのmove/action/use_item/wait実行 | idle → 新コマンドの状態 | 会話をclosingに移行し、パートナーが終了あいさつ担当。割り込みエージェントは即座に新コマンド実行 |
-| in_conversation | 会話相手がサーバーイベントウィンドウで割り込み | idle | 相手の終了あいさつ後に会話終了 |
+| in_conversation | サーバーアナウンスウィンドウでのmove/action/use_item/wait実行 | idle → 新コマンドの状態 | 会話をclosingに移行し、パートナーが終了あいさつ担当。割り込みエージェントは即座に新コマンド実行 |
+| in_conversation | 会話相手がサーバーアナウンスウィンドウで割り込み | idle | 相手の終了あいさつ後に会話終了 |
 | idle | logout | (未ログイン) | |
 | moving | logout | (未ログイン) | 移動タイマーをキャンセル |
 | in_action | logout | (未ログイン) | アクション / 待機 / item_use タイマーをキャンセル。`item_use` 中でもアイテムは消費されない |
 | in_conversation | logout | (未ログイン) | 会話を強制終了、相手に通知 |
 | idle (受諾待ち) | logout | (未ログイン) | 発信リクエストをキャンセル、相手への着信通知を取り消し |
-| idle | サーバーイベントウィンドウでのmove/action/use_item/wait実行 | moving / in_action / idle | 通常のコマンド実行と同じ。通常アイテム使用は `in_action`、`venue` 型拒否は `idle` のまま。いずれもウィンドウはクリアされる |
+| idle | サーバーアナウンスウィンドウでのmove/action/use_item/wait実行 | moving / in_action / idle | 通常のコマンド実行と同じ。通常アイテム使用は `in_action`、`venue` 型拒否は `idle` のまま。いずれもウィンドウはクリアされる |
 
 ### 4.3 会話着信時の挙動
 
@@ -297,14 +297,14 @@ type AgentState = "idle" | "moving" | "in_action" | "in_conversation";
 | 会話受諾 | ✅ | ❌ | ✅ | ❌ |
 | 会話拒否 | ✅ | ✅ | ✅ | ✅ |
 | 会話発言 | ❌ | ❌ | ❌ | ✅ |
-| move/action/use_item/wait（サーバーイベントウィンドウ中） | ✅ | ❌ | ✅ | ✅ ※1 |
+| move/action/use_item/wait（サーバーアナウンスウィンドウ中） | ✅ | ❌ | ✅ | ✅ ※1 |
 | logout | ✅ | ✅ | ✅ | ✅ |
 
 - `idle` で受諾待ち中（4.4 参照）は、移動・アクション実行・アイテム使用・待機・会話開始を受け付けない
 - 会話拒否は状態を変更しないため、すべての状態から実行可能。バリデーションはリクエスト元に pending 状態の会話が存在し、対象側であることの確認のみ（06-conversation.md セクション4.3参照）
-- moving中のサーバーイベントは移動完了後に遅延通知される（詳細は 07-server-events.md）
-- サーバーイベントウィンドウ中のmove/action/use_item/waitは、現在の行動をキャンセル（in_conversationの場合はclosingに移行）してから新コマンドを実行する（詳細は 07-server-events.md）
-- ※1 会話が `closing` 状態（終了あいさつフェーズ）の場合、割り込みは実行されるが `beginClosingConversation` の再呼び出しはスキップされる（07-server-events.md セクション4参照）
+- moving中のサーバーアナウンスは移動完了後に遅延通知される（詳細は 07-server-announcements.md）
+- サーバーアナウンスウィンドウ中のmove/action/use_item/waitは、現在の行動をキャンセル（in_conversationの場合はclosingに移行）してから新コマンドを実行する（詳細は 07-server-announcements.md）
+- ※1 会話が `closing` 状態（終了あいさつフェーズ）の場合、割り込みは実行されるが `beginClosingConversation` の再呼び出しはスキップされる（07-server-announcements.md セクション4参照）
 
 ### 5.2 バリデーション
 
@@ -324,7 +324,7 @@ interface StateConflictError {
 - アクション → 05-actions.md
 - アイテム使用 → 05-actions.md §6
 - 会話 → 06-conversation.md
-- サーバーイベント → 07-server-events.md
+- サーバーアナウンス → 07-server-announcements.md
 
 ## 6. 再ログイン時の挙動
 

@@ -1,4 +1,5 @@
 import { buildPerceptionText } from '../domain/perception.js';
+import type { WorldEngine } from '../engine/world-engine.js';
 import type { AgentState } from '../types/agent.js';
 import type { PerceptionResponse } from '../types/api.js';
 import type { ConversationClosureReason, ConversationRejectionReason, PendingJoinCancelReason } from '../types/conversation.js';
@@ -36,8 +37,8 @@ function formatReasonMessage(targetName: string, reason: ConversationRejectionRe
       return `${targetName} が応答しませんでした。`;
     case 'target_logged_out':
       return `${targetName} が世界からログアウトしました。`;
-    case 'server_event':
-      return `${targetName} との会話開始はサーバーイベントにより中断されました。`;
+    case 'server_announcement':
+      return `${targetName} との会話開始はサーバーアナウンスにより中断されました。`;
   }
 }
 
@@ -55,8 +56,8 @@ function formatClosureReason(reason: Exclude<ConversationClosureReason, 'partici
       return '最大ターン数に到達しました';
     case 'turn_timeout':
       return '応答がタイムアウトしました';
-    case 'server_event':
-      return 'サーバーイベントにより終了しました';
+    case 'server_announcement':
+      return 'サーバーアナウンスにより終了しました';
     case 'ended_by_agent':
       return 'エージェントにより終了しました';
   }
@@ -337,7 +338,7 @@ export function formatConversationDeliveredClosingMessage(speakerName: string, m
   return `${speakerName}: 「${message}」`;
 }
 
-export function formatConversationServerEventClosingPromptMessage(
+export function formatConversationServerAnnouncementClosingPromptMessage(
   ctx: WorldContext,
   skillName: string,
   participants: ConversationParticipantInfo[] = [],
@@ -346,7 +347,7 @@ export function formatConversationServerEventClosingPromptMessage(
   return joinSections(
     formatWorldContextHeader(ctx),
     formatConversationParticipants(participants),
-    'サーバーイベントにより会話が終了します。',
+    'サーバーアナウンスにより会話が終了します。',
     formatActionPrompt(skillName, formatConversationChoices('closing', group)),
   );
 }
@@ -456,8 +457,8 @@ function describePendingJoinCancelReason(reason: PendingJoinCancelReason): strin
       return '参加予定だった会話が最大ターン数に到達して終了したため、会話への参加は取り消されました。';
     case 'turn_timeout':
       return '参加予定だった会話が応答タイムアウトで終了したため、会話への参加は取り消されました。';
-    case 'server_event':
-      return '参加予定だった会話がサーバーイベントにより中断されたため、会話への参加は取り消されました。';
+    case 'server_announcement':
+      return '参加予定だった会話がサーバーアナウンスにより中断されたため、会話への参加は取り消されました。';
     case 'ended_by_agent':
       return '参加予定だった会話が参加者の終了要求により終了したため、会話への参加は取り消されました。';
     case 'agent_unavailable':
@@ -480,7 +481,7 @@ export function formatConversationPendingJoinCancelledMessage(
   );
 }
 
-export function formatServerEventMessage(
+export function formatServerAnnouncementMessage(
   ctx: WorldContext,
   description: string,
   skillName: string,
@@ -488,11 +489,33 @@ export function formatServerEventMessage(
 ): string {
   return joinSections(
     formatWorldContextHeader(ctx),
-    `【サーバーイベント】\n${description}`,
+    `【サーバーアナウンス】\n${description}`,
     choicesText,
     '現在の行動をキャンセルして選択するか、この通知を無視してください。',
     `${skillName} スキルで行動を選択してください。`,
   );
+}
+
+export function formatActiveServerEventCountHint(engine: WorldEngine): string | null {
+  const count = engine.state.serverEvents.listActive().length;
+  if (count === 0) {
+    return null;
+  }
+  return `現在、サーバーイベントが ${count} 件実施中です。詳細は \`get_event\` で確認してください。`;
+}
+
+export function appendActiveServerEventHint(content: string, engine: WorldEngine): string {
+  const hint = formatActiveServerEventCountHint(engine);
+  return hint ? joinSections(content, hint) : content;
+}
+
+export function formatServerEventsInfoMessage(
+  ctx: WorldContext,
+  eventsText: string,
+  skillName: string,
+  choicesText?: string,
+): string {
+  return joinSections(formatWorldContextHeader(ctx), eventsText, formatActionPrompt(skillName, choicesText));
 }
 
 export function formatMapInfoMessage(ctx: WorldContext, mapSummaryText: string, skillName: string, choicesText?: string): string {
@@ -556,8 +579,8 @@ function formatTransferRejectReason(reason: TransferRejectReason): string {
 
 function formatTransferCancelReason(reason: TransferCancelReason): string {
   switch (reason) {
-    case 'server_event':
-      return 'サーバーイベントにより取り消されました。';
+    case 'server_announcement':
+      return 'サーバーアナウンスにより取り消されました。';
     case 'sender_logged_out':
       return '送信側がログアウトしたため取り消されました。';
     case 'receiver_logged_out':
@@ -860,8 +883,16 @@ export function formatIdleReminderMessage(
   );
 }
 
-export function formatWorldLogServerEvent(description: string): string {
-  return `【サーバーイベント】${description}`;
+export function formatWorldLogServerAnnouncement(description: string): string {
+  return `【サーバーアナウンス】${description}`;
+}
+
+export function formatWorldLogServerEventCreated(description: string): string {
+  return `【サーバーイベント開始】${description}`;
+}
+
+export function formatWorldLogServerEventCleared(description: string): string {
+  return `【サーバーイベント終了】${description}`;
 }
 
 export function formatWorldLogTransferRequested(toName: string): string {

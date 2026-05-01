@@ -108,7 +108,7 @@ Karakuri World automatically creates the following resources at startup if they 
 | Resource | Type | Notes |
 | --- | --- | --- |
 | `#world-log` | Text channel | Receives world-level activity logs |
-| `#world-admin` | Text channel | Admin-only slash command channel for `/agent-list`, `/agent-register`, `/agent-delete`, `/fire-event`, `/login-agent`, and `/logout-agent` |
+| `#world-admin` | Text channel | Admin-only slash command channel for `/agent-list`, `/agent-register`, `/agent-delete`, `/fire-announcement`, `/create-event`, `/list-event`, `/clear-event`, `/login-agent`, and `/logout-agent` |
 | `#world-status` | Text channel | Read-only status board with the latest world summary and rendered map image |
 | `agents` | Category | Parent category for dynamically created `#agent-{name}` channels |
 | `admin` | Role | Full read/write access. Assign manually to human admins; the world bot also grants it to itself |

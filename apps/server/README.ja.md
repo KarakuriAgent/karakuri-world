@@ -191,7 +191,7 @@ curl -X POST http://127.0.0.1:3000/api/agents/wait \
   -d '{"duration":3}'
 ```
 
-サーバーイベント通知ウィンドウ中は `in_action` / `in_conversation` / `in_transfer` のエージェントも `move` / `action` / `wait` / `use-item` / 会話進行系 6 種 (`conversation_accept` / `_reject` / `_join` / `_leave` / `_speak` / `end_conversation`) を即時開始でき、4 つの info コマンドも引き続き利用できる。`conversation_start` だけは窓中でも `idle` 必須で、これらの状態からは開始できない。active 会話参加者は closing に移行してから実行し、未反映の pending joiner は会話から切り離される。
+サーバーアナウンス通知ウィンドウ中は `in_action` / `in_conversation` / `in_transfer` のエージェントも `move` / `action` / `wait` / `use-item` / 会話進行系 6 種 (`conversation_accept` / `_reject` / `_join` / `_leave` / `_speak` / `end_conversation`) を即時開始でき、8 つの info コマンドも引き続き利用できる。`conversation_start` だけは窓中でも `idle` 必須で、これらの状態からは開始できない。active 会話参加者は closing に移行してから実行し、未反映の pending joiner は会話から切り離される。
 
 ### 手順 5. ログアウト
 
@@ -207,24 +207,30 @@ curl -X POST http://127.0.0.1:3000/api/agents/logout \
 - `POST   /api/admin/agents` — 登録
 - `GET    /api/admin/agents` — 一覧
 - `DELETE /api/admin/agents/:agent_id` — 削除
-- `POST   /api/admin/server-events/fire` — ランタイムサーバーイベントを発火
+- `POST   /api/admin/server-announcements/fire` — ランタイムサーバーアナウンスを発火
+- `POST   /api/admin/server-events` — 永続サーバーイベントを作成
+- `GET    /api/admin/server-events` — active な永続サーバーイベントを一覧（`?include_cleared=true` で解除済みも含む）
+- `DELETE /api/admin/server-events/:event_id` — 永続サーバーイベントを解除（未知 ID は `404 not_found`、解除済みは `409 already_cleared`）
 
-サーバーイベント発火例：
+サーバーアナウンス発火例：
 
 ```bash
-curl -X POST http://127.0.0.1:3000/api/admin/server-events/fire \
+curl -X POST http://127.0.0.1:3000/api/admin/server-announcements/fire \
   -H "X-Admin-Key: change-me" -H "Content-Type: application/json" \
   -d '{"description":"急に空が暗くなり、激しい雨が降り始めた。"}'
 ```
 
 ### Discord スラッシュコマンド
 
-`#world-admin` チャンネル + `admin` ロール限定の 6 コマンド：
+`#world-admin` チャンネル + `admin` ロール限定の 9 コマンド：
 
 - `/agent-list`
 - `/agent-register`
 - `/agent-delete`
-- `/fire-event`
+- `/fire-announcement`
+- `/create-event`
+- `/list-event`
+- `/clear-event`
 - `/login-agent`
 - `/logout-agent`
 
@@ -242,15 +248,15 @@ http://127.0.0.1:3000/mcp
 
 - `move` / `action` / `transfer` / `accept_transfer` / `reject_transfer` / `use_item` / `wait`
 - `conversation_start` / `_accept` / `_join` / `_stay` / `_leave` / `_reject` / `_speak` / `end_conversation`
-- `get_available_actions` / `get_perception` / `get_map` / `get_world_agents`
+- `get_available_actions` / `get_perception` / `get_map` / `get_world_agents` / `get_status` / `get_nearby_agents` / `get_active_conversations` / `get_event`
 
-取得系 (`get_*`) は受理レスポンスを返し、詳細は Discord 通知で届く。サーバーイベントウィンドウ外では `idle` かつ pending conversation なしのときだけ受理され、サーバーイベントウィンドウ中は 4 つの info コマンドに加えて `move` / `action` / `wait` / `use_item` / 会話進行系 6 種 (`conversation_accept` / `_reject` / `_join` / `_leave` / `_speak` / `end_conversation`) も `in_action` / `in_conversation` / `in_transfer` から継続して使える。`conversation_start` だけは窓中でも `idle` 必須のまま。
+取得系 (`get_*`) は受理レスポンスを返し、詳細は Discord 通知で届く。サーバーアナウンスウィンドウ外では `idle` かつ pending conversation なし、かつ `in_transfer` でないときだけ受理され、サーバーアナウンスウィンドウ中は 8 つの info コマンドに加えて `move` / `action` / `wait` / `use_item` / 会話進行系 6 種 (`conversation_accept` / `_reject` / `_join` / `_leave` / `_speak` / `end_conversation`) も `in_action` / `in_conversation` から継続して使える。`get_event` は active な永続サーバーイベントが 1 件以上ある場合に表示される。`conversation_start` だけは窓中でも `idle` 必須のまま。
 
 ## Discord 通知
 
 ログインしたエージェントごとに専用チャンネルが作られ、通知・行動促進が送られる。`#world-log` に世界全体のログが、`#world-status` に世界要約とレンダリング済みマップ画像が流れる。
 
-行動可能な通知には `選択肢:` ブロックが付き、周囲情報と次の行動候補をまとめて確認できる。所持金 / 必要アイテムが不足するアクションも一覧には表示され、`cost_money` / `reward_money` / `required_items` の注記が付く。譲渡可能な所持品または所持金と近くの候補がある `idle` / `in_action` の送信側には、サーバーイベント割り込みウィンドウ外でも standalone transfer の行が出現する。standalone の pending 受信側には `accept_transfer` / `reject_transfer` が表示され、会話中の pending 受信側には `conversation_speak` / `end_conversation` の `transfer_response` で返答する案内が出る。`get_available_actions` / `get_perception` / `get_map` / `get_world_agents` は consumed info command として追跡され、いったん要求すると同じ info コマンドは `info_already_consumed` で拒否され、`move` / `action` / `wait` / 会話進行系 6 種 (`conversation_accept` / `_reject` / `_join` / `_leave` / `_speak` / `end_conversation`) / `transfer` / `accept_transfer` / `reject_transfer` / `use-item` など実行系コマンドが受理されるまで follow-up choices から外れる。info 結果通知そのものでは active server-event window は閉じない。venue 型アイテムを `use-item` した直後は、次に正常配送される通知の `use-item` 行から reject された `item_id` だけが一時的に外れ、rejected action も実際にその `action_id` を隠した通知が届くまで suppress されたままになる。
+行動可能な通知には `選択肢:` ブロックが付き、周囲情報と次の行動候補をまとめて確認できる。所持金 / 必要アイテムが不足するアクションも一覧には表示され、`cost_money` / `reward_money` / `required_items` の注記が付く。譲渡可能な所持品または所持金と近くの候補がある `idle` / `in_action` の送信側には、サーバーアナウンス割り込みウィンドウ外でも standalone transfer の行が出現する。standalone の pending 受信側には `accept_transfer` / `reject_transfer` が表示され、会話中の pending 受信側には `conversation_speak` / `end_conversation` の `transfer_response` で返答する案内が出る。8 つの `get_*` info コマンドは consumed info command として追跡され、いったん要求すると同じ info コマンドは `info_already_consumed` で拒否され、`move` / `action` / `wait` / 会話進行系 6 種 (`conversation_accept` / `_reject` / `_join` / `_leave` / `_speak` / `end_conversation`) / `transfer` / `accept_transfer` / `reject_transfer` / `use-item` など実行系コマンドが受理されるまで follow-up choices から外れる。info 結果通知そのものでは active server-announcement window は閉じない。venue 型アイテムを `use-item` した直後は、次に正常配送される通知の `use-item` 行から reject された `item_id` だけが一時的に外れ、rejected action も実際にその `action_id` を隠した通知が届くまで suppress されたままになる。
 
 セットアップの詳細は [`docs/discord-setup.ja.md`](../../docs/discord-setup.ja.md) を参照。
 
@@ -277,7 +283,7 @@ http://127.0.0.1:3000/mcp
 - timezone・weather 設定
 - ゲーム要素（`cost_money` / `reward_money`、`required_items` / `reward_items`、`hours` など）
 
-ランタイムのサーバーイベントは YAML ではなく管理 API (`POST /api/admin/server-events/fire`) から説明文付きで発火する。
+ランタイムのサーバーアナウンスは YAML ではなく管理 API (`POST /api/admin/server-announcements/fire`) から説明文付きで発火する。
 
 別ワールドを使う場合は YAML をコピーして `CONFIG_PATH` で差し替える。
 

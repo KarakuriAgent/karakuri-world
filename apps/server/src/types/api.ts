@@ -1,5 +1,6 @@
 import type { AgentItem, AgentState } from './agent.js';
 import type { NodeId, NodeType } from './data-model.js';
+import type { ServerEvent } from './server-event.js';
 import type { WorldSnapshot } from './snapshot.js';
 
 export type ApiErrorCode =
@@ -28,6 +29,7 @@ export type ApiErrorCode =
   | 'next_speaker_required'
   | 'cannot_nominate_self'
   | 'not_found'
+  | 'already_cleared'
   | 'invalid_config'
   | 'validation_error'
   | 'transfer_role_conflict'
@@ -210,7 +212,7 @@ export interface TransferActionResponse extends NotificationAcceptedResponse {
   failure_reason?: TransferFailureReason;
 }
 
-export interface FireServerEventRequest {
+export interface FireServerAnnouncementRequest {
   description: string;
 }
 
@@ -269,8 +271,20 @@ export interface WorldAgentsResponse {
   }>;
 }
 
-export interface FireServerEventResponse {
+export interface FireServerAnnouncementResponse {
+  server_announcement_id: string;
+}
+
+export interface CreateServerEventRequest {
+  description: string;
+}
+
+export interface CreateServerEventResponse {
   server_event_id: string;
+}
+
+export interface ListServerEventsResponse {
+  events: ServerEvent[];
 }
 
 export interface SnapshotResponse extends WorldSnapshot {}

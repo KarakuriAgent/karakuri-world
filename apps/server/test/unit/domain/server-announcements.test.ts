@@ -1,0 +1,884 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { createTestWorld } from '../../helpers/test-world.js';
+import { WorldError } from '../../../src/types/api.js';
+
+function expectWorldError(error: unknown, code: WorldError['code'], status: number): void {
+  expect(error).toBeInstanceOf(WorldError);
+  expect(error).toMatchObject({ code, status });
+}
+
+describe('server announcement domain', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it('fires events with runtime descriptions and clears stored events when there are no pending agents', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+
+    const fired = engine.fireServerAnnouncement('Dark clouds gather.');
+
+    expect(fired.server_announcement_id).toMatch(/^server-announcement-/);
+    expect(engine.state.serverAnnouncements.list()).toEqual([]);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBe(fired.server_announcement_id);
+  });
+
+  it('resets the excluded info command set when a new server announcement window opens', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.addExcludedInfoCommand(alice.agent_id, 'get_map');
+    engine.state.addExcludedInfoCommand(alice.agent_id, 'get_perception');
+
+    engine.fireServerAnnouncement('Dark clouds gather.');
+
+    expect(engine.state.getExcludedInfoCommands(alice.agent_id).size).toBe(0);
+  });
+
+  it('resets the excluded info command set when a delayed server announcement is delivered after movement', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
+
+    engine.move(alice.agent_id, { target_node_id: '3-4' });
+    engine.fireServerAnnouncement('Pending announcement during travel.');
+    engine.state.addExcludedInfoCommand(alice.agent_id, 'get_map');
+
+    vi.advanceTimersByTime(3000);
+
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).not.toBeNull();
+    expect(engine.state.getExcludedInfoCommands(alice.agent_id).size).toBe(0);
+  });
+
+  it('clears the active server announcement window when an idle agent moves during it', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
+
+    const fired = engine.fireServerAnnouncement('Dark clouds gather.');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBe(fired.server_announcement_id);
+
+    engine.move(alice.agent_id, { target_node_id: '3-4' });
+
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
+  });
+
+  it('delays delivery while moving and keeps the announcement window open through arrival', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
+    const eventTypes: string[] = [];
+    const unsubscribe = engine.eventBus.onAny((event) => {
+      eventTypes.push(event.type);
+    });
+
+    engine.move(alice.agent_id, { target_node_id: '3-4' });
+    const fired = engine.fireServerAnnouncement('Dark clouds gather.');
+
+    expect(engine.state.serverAnnouncements.list()).toEqual([
+      expect.objectContaining({
+        server_announcement_id: fired.server_announcement_id,
+        description: 'Dark clouds gather.',
+        pending_agent_ids: [alice.agent_id],
+      }),
+    ]);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.pending_server_announcement_ids).toEqual([fired.server_announcement_id]);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
+
+    vi.advanceTimersByTime(3000);
+
+    expect(engine.state.getLoggedIn(alice.agent_id)?.pending_server_announcement_ids).toEqual([]);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBe(fired.server_announcement_id);
+    expect(engine.state.serverAnnouncements.list()).toEqual([]);
+    expect(eventTypes.slice(-2)).toEqual(['server_announcement_fired', 'movement_completed']);
+
+    unsubscribe();
+  });
+
+  it('delivers delayed server announcements in fire order after movement completes', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
+
+    const delayedDescriptions: string[] = [];
+    const unsubscribe = engine.eventBus.onAny((event) => {
+      if (event.type === 'server_announcement_fired' && event.delayed) {
+        delayedDescriptions.push(event.description);
+      }
+    });
+
+    engine.move(alice.agent_id, { target_node_id: '3-4' });
+    engine.fireServerAnnouncement('First delayed event.');
+    engine.fireServerAnnouncement('Second delayed event.');
+
+    vi.advanceTimersByTime(3000);
+
+    expect(delayedDescriptions).toEqual(['First delayed event.', 'Second delayed event.']);
+
+    unsubscribe();
+  });
+
+  it('clears the active server announcement when the next completion notification arrives', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.setNode(alice.agent_id, '1-1');
+
+    const fired = engine.fireServerAnnouncement('Dark clouds gather.');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBe(fired.server_announcement_id);
+
+    engine.executeAction(alice.agent_id, { action_id: 'greet-gatekeeper' });
+
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
+  });
+
+  it.each([
+    {
+      title: 'action completion',
+      prepare: (engine: ReturnType<typeof createTestWorld>['engine'], agentId: string) => {
+        engine.state.setNode(agentId, '1-1');
+        engine.executeAction(agentId, { action_id: 'greet-gatekeeper' });
+      },
+      complete: () => {
+        vi.advanceTimersByTime(1200);
+      },
+    },
+    {
+      title: 'wait completion',
+      prepare: (engine: ReturnType<typeof createTestWorld>['engine'], agentId: string) => {
+        engine.executeWait(agentId, { duration: 1 });
+      },
+      complete: () => {
+        vi.advanceTimersByTime(600000);
+      },
+    },
+    {
+      title: 'idle reminder',
+      prepare: () => {},
+      complete: () => {
+        vi.advanceTimersByTime(1000);
+      },
+      config: {
+        idle_reminder: {
+          interval_ms: 1000,
+        },
+      },
+    },
+  ])('keeps the server announcement window open after $title fires until delivery clears it', async ({ prepare, complete, config }) => {
+    const { engine } = createTestWorld({ config });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+
+    prepare(engine, alice.agent_id);
+    const fired = engine.fireServerAnnouncement('Dark clouds gather.');
+    complete();
+
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBe(fired.server_announcement_id);
+  });
+
+  it('interrupts an in-action agent when they start a new command during the announcement window', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.setNode(alice.agent_id, '1-1');
+
+    engine.executeAction(alice.agent_id, { action_id: 'greet-gatekeeper' });
+    const fired = engine.fireServerAnnouncement('Dark clouds gather.');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBe(fired.server_announcement_id);
+
+    engine.executeWait(alice.agent_id, { duration: 1 });
+
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('in_action');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.last_action_id).toBe('greet-gatekeeper');
+  });
+
+  it('closes the server announcement window when an action is rejected after validation', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        economy: { initial_money: 100 },
+        map: {
+          ...createTestWorld().config.map,
+          npcs: [
+            {
+              npc_id: 'npc-gatekeeper',
+              name: 'Gatekeeper',
+              description: 'Watches the town gate.',
+              node_id: '1-2',
+              actions: [
+                {
+                  action_id: 'expensive-greeting',
+                  name: 'Expensive greeting',
+                  description: 'Offer a costly greeting.',
+                  duration_ms: 1200,
+                  cost_money: 500,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.setNode(alice.agent_id, '1-1');
+
+    const fired = engine.fireServerAnnouncement('Dark clouds gather.');
+
+    const response = engine.executeAction(alice.agent_id, { action_id: 'expensive-greeting' });
+
+    expect(response.ok).toBe(true);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('idle');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
+    expect(
+      engine.state.recentServerAnnouncements
+        .list()
+        .find((event) => event.server_announcement_id === fired.server_announcement_id)
+        ?.is_active,
+    ).toBe(false);
+  });
+
+  it('closes the server announcement window when venue item use is rejected', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        items: [
+          { item_id: 'ticket', name: 'チケット', description: 'テスト用チケット', type: 'venue' as const, stackable: false },
+        ],
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.setItems(alice.agent_id, [{ item_id: 'ticket', quantity: 1 }]);
+
+    const fired = engine.fireServerAnnouncement('Dark clouds gather.');
+
+    const response = engine.useItem(alice.agent_id, { item_id: 'ticket' });
+
+    expect(response.ok).toBe(true);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('idle');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
+    expect(
+      engine.state.recentServerAnnouncements
+        .list()
+        .find((event) => event.server_announcement_id === fired.server_announcement_id)
+        ?.is_active,
+    ).toBe(false);
+  });
+
+  it.each([
+    {
+      title: 'move',
+      execute: (engine: ReturnType<typeof createTestWorld>['engine'], agentId: string) =>
+        engine.move(agentId, { target_node_id: '1-1' }),
+      code: 'same_node' as const,
+      status: 400,
+    },
+    {
+      title: 'action',
+      execute: (engine: ReturnType<typeof createTestWorld>['engine'], agentId: string) =>
+        engine.executeAction(agentId, { action_id: 'missing-action' }),
+      code: 'action_not_found' as const,
+      status: 400,
+    },
+    {
+      title: 'wait',
+      execute: (engine: ReturnType<typeof createTestWorld>['engine'], agentId: string) =>
+        engine.executeWait(agentId, { duration: 0 }),
+      code: 'invalid_request' as const,
+      status: 400,
+    },
+  ])('does not interrupt the current action when an invalid $title replacement is rejected', async ({ execute, code, status }) => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.setNode(alice.agent_id, '1-1');
+
+    engine.executeAction(alice.agent_id, { action_id: 'greet-gatekeeper' });
+    const fired = engine.fireServerAnnouncement('Dark clouds gather.');
+
+    try {
+      execute(engine, alice.agent_id);
+      throw new Error('Expected replacement command to fail.');
+    } catch (error) {
+      expectWorldError(error, code, status);
+    }
+
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('in_action');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBe(fired.server_announcement_id);
+    expect(
+      engine.timerManager.find((timer) => timer.type === 'action' && timer.agent_id === alice.agent_id),
+    ).not.toBeNull();
+  });
+
+  it('moves a conversation to closing and frees the acting agent during the announcement window', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        conversation: {
+          max_turns: 4,
+          interval_ms: 500,
+          accept_timeout_ms: 1000,
+          turn_timeout_ms: 1000,
+        },
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
+    engine.state.setNode(bob.agent_id, '3-2');
+
+    const started = engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hi' });
+
+    const fired = engine.fireServerAnnouncement('Dark clouds gather.');
+    expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_announcement_id).toBe(fired.server_announcement_id);
+
+    engine.executeWait(bob.agent_id, { duration: 1 });
+
+    const conversation = engine.state.conversations.get(started.conversation_id);
+    expect(conversation?.status).toBe('closing');
+    expect(conversation?.current_speaker_agent_id).toBe(alice.agent_id);
+    expect(engine.state.getLoggedIn(bob.agent_id)?.state).toBe('in_action');
+    expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_announcement_id).toBeNull();
+  });
+
+  it('detaches the interrupting participant instead of the prompted speaker in group conversations', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        conversation: {
+          max_turns: 6,
+          interval_ms: 500,
+          accept_timeout_ms: 1000,
+          turn_timeout_ms: 1000,
+        },
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    const carol = await engine.registerAgent({ discord_bot_id: 'bot-carol' });
+    const dave = await engine.registerAgent({ discord_bot_id: 'bot-dave' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    await engine.loginAgent(carol.agent_id);
+    await engine.loginAgent(dave.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
+    engine.state.setNode(bob.agent_id, '3-2');
+    engine.state.setNode(carol.agent_id, '3-2');
+    engine.state.setNode(dave.agent_id, '3-2');
+
+    const started = engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hi' });
+    vi.advanceTimersByTime(500);
+    engine.joinConversation(carol.agent_id, {
+      conversation_id: started.conversation_id,
+    });
+    engine.joinConversation(dave.agent_id, {
+      conversation_id: started.conversation_id,
+    });
+    engine.speak(alice.agent_id, {
+      message: 'みんなで話そう。',
+      next_speaker_agent_id: bob.agent_id,
+    });
+    vi.advanceTimersByTime(500);
+
+    engine.fireServerAnnouncement('Dark clouds gather.');
+    engine.executeWait(dave.agent_id, { duration: 1 });
+
+    const conversation = engine.state.conversations.get(started.conversation_id);
+    expect(conversation?.status).toBe('closing');
+    expect(conversation?.current_speaker_agent_id).toBe(bob.agent_id);
+    expect(conversation?.participant_agent_ids).toEqual([alice.agent_id, bob.agent_id, carol.agent_id]);
+    expect(engine.state.getLoggedIn(dave.agent_id)?.current_conversation_id).toBeNull();
+    expect(engine.state.getLoggedIn(dave.agent_id)?.state).toBe('in_action');
+  });
+
+  it('starts server-announcement closing from the paused resume speaker successor during inactive checks', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        conversation: {
+          max_turns: 10,
+          inactive_check_turns: 1,
+          interval_ms: 500,
+          accept_timeout_ms: 1000,
+          turn_timeout_ms: 1000,
+        },
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    const carol = await engine.registerAgent({ discord_bot_id: 'bot-carol' });
+    const dave = await engine.registerAgent({ discord_bot_id: 'bot-dave' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    await engine.loginAgent(carol.agent_id);
+    await engine.loginAgent(dave.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
+    engine.state.setNode(bob.agent_id, '3-2');
+    engine.state.setNode(carol.agent_id, '3-2');
+    engine.state.setNode(dave.agent_id, '3-2');
+
+    const started = engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hi' });
+    vi.advanceTimersByTime(500);
+    engine.joinConversation(carol.agent_id, {
+      conversation_id: started.conversation_id,
+    });
+    engine.joinConversation(dave.agent_id, {
+      conversation_id: started.conversation_id,
+    });
+
+    engine.speak(alice.agent_id, {
+      message: 'Bob, over to you.',
+      next_speaker_agent_id: bob.agent_id,
+    });
+    vi.advanceTimersByTime(500);
+    engine.speak(bob.agent_id, {
+      message: 'Alice, please continue.',
+      next_speaker_agent_id: alice.agent_id,
+    });
+    vi.advanceTimersByTime(500);
+
+    expect(engine.state.conversations.get(started.conversation_id)).toEqual(expect.objectContaining({
+      current_speaker_agent_id: bob.agent_id,
+      resume_speaker_agent_id: alice.agent_id,
+      inactive_check_pending_agent_ids: [carol.agent_id, dave.agent_id],
+    }));
+
+    const fired = engine.fireServerAnnouncement('Dark clouds gather.');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBe(fired.server_announcement_id);
+
+    engine.executeWait(alice.agent_id, { duration: 1 });
+
+    const conversation = engine.state.conversations.get(started.conversation_id);
+    expect(conversation).toEqual(expect.objectContaining({
+      status: 'closing',
+      current_speaker_agent_id: bob.agent_id,
+      participant_agent_ids: [bob.agent_id, carol.agent_id, dave.agent_id],
+      closing_reason: 'server_announcement',
+    }));
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('in_action');
+  });
+
+  it('keeps the server announcement window open for in-conversation agents until a follow-up notification can clear it', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        conversation: {
+          max_turns: 4,
+          interval_ms: 500,
+          accept_timeout_ms: 1000,
+          turn_timeout_ms: 1000,
+        },
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
+    engine.state.setNode(bob.agent_id, '3-2');
+
+    engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hi' });
+
+    const fired = engine.fireServerAnnouncement('Dark clouds gather.');
+
+    vi.advanceTimersByTime(500);
+
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBe(fired.server_announcement_id);
+    expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_announcement_id).toBe(fired.server_announcement_id);
+  });
+
+  it.each([
+    ['initiator', 'alice'],
+    ['target', 'bob'],
+  ] as const)(
+    'cancels a pending conversation with server_announcement semantics when the %s interrupts during the announcement window',
+    async (_role, interrupterName) => {
+      const { engine } = createTestWorld();
+      const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+      const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+      await engine.loginAgent(alice.agent_id);
+      await engine.loginAgent(bob.agent_id);
+      engine.state.setNode(alice.agent_id, '3-1');
+      engine.state.setNode(bob.agent_id, '3-2');
+
+      const rejectedEvents: Array<{ reason: string; initiator: string; target: string }> = [];
+      const unsubscribe = engine.eventBus.onAny((event) => {
+        if (event.type === 'conversation_rejected') {
+          rejectedEvents.push({
+            reason: event.reason,
+            initiator: event.initiator_agent_id,
+            target: event.target_agent_id,
+          });
+        }
+      });
+
+      const started = engine.startConversation(alice.agent_id, {
+        target_agent_id: bob.agent_id,
+        message: 'Hello',
+      });
+      engine.fireServerAnnouncement('Dark clouds gather.');
+
+      const interrupterId = interrupterName === 'alice' ? alice.agent_id : bob.agent_id;
+      engine.executeWait(interrupterId, { duration: 1 });
+
+      expect(engine.state.conversations.get(started.conversation_id)).toBeNull();
+      expect(engine.state.getLoggedIn(alice.agent_id)?.pending_conversation_id).toBeNull();
+      expect(engine.state.getLoggedIn(bob.agent_id)?.pending_conversation_id).toBeNull();
+      expect(rejectedEvents).toEqual([
+        {
+          reason: 'server_announcement',
+          initiator: alice.agent_id,
+          target: bob.agent_id,
+        },
+      ]);
+
+      unsubscribe();
+    },
+  );
+
+  it('clears a stale pending conversation reference after a server-announcement interruption ends the conversation', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        conversation: {
+          max_turns: 4,
+          interval_ms: 500,
+          accept_timeout_ms: 1000,
+          turn_timeout_ms: 1000,
+        },
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
+    engine.state.setNode(bob.agent_id, '3-2');
+
+    const started = engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hi' });
+    engine.state.setPendingConversation(bob.agent_id, started.conversation_id);
+
+    engine.fireServerAnnouncement('Dark clouds gather.');
+    engine.move(bob.agent_id, { target_node_id: '3-3' });
+
+    expect(engine.state.getLoggedIn(bob.agent_id)?.pending_conversation_id).toBeNull();
+
+    vi.advanceTimersByTime(1000);
+
+    expect(engine.state.getLoggedIn(bob.agent_id)?.pending_conversation_id).toBeNull();
+    expect(() => engine.move(bob.agent_id, { target_node_id: '3-4' })).not.toThrow();
+  });
+
+  it('detaches pending joiners locally when they interrupt during a server announcement window', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        conversation: {
+          max_turns: 6,
+          interval_ms: 500,
+          accept_timeout_ms: 1000,
+          turn_timeout_ms: 1000,
+        },
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    const carol = await engine.registerAgent({ discord_bot_id: 'bot-carol' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    await engine.loginAgent(carol.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
+    engine.state.setNode(bob.agent_id, '3-2');
+    engine.state.setNode(carol.agent_id, '3-2');
+
+    const started = engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hi' });
+    engine.joinConversation(carol.agent_id, {
+      conversation_id: started.conversation_id,
+    });
+
+    const cancelledEvents: Array<{ agent_id: string; reason: string }> = [];
+    const unsubscribe = engine.eventBus.onAny((event) => {
+      if (event.type === 'conversation_pending_join_cancelled') {
+        cancelledEvents.push({
+          agent_id: event.agent_id,
+          reason: event.reason,
+        });
+      }
+    });
+
+    engine.fireServerAnnouncement('Dark clouds gather.');
+    engine.executeWait(carol.agent_id, { duration: 1 });
+
+    expect(engine.state.conversations.get(started.conversation_id)).toEqual(expect.objectContaining({
+      status: 'active',
+      participant_agent_ids: [alice.agent_id, bob.agent_id],
+      pending_participant_agent_ids: [],
+    }));
+    expect(engine.state.getLoggedIn(carol.agent_id)).toEqual(expect.objectContaining({
+      state: 'in_action',
+      current_conversation_id: null,
+      active_server_announcement_id: null,
+    }));
+    expect(cancelledEvents).toEqual([
+      {
+        agent_id: carol.agent_id,
+        reason: 'server_announcement',
+      },
+    ]);
+
+    unsubscribe();
+  });
+
+  it('removes later interrupters even when the conversation is already closing during the announcement window', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        conversation: {
+          max_turns: 4,
+          interval_ms: 500,
+          accept_timeout_ms: 1000,
+          turn_timeout_ms: 1000,
+        },
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
+    engine.state.setNode(bob.agent_id, '3-2');
+
+    engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hi' });
+
+    // Advance to max_turns to put conversation into closing (turns: start=1, accept=2, speak=3, speak=4)
+    vi.advanceTimersByTime(500);
+    engine.speak(alice.agent_id, { message: 'Turn 3', next_speaker_agent_id: bob.agent_id });
+    vi.advanceTimersByTime(500);
+    engine.speak(bob.agent_id, { message: 'Turn 4', next_speaker_agent_id: alice.agent_id });
+    vi.advanceTimersByTime(500);
+
+    // Alice is now the farewell speaker in a closing conversation
+    const conversationId = engine.state.getLoggedIn(alice.agent_id)?.current_conversation_id;
+    expect(conversationId).not.toBeNull();
+    const conversation = engine.state.conversations.get(conversationId!);
+    expect(conversation?.status).toBe('closing');
+    const originalSpeaker = conversation?.current_speaker_agent_id;
+
+    // Fire server announcement and have bob (not the farewell speaker) try to interrupt
+    engine.fireServerAnnouncement('Dark clouds gather.');
+    expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_announcement_id).not.toBeNull();
+
+    engine.executeWait(bob.agent_id, { duration: 1 });
+
+    // Bob should be removed cleanly even though the conversation was already closing.
+    expect(engine.state.conversations.get(conversationId!)).toBeNull();
+    expect(originalSpeaker).toBe(alice.agent_id);
+    expect(engine.state.getLoggedIn(bob.agent_id)?.current_conversation_id).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.current_conversation_id).toBeNull();
+    expect(engine.state.getLoggedIn(bob.agent_id)?.state).toBe('in_action');
+  });
+
+  it('ends a closing conversation when the farewell speaker interrupts during the announcement window', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        conversation: {
+          max_turns: 4,
+          interval_ms: 500,
+          accept_timeout_ms: 1000,
+          turn_timeout_ms: 1000,
+        },
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
+    engine.state.setNode(bob.agent_id, '3-2');
+
+    engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hi' });
+
+    vi.advanceTimersByTime(500);
+    engine.speak(alice.agent_id, { message: 'Turn 3', next_speaker_agent_id: bob.agent_id });
+    vi.advanceTimersByTime(500);
+    engine.speak(bob.agent_id, { message: 'Turn 4', next_speaker_agent_id: alice.agent_id });
+    vi.advanceTimersByTime(500);
+
+    const conversationId = engine.state.getLoggedIn(alice.agent_id)?.current_conversation_id;
+    expect(engine.state.conversations.get(conversationId!)?.current_speaker_agent_id).toBe(alice.agent_id);
+
+    engine.fireServerAnnouncement('Dark clouds gather.');
+    engine.executeWait(alice.agent_id, { duration: 1 });
+
+    expect(engine.state.conversations.get(conversationId!)).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.current_conversation_id).toBeNull();
+    expect(engine.state.getLoggedIn(bob.agent_id)?.current_conversation_id).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('in_action');
+  });
+
+  it('does not prematurely clear the server announcement window when accept timeout fires on an already-resolved conversation', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        conversation: {
+          max_turns: 4,
+          interval_ms: 500,
+          accept_timeout_ms: 1000,
+          turn_timeout_ms: 1000,
+        },
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
+    engine.state.setNode(bob.agent_id, '3-2');
+
+    // Start a conversation and immediately accept it
+    engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hi' });
+
+    // Fire a server announcement — both agents get the window
+    const fired = engine.fireServerAnnouncement('Dark clouds gather.');
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBe(fired.server_announcement_id);
+    expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_announcement_id).toBe(fired.server_announcement_id);
+
+    // Let the accept timeout fire (conversation is already accepted, so it's a no-op)
+    vi.advanceTimersByTime(1000);
+
+    // Server announcement window should still be active for both agents
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBe(fired.server_announcement_id);
+    expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_announcement_id).toBe(fired.server_announcement_id);
+  });
+
+  it('does not reset an agent that already joined a newer conversation before the interrupted one finishes closing', async () => {
+    const { engine } = createTestWorld({
+      config: {
+        conversation: {
+          max_turns: 4,
+          interval_ms: 500,
+          accept_timeout_ms: 1000,
+          turn_timeout_ms: 1000,
+        },
+      },
+    });
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    const bob = await engine.registerAgent({ discord_bot_id: 'bot-bob' });
+    const charlie = await engine.registerAgent({ discord_bot_id: 'bot-charlie' });
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    await engine.loginAgent(charlie.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
+    engine.state.setNode(bob.agent_id, '3-2');
+    engine.state.setNode(charlie.agent_id, '3-3');
+
+    const original = engine.startConversation(alice.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Hello',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Hi' });
+
+    engine.fireServerAnnouncement('Dark clouds gather.');
+    engine.executeWait(bob.agent_id, { duration: 1 });
+
+    const replacement = engine.startConversation(charlie.agent_id, {
+      target_agent_id: bob.agent_id,
+      message: 'Need a quick word',
+    });
+    engine.acceptConversation(bob.agent_id, { message: 'Sure' });
+
+    engine.speak(alice.agent_id, { message: 'We can continue later', next_speaker_agent_id: bob.agent_id });
+    vi.advanceTimersByTime(500);
+
+    expect(engine.state.conversations.get(original.conversation_id)).toBeNull();
+    expect(engine.state.conversations.get(replacement.conversation_id)?.status).toBe('active');
+    expect(engine.state.getLoggedIn(bob.agent_id)?.state).toBe('in_conversation');
+    expect(engine.state.getLoggedIn(charlie.agent_id)?.state).toBe('in_conversation');
+  });
+
+  it('records fired events in recentServerAnnouncements and flips is_active off once all agents have received the event', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+
+    const fired = engine.fireServerAnnouncement('Dark clouds gather.');
+
+    expect(engine.state.recentServerAnnouncements.list()).toEqual([
+      expect.objectContaining({
+        server_announcement_id: fired.server_announcement_id,
+        description: 'Dark clouds gather.',
+        is_active: false,
+      }),
+    ]);
+    expect(engine.getSnapshot().recent_server_announcements).toEqual([
+      expect.objectContaining({
+        server_announcement_id: fired.server_announcement_id,
+        is_active: false,
+      }),
+    ]);
+  });
+
+  it('keeps recent entries active while the event is still pending for moving agents and marks them inactive after cleanup', async () => {
+    const { engine } = createTestWorld();
+    const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+    await engine.loginAgent(alice.agent_id);
+    engine.state.setNode(alice.agent_id, '3-1');
+
+    engine.move(alice.agent_id, { target_node_id: '3-4' });
+    const fired = engine.fireServerAnnouncement('Dark clouds gather.');
+
+    expect(engine.state.recentServerAnnouncements.list()).toEqual([
+      expect.objectContaining({ server_announcement_id: fired.server_announcement_id, is_active: true }),
+    ]);
+
+    vi.advanceTimersByTime(3000);
+
+    expect(engine.state.serverAnnouncements.list()).toEqual([]);
+    expect(engine.state.recentServerAnnouncements.list()).toEqual([
+      expect.objectContaining({ server_announcement_id: fired.server_announcement_id, is_active: false }),
+    ]);
+  });
+});

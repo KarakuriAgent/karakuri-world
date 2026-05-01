@@ -184,7 +184,7 @@ describe('transfer API', () => {
     expect(engine.state.getExcludedInfoCommands(bob.data.agent_id).size).toBe(0);
   });
 
-  it('cancels a standalone transfer instead of settling it during a server-event window', async () => {
+  it('cancels a standalone transfer instead of settling it during a server announcement window', async () => {
     const { engine } = createTestWorld({
       config: {
         items: [{ item_id: 'apple', name: 'りんご', description: 'りんご', type: 'food', stackable: true }],
@@ -205,7 +205,7 @@ describe('transfer API', () => {
       headers: { Authorization: `Bearer ${alice.data.api_key}` },
       body: JSON.stringify({ target_agent_id: bob.data.agent_id, item: { item_id: 'apple', quantity: 1 } }),
     });
-    engine.fireServerEvent('Storm warning.');
+    engine.fireServerAnnouncement('Storm warning.');
 
     const accepted = await requestJson(app, '/api/agents/transfer/accept', {
       method: 'POST',
@@ -651,7 +651,7 @@ describe('transfer API', () => {
       }),
     });
 
-    engine.fireServerEvent('Storm warning.');
+    engine.fireServerAnnouncement('Storm warning.');
 
     const moved = await requestJson(app, '/api/agents/move', {
       method: 'POST',
@@ -711,7 +711,7 @@ describe('transfer API', () => {
     expect(engine.state.getLoggedIn(alice.data.agent_id)?.active_transfer_id).not.toBeNull();
     expect(engine.state.getLoggedIn(bob.data.agent_id)?.pending_transfer_id).not.toBeNull();
 
-    engine.fireServerEvent('Storm warning.');
+    engine.fireServerAnnouncement('Storm warning.');
 
     const moved = await requestJson(app, '/api/agents/move', {
       method: 'POST',

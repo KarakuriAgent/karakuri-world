@@ -802,13 +802,13 @@ describe('actions domain', () => {
     expect(getAvailableActionIds(engine, alice.agent_id)).toContain('unlock-door');
   });
 
-  it('keeps the cooldown when a server event window interrupts an action', async () => {
+  it('keeps the cooldown when a server announcement window interrupts an action', async () => {
     const { engine } = createTestWorld();
     const alice = await createLoggedInAgent(engine);
     engine.state.setNode(alice.agent_id, '1-1');
 
     engine.executeAction(alice.agent_id, { action_id: 'greet-gatekeeper' });
-    engine.fireServerEvent('Dark clouds gather.');
+    engine.fireServerAnnouncement('Dark clouds gather.');
     engine.executeWait(alice.agent_id, { duration: 1 });
 
     expect(engine.state.getLoggedIn(alice.agent_id)?.state).toBe('in_action');

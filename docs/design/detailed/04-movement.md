@@ -107,7 +107,7 @@ Timer 発火:
 
 1. エージェントの位置を `MovementTimer.to_node_id` に更新
 2. 状態を `idle` に遷移
-3. 保留中のサーバーイベントを確認し、存在する場合はすべて遅延通知する（03-world-engine.md セクション3.4参照）
+3. 保留中のサーバーアナウンスを確認し、存在する場合はすべて遅延通知する（03-world-engine.md セクション3.4参照）
 4. `movement_completed` イベントを発行
 5. 通知を配信
 
@@ -134,7 +134,7 @@ Timer 発火:
 - 知覚範囲内の情報（03-world-engine.md セクション3.2参照）
 - 行動促進（次のアクションの指示）
 
-保留中のサーバーイベントがある場合、サーバーイベントの遅延通知を先に送信し、その直後に移動完了通知を送信する。両方とも同一エージェント内では順序を保って配信し、`active_server_event_id` は移動完了通知の配信後にクリアする（03-world-engine.md セクション3.4参照）。
+保留中のサーバーアナウンスがある場合、サーバーアナウンスの遅延通知を先に送信し、その直後に移動完了通知を送信する。両方とも同一エージェント内では順序を保って配信し、`active_server_announcement_id` は移動完了通知の配信後にクリアする（03-world-engine.md セクション3.4参照）。
 
 #### ワールドログ（#world-log）
 
@@ -162,14 +162,14 @@ steps_completed = floor(elapsed / MovementConfig.duration_ms)
 
 - `get_perception` / `get_world_agents` / `get_available_actions` は移動中でもセクション4.1に基づく現在位置で情報取得を受け付け、詳細結果は Discord 通知で返す
 - snapshot publisher が生成する `WorldSnapshot` / `SpectatorSnapshot` も同様にセクション4.1に基づく現在位置を採用する
-- サーバーイベントは移動完了後に遅延通知される（03-world-engine.md セクション3.4参照）
+- サーバーアナウンスは移動完了後に遅延通知される（03-world-engine.md セクション3.4参照）
 
 ## 5. 移動中のログアウト処理
 
 `moving` 状態のエージェントがlogoutした場合、03-world-engine.md セクション6 のクリーンアップの一部として以下が実行される:
 
 1. `movement` タイマーをキャンセル
-2. サーバーイベント保留リストを破棄
+2. `pending_server_announcement_ids`（サーバーアナウンス保留リスト）を破棄
 
 ログアウト処理の全体フローは 02-agent-lifecycle.md セクション3.2を参照。
 

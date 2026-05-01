@@ -124,7 +124,7 @@ describe('StatusBoard', () => {
     channel.fetchMessages.mockClear();
     channel.sendMessage.mockClear();
 
-    engine.fireServerEvent('Dark clouds gather.');
+    engine.fireServerAnnouncement('Dark clouds gather.');
     await vi.advanceTimersByTimeAsync(3000);
     await flushAsyncWork();
 
@@ -173,7 +173,7 @@ describe('StatusBoard', () => {
     channel.sendMessage.mockClear();
 
     engine.move(bob.agent_id, { target_node_id: '3-4' });
-    engine.fireServerEvent('Dark clouds gather.');
+    engine.fireServerAnnouncement('Dark clouds gather.');
     await vi.advanceTimersByTimeAsync(3000);
     await flushAsyncWork();
 
@@ -837,7 +837,7 @@ describe('StatusBoard', () => {
     channel.sendMessage.mockClear();
 
     // Trigger another refresh
-    engine.fireServerEvent('test');
+    engine.fireServerAnnouncement('test');
     await vi.advanceTimersByTimeAsync(3000);
     await flushAsyncWork();
 

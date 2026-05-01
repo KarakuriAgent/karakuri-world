@@ -13,6 +13,7 @@ const KARAKURI_SCRIPT = path.resolve(
 
 const BASE_URL = 'http://test';
 const API_KEY = 'test-api-key';
+const ADMIN_KEY = 'test-admin-key';
 
 interface DryRunResult {
   method: string;
@@ -27,6 +28,7 @@ async function runScript(...args: string[]): Promise<DryRunResult> {
       KARAKURI_DRY_RUN: '1',
       KARAKURI_API_BASE_URL: BASE_URL,
       KARAKURI_API_KEY: API_KEY,
+      KARAKURI_ADMIN_KEY: ADMIN_KEY,
       PATH: process.env.PATH ?? '',
     },
   });
@@ -313,6 +315,47 @@ describe('karakuri.sh dry-run payloads', () => {
       const result = await runScript('active-conversations');
       expect(result.url).toBe(`${BASE_URL}/agents/active-conversations`);
       expect(result.method).toBe('GET');
+    });
+
+    it('event sends GET /agents/event', async () => {
+      const result = await runScript('event');
+      expect(result.url).toBe(`${BASE_URL}/agents/event`);
+      expect(result.method).toBe('GET');
+    });
+  });
+
+  describe('event admin subcommands', () => {
+    it('event list sends GET /admin/server-events', async () => {
+      const result = await runScript('event', 'list');
+      expect(result).toEqual({
+        method: 'GET',
+        url: `${BASE_URL}/admin/server-events`,
+        body: null,
+      });
+    });
+
+    it('event list --include-cleared includes query parameter', async () => {
+      const result = await runScript('event', 'list', '--include-cleared');
+      expect(result.url).toBe(`${BASE_URL}/admin/server-events?include_cleared=true`);
+      expect(result.method).toBe('GET');
+    });
+
+    it('event create sends POST /admin/server-events with description', async () => {
+      const result = await runScript('event', 'create', 'power', 'outage');
+      expect(result).toEqual({
+        method: 'POST',
+        url: `${BASE_URL}/admin/server-events`,
+        body: { description: 'power outage' },
+      });
+    });
+
+    it('event clear sends DELETE /admin/server-events/:id', async () => {
+      const result = await runScript('event', 'clear', 'event-1');
+      expect(result).toEqual({
+        method: 'DELETE',
+        url: `${BASE_URL}/admin/server-events/event-1`,
+        body: null,
+      });
     });
   });
 });

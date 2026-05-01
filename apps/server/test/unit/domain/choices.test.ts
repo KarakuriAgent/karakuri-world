@@ -378,7 +378,7 @@ describe('choices domain', () => {
     expect(text).not.toContain('- get_perception:');
   });
 
-  it('hides standalone transfer accept/reject choices during an active server-event window', async () => {
+  it('hides standalone transfer accept/reject choices during an active server announcement window', async () => {
     const { engine } = createTestWorld({
       config: {
         items: [{ item_id: 'apple', name: 'りんご', description: 'りんご', type: 'food' as const, stackable: true }],
@@ -396,7 +396,7 @@ describe('choices domain', () => {
       target_agent_id: bob.agent_id,
       item: { item_id: 'apple', quantity: 1 },
     });
-    engine.state.setActiveServerEvent(bob.agent_id, 'server-event-1');
+    engine.state.setActiveServerAnnouncement(bob.agent_id, 'server-event-1');
 
     const text = buildChoicesText(engine, bob.agent_id);
 
@@ -415,11 +415,11 @@ describe('choices domain', () => {
     engine.state.setItems(alice.agent_id, [{ item_id: 'apple', quantity: 1 }]);
     engine.state.setMoney(alice.agent_id, 100);
     engine.state.setState(alice.agent_id, 'in_action');
-    engine.state.setActiveServerEvent(alice.agent_id, 'server-event-1');
+    engine.state.setActiveServerAnnouncement(alice.agent_id, 'server-event-1');
 
     const text = buildChoicesText(engine, alice.agent_id);
 
-    // server-event window 関係なく in_action は transfer を発信できる仕様。
+    // server announcement window 関係なく in_action は transfer を発信できる仕様。
     expect(text).toContain('- transfer: 近くのエージェントにアイテム/お金を譲渡する (target_agent_id: ID, item: { item_id: ID, quantity: N } または money: 金額)');
     expect(text).toContain('- move: ノードIDを指定して移動する');
   });
@@ -632,6 +632,41 @@ describe('choices domain', () => {
     // pending_conversation_id を持つ候補は conversation_start / transfer 双方から落ちる
     expect(text).not.toContain('- conversation_start:');
     expect(text).not.toContain('- transfer:');
+  });
+
+  describe('get_event visibility', () => {
+    it('hides get_event when there are no active server events', async () => {
+      const { engine } = createTestWorld();
+      const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+      await engine.loginAgent(alice.agent_id);
+
+      const text = buildChoicesText(engine, alice.agent_id);
+
+      expect(text).not.toContain('- get_event:');
+    });
+
+    it('shows get_event when at least one active server event exists', async () => {
+      const { engine } = createTestWorld();
+      const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+      await engine.loginAgent(alice.agent_id);
+      engine.state.serverEvents.create('停電中');
+
+      const text = buildChoicesText(engine, alice.agent_id);
+
+      expect(text).toContain('- get_event:');
+    });
+
+    it('hides get_event after it is consumed (excluded info commands), even with active events', async () => {
+      const { engine } = createTestWorld();
+      const alice = await engine.registerAgent({ discord_bot_id: 'bot-alice' });
+      await engine.loginAgent(alice.agent_id);
+      engine.state.serverEvents.create('停電中');
+      engine.state.addExcludedInfoCommand(alice.agent_id, 'get_event');
+
+      const text = buildChoicesText(engine, alice.agent_id);
+
+      expect(text).not.toContain('- get_event:');
+    });
   });
 
   it('keeps use-item visible when another usable item remains', async () => {

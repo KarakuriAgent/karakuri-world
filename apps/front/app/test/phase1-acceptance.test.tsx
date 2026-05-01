@@ -71,7 +71,7 @@ function create100AgentSnapshot(overrides: Partial<SpectatorSnapshot> = {}): Spe
     map,
     agents,
     conversations: [],
-    recent_server_events: [],
+    recent_server_announcements: [],
     generated_at: 1_780_000_000_000,
     published_at: 1_780_000_005_000,
     ...overrides,

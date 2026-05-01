@@ -134,11 +134,17 @@ export interface WorldSnapshotConversationInput {
   [key: string]: unknown;
 }
 
-export interface WorldSnapshotRecentServerEventInput {
-  server_event_id: string;
+export interface WorldSnapshotRecentServerAnnouncementInput {
+  server_announcement_id: string;
   description: string;
   occurred_at: number;
   is_active: boolean;
+}
+
+export interface WorldSnapshotActiveServerEventInput {
+  server_event_id: string;
+  description: string;
+  created_at: number;
 }
 
 export interface WorldSnapshotMapInput {
@@ -162,6 +168,7 @@ export interface WorldSnapshot<
   agents: TAgent[];
   known_agents: WorldSnapshotKnownAgentInput[];
   conversations: TConversation[];
-  recent_server_events: WorldSnapshotRecentServerEventInput[];
+  active_server_events?: WorldSnapshotActiveServerEventInput[];
+  recent_server_announcements: WorldSnapshotRecentServerAnnouncementInput[];
   generated_at: number;
 }

@@ -95,7 +95,8 @@ function createSnapshot(): WorldSnapshot {
         actionable_speaker_agent_id: 'agent-1',
       },
     ],
-    recent_server_events: [],
+    active_server_events: [],
+    recent_server_announcements: [],
     generated_at: Date.UTC(2026, 0, 1, 5, 30, 0),
   };
 }

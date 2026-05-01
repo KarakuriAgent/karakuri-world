@@ -131,12 +131,15 @@ describe('AdminCommandHandler', () => {
 
     expect(bot.registerGuildCommands).toHaveBeenCalledTimes(1);
     const [commands] = bot.registerGuildCommands.mock.calls[0];
-    expect(commands).toHaveLength(6);
+    expect(commands).toHaveLength(9);
     expect(commands.map((command: { name: string }) => command.name)).toEqual([
       'agent-list',
       'agent-register',
       'agent-delete',
-      'fire-event',
+      'fire-announcement',
+      'create-event',
+      'clear-event',
+      'list-event',
       'login-agent',
       'logout-agent',
     ]);
@@ -205,10 +208,10 @@ describe('AdminCommandHandler', () => {
     await flushAsyncWork();
     expect(logoutInteraction.editReply).toHaveBeenCalledWith('エージェントをログアウトしました: alice');
 
-    const fireEventInteraction = createCommandInteraction('fire-event', { description: '  テスト通知  ' });
+    const fireEventInteraction = createCommandInteraction('fire-announcement', { description: '  テスト通知  ' });
     bot.emit(fireEventInteraction);
     await flushAsyncWork();
-    expect(fireEventInteraction.editReply).toHaveBeenCalledWith(expect.stringContaining('サーバーイベントを発火しました: server-event-'));
+    expect(fireEventInteraction.editReply).toHaveBeenCalledWith(expect.stringContaining('サーバーアナウンスを発火しました: server-announcement-'));
 
     const deleteInteraction = createCommandInteraction('agent-delete', { agent_name: 'bob' });
     bot.emit(deleteInteraction);

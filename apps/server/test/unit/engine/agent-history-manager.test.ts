@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { AgentHistoryManager } from '../../../src/engine/agent-history-manager.js';
+import { AgentHistoryManager, toPersistedHistoryEntry } from '../../../src/engine/agent-history-manager.js';
 import type { WorldEvent } from '../../../src/types/event.js';
 
 function actionStartedEvent(eventId: string, occurredAt: number): WorldEvent {
@@ -33,6 +33,57 @@ describe('AgentHistoryManager', () => {
     vi.useRealTimers();
   });
 
+  it('ignores persistent server-event events that are not agent history entries', () => {
+    const serverEvent = {
+      server_event_id: 'server-event-1',
+      description: 'Persistent event',
+      created_at: 100,
+      cleared_at: null,
+    };
+    const unsupportedEvents: WorldEvent[] = [
+      {
+        event_id: 'evt-info',
+        type: 'server_events_info_requested',
+        occurred_at: 100,
+        agent_id: 'alice',
+      },
+      {
+        event_id: 'evt-created',
+        type: 'server_event_created',
+        occurred_at: 110,
+        server_event: serverEvent,
+      },
+      {
+        event_id: 'evt-cleared',
+        type: 'server_event_cleared',
+        occurred_at: 120,
+        server_event: { ...serverEvent, cleared_at: 120 },
+      },
+    ];
+
+    expect(unsupportedEvents.map((event) => toPersistedHistoryEntry(event))).toEqual([null, null, null]);
+  });
+
+  it('records server announcement history with announcement wording', () => {
+    const entry = toPersistedHistoryEntry({
+      event_id: 'evt-announcement',
+      type: 'server_announcement_fired',
+      occurred_at: 100,
+      server_announcement_id: 'announcement-1',
+      description: 'Maintenance starts soon',
+      delivered_agent_ids: ['alice'],
+      pending_agent_ids: ['bob'],
+      delayed: false,
+    });
+
+    expect(entry?.agent_ids).toEqual(['alice', 'bob']);
+    expect(entry?.summary).toEqual({
+      emoji: '📣',
+      title: 'サーバーアナウンス発生',
+      text: 'Maintenance starts soon',
+    });
+  });
+
   it('records FIFO history buckets without leaking private fields', async () => {
     vi.useFakeTimers();
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
@@ -50,7 +101,7 @@ describe('AgentHistoryManager', () => {
       agent_id: 'alice',
       agent_name: 'Alice',
       node_id: '1-2',
-      delivered_server_event_ids: [],
+      delivered_server_announcement_ids: [],
     });
     manager.recordEvent({
       event_id: 'evt-3',

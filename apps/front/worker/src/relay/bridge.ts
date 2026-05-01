@@ -15,7 +15,7 @@ import {
 } from '../contracts/history-document.js';
 import type { PersistedSpectatorEventType } from '../contracts/persisted-spectator-event.js';
 import { encodeSpectatorSnapshot } from '../contracts/snapshot-serializer.js';
-import { buildSpectatorSnapshot, type SpectatorRecentServerEvent, type SpectatorSnapshot } from '../contracts/spectator-snapshot.js';
+import { buildSpectatorSnapshot, type SpectatorActiveServerEvent, type SpectatorRecentServerAnnouncement, type SpectatorSnapshot } from '../contracts/spectator-snapshot.js';
 import type { ConversationClosureReason, EventType, WorldEvent } from '../contracts/world-event.js';
 import type { WorldSnapshot } from '../contracts/world-snapshot.js';
 import { parseRelayEnv, type RelayConfig } from './env.js';
@@ -290,14 +290,21 @@ const worldSnapshotSchema = z.object({
       closing_reason: z.string().optional(),
     }),
   ),
-  recent_server_events: z.array(
+  active_server_events: z.array(
     z.object({
       server_event_id: z.string(),
+      description: z.string(),
+      created_at: z.number().int().nonnegative(),
+    }),
+  ).optional(),
+  recent_server_announcements: z.array(
+    z.object({
+      server_announcement_id: z.string(),
       description: z.string(),
       occurred_at: z.number().int().nonnegative(),
       is_active: z.boolean(),
     }),
-  ),
+  ).default([]),
   generated_at: z.number().int().nonnegative(),
 });
 
@@ -361,7 +368,7 @@ const worldEventSchema = z.discriminatedUnion('type', [
     agent_id: z.string(),
     agent_name: z.string(),
     node_id: z.string(),
-    delivered_server_event_ids: stringArraySchema,
+    delivered_server_announcement_ids: stringArraySchema,
   }),
   eventBaseSchema.extend({
     type: z.literal('action_started'),
@@ -449,7 +456,7 @@ const worldEventSchema = z.discriminatedUnion('type', [
     conversation_id: z.string(),
     initiator_agent_id: z.string(),
     target_agent_id: z.string(),
-    reason: z.enum(['rejected', 'timeout', 'target_logged_out', 'server_event']),
+    reason: z.enum(['rejected', 'timeout', 'target_logged_out', 'server_announcement']),
   }),
   eventBaseSchema.extend({
     type: z.literal('conversation_message'),
@@ -471,7 +478,7 @@ const worldEventSchema = z.discriminatedUnion('type', [
     conversation_id: z.string(),
     agent_id: z.string(),
     agent_name: z.string(),
-    reason: z.enum(['voluntary', 'inactive', 'logged_out', 'server_event']),
+    reason: z.enum(['voluntary', 'inactive', 'logged_out', 'server_announcement']),
     participant_agent_ids: stringArraySchema,
     message: z.string().optional(),
     next_speaker_agent_id: z.string().optional(),
@@ -502,14 +509,14 @@ const worldEventSchema = z.discriminatedUnion('type', [
     initiator_agent_id: z.string(),
     participant_agent_ids: stringArraySchema,
     current_speaker_agent_id: z.string(),
-    reason: z.enum(['ended_by_agent', 'max_turns', 'server_event']),
+    reason: z.enum(['ended_by_agent', 'max_turns', 'server_announcement']),
   }),
   eventBaseSchema.extend({
     type: z.literal('conversation_ended'),
     conversation_id: z.string(),
     initiator_agent_id: z.string(),
     participant_agent_ids: stringArraySchema,
-    reason: z.enum(['max_turns', 'turn_timeout', 'server_event', 'ended_by_agent', 'participant_logged_out']),
+    reason: z.enum(['max_turns', 'turn_timeout', 'server_announcement', 'ended_by_agent', 'participant_logged_out']),
     final_message: z.string().optional(),
     final_speaker_agent_id: z.string().optional(),
   }),
@@ -520,7 +527,7 @@ const worldEventSchema = z.discriminatedUnion('type', [
     reason: z.enum([
       'max_turns',
       'turn_timeout',
-      'server_event',
+      'server_announcement',
       'ended_by_agent',
       'participant_logged_out',
       'agent_unavailable',
@@ -554,7 +561,7 @@ const worldEventSchema = z.discriminatedUnion('type', [
     type: z.literal('transfer_cancelled'),
     ...transferEventFields,
     reason: z.enum([
-      'server_event',
+      'server_announcement',
       'sender_logged_out',
       'receiver_logged_out',
       'conversation_closing',
@@ -569,12 +576,30 @@ const worldEventSchema = z.discriminatedUnion('type', [
     dropped_item: agentItemSchema.nullable().optional(),
   }),
   eventBaseSchema.extend({
-    type: z.literal('server_event_fired'),
-    server_event_id: z.string(),
+    type: z.literal('server_announcement_fired'),
+    server_announcement_id: z.string(),
     description: z.string(),
     delivered_agent_ids: stringArraySchema,
     pending_agent_ids: stringArraySchema,
     delayed: z.boolean(),
+  }),
+  eventBaseSchema.extend({
+    type: z.literal('server_event_created'),
+    server_event: z.object({
+      server_event_id: z.string(),
+      description: z.string(),
+      created_at: z.number().int().nonnegative(),
+      cleared_at: z.number().int().nonnegative().nullable(),
+    }),
+  }),
+  eventBaseSchema.extend({
+    type: z.literal('server_event_cleared'),
+    server_event: z.object({
+      server_event_id: z.string(),
+      description: z.string(),
+      created_at: z.number().int().nonnegative(),
+      cleared_at: z.number().int().nonnegative().nullable(),
+    }),
   }),
 ]);
 
@@ -609,7 +634,9 @@ export const KNOWN_WORLD_EVENT_TYPES = [
   'transfer_timeout',
   'transfer_cancelled',
   'transfer_escrow_lost',
-  'server_event_fired',
+  'server_announcement_fired',
+  'server_event_created',
+  'server_event_cleared',
 ] as const satisfies readonly PersistedSpectatorEventType[];
 
 export const NON_PERSISTED_WORLD_EVENT_TYPES = [
@@ -619,6 +646,7 @@ export const NON_PERSISTED_WORLD_EVENT_TYPES = [
   'status_info_requested',
   'nearby_agents_info_requested',
   'active_conversations_info_requested',
+  'server_events_info_requested',
   'perception_requested',
   'available_actions_requested',
 ] as const satisfies readonly Exclude<EventType, PersistedSpectatorEventType>[];
@@ -670,7 +698,7 @@ function readOptionalConversationClosureReason(
   if (
     value === 'max_turns' ||
     value === 'turn_timeout' ||
-    value === 'server_event' ||
+    value === 'server_announcement' ||
     value === 'ended_by_agent' ||
     value === 'participant_logged_out'
   ) {
@@ -1160,7 +1188,8 @@ export class UIBridgeDurableObject {
         ? {
             latest_snapshot: {
               ...this.bridgeState.latest_snapshot,
-              recent_server_events: this.bridgeState.latest_snapshot.recent_server_events.map((event) => ({ ...event })),
+              active_server_events: (this.bridgeState.latest_snapshot.active_server_events ?? []).map((event) => ({ ...event })),
+              recent_server_announcements: this.bridgeState.latest_snapshot.recent_server_announcements.map((event) => ({ ...event })),
             },
           }
         : {}),
@@ -1176,7 +1205,8 @@ export class UIBridgeDurableObject {
 
     this.bridgeState.latest_snapshot = {
       ...persistedState.latest_snapshot,
-      recent_server_events: (persistedState.latest_snapshot.recent_server_events ?? []).map((event) => ({ ...event })),
+      active_server_events: (persistedState.latest_snapshot.active_server_events ?? []).map((event) => ({ ...event })),
+      recent_server_announcements: (persistedState.latest_snapshot.recent_server_announcements ?? []).map((event) => ({ ...event })),
     };
     this.bridgeState.last_publish_at = persistedState.last_publish_at;
     this.bridgeState.publish_alarm_at = persistedState.publish_alarm_at;
@@ -1194,7 +1224,8 @@ export class UIBridgeDurableObject {
     await this.state.storage.put?.(PERSISTED_RUNTIME_STATE_KEY, {
       latest_snapshot: {
         ...this.bridgeState.latest_snapshot,
-        recent_server_events: this.bridgeState.latest_snapshot.recent_server_events.map((event) => ({ ...event })),
+        active_server_events: (this.bridgeState.latest_snapshot.active_server_events ?? []).map((event) => ({ ...event })),
+        recent_server_announcements: this.bridgeState.latest_snapshot.recent_server_announcements.map((event) => ({ ...event })),
       },
       publish_failure_streak: this.bridgeState.publish_failure_streak,
       ...(this.bridgeState.last_publish_at !== undefined ? { last_publish_at: this.bridgeState.last_publish_at } : {}),
@@ -1279,15 +1310,21 @@ export class UIBridgeDurableObject {
     const now = this.dependencies.now();
 
     this.bridgeState.conversations = rebuildConversationMirror(worldSnapshot, now);
-    const recentServerEvents: SpectatorRecentServerEvent[] = worldSnapshot.recent_server_events.map((event) => ({
+    const activeServerEvents: SpectatorActiveServerEvent[] = (worldSnapshot.active_server_events ?? []).map((event) => ({
       server_event_id: event.server_event_id,
+      description: event.description,
+      created_at: event.created_at,
+    }));
+    const recentServerAnnouncements: SpectatorRecentServerAnnouncement[] = worldSnapshot.recent_server_announcements.map((event) => ({
+      server_announcement_id: event.server_announcement_id,
       description: event.description,
       occurred_at: event.occurred_at,
       is_active: event.is_active,
     }));
     this.bridgeState.latest_snapshot = buildSpectatorSnapshot({
       world_snapshot: worldSnapshot,
-      recent_server_events: recentServerEvents,
+      active_server_events: activeServerEvents,
+      recent_server_announcements: recentServerAnnouncements,
       published_at: this.bridgeState.last_publish_at ?? 0,
       last_publish_error_at: this.bridgeState.last_publish_error_at,
     });
@@ -1338,7 +1375,8 @@ export class UIBridgeDurableObject {
     const publishedAt = this.dependencies.now();
     const snapshotToPublish = {
       ...latestSnapshot,
-      recent_server_events: latestSnapshot.recent_server_events.map((event) => ({ ...event })),
+      active_server_events: (latestSnapshot.active_server_events ?? []).map((event) => ({ ...event })),
+      recent_server_announcements: latestSnapshot.recent_server_announcements.map((event) => ({ ...event })),
       published_at: publishedAt,
     } satisfies SpectatorSnapshot;
 

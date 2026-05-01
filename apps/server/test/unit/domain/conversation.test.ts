@@ -204,125 +204,125 @@ describe('conversation domain', () => {
     expect(engine.state.conversations.get(timed.conversation_id)).toBeNull();
   });
 
-  it('clears info exclusions and server-event windows for both participants on rejection', async () => {
+  it('clears info exclusions and server announcement windows for both participants on rejection', async () => {
     const { engine, alice, bob } = await setupConversationWorld();
 
     engine.startConversation(alice.agent_id, {
       target_agent_id: bob.agent_id,
       message: 'Will you talk?',
     });
-    engine.fireServerEvent('Pending conversation interrupt');
+    engine.fireServerAnnouncement('Pending conversation interrupt');
     engine.state.addExcludedInfoCommand(alice.agent_id, 'get_map');
     engine.state.addExcludedInfoCommand(bob.agent_id, 'get_world_agents');
 
     engine.rejectConversation(bob.agent_id);
 
-    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
-    expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_event_id).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
+    expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_announcement_id).toBeNull();
     expect(engine.state.getExcludedInfoCommands(alice.agent_id).size).toBe(0);
     expect(engine.state.getExcludedInfoCommands(bob.agent_id).size).toBe(0);
     expect(() => requireInfoCommandReadyAgent(engine, alice.agent_id, 'get_map')).not.toThrow();
     expect(() => requireInfoCommandReadyAgent(engine, bob.agent_id, 'get_world_agents')).not.toThrow();
   });
 
-  it('clears info exclusions and server-event windows for both participants when accept times out', async () => {
+  it('clears info exclusions and server announcement windows for both participants when accept times out', async () => {
     const { engine, alice, bob } = await setupConversationWorld();
 
     const started = engine.startConversation(alice.agent_id, {
       target_agent_id: bob.agent_id,
       message: 'Maybe later?',
     });
-    engine.fireServerEvent('Pending conversation interrupt');
+    engine.fireServerAnnouncement('Pending conversation interrupt');
     engine.state.addExcludedInfoCommand(alice.agent_id, 'get_map');
     engine.state.addExcludedInfoCommand(bob.agent_id, 'get_world_agents');
 
     vi.advanceTimersByTime(1000);
 
     expect(engine.state.conversations.get(started.conversation_id)).toBeNull();
-    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
-    expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_event_id).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
+    expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_announcement_id).toBeNull();
     expect(engine.state.getExcludedInfoCommands(alice.agent_id).size).toBe(0);
     expect(engine.state.getExcludedInfoCommands(bob.agent_id).size).toBe(0);
     expect(() => requireInfoCommandReadyAgent(engine, alice.agent_id, 'get_map')).not.toThrow();
     expect(() => requireInfoCommandReadyAgent(engine, bob.agent_id, 'get_world_agents')).not.toThrow();
   });
 
-  it('preserves the target info exclusions while its server-event window remains open', async () => {
+  it('preserves the target info exclusions while its server announcement window remains open', async () => {
     const { engine, alice, bob } = await setupConversationWorld();
 
     engine.startConversation(alice.agent_id, {
       target_agent_id: bob.agent_id,
       message: 'Will you talk?',
     });
-    const fired = engine.fireServerEvent('Pending conversation interrupt');
+    const fired = engine.fireServerAnnouncement('Pending conversation interrupt');
     engine.state.addExcludedInfoCommand(bob.agent_id, 'get_world_agents');
 
     engine.executeWait(alice.agent_id, { duration: 1 });
 
-    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
-    expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_event_id).toBe(fired.server_event_id);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
+    expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_announcement_id).toBe(fired.server_announcement_id);
     expect(engine.state.getExcludedInfoCommands(bob.agent_id)).toEqual(new Set(['get_world_agents']));
     expect(() => requireInfoCommandReadyAgent(engine, bob.agent_id, 'get_world_agents')).toThrow(
       expect.objectContaining<Partial<WorldError>>({ code: 'info_already_consumed' }),
     );
   });
 
-  it('preserves the target info exclusions after its server-event window has already closed', async () => {
+  it('preserves the target info exclusions after its server announcement window has already closed', async () => {
     const { engine, alice, bob } = await setupConversationWorld();
 
     engine.startConversation(alice.agent_id, {
       target_agent_id: bob.agent_id,
       message: 'Will you talk?',
     });
-    engine.fireServerEvent('Pending conversation interrupt');
+    engine.fireServerAnnouncement('Pending conversation interrupt');
     engine.state.addExcludedInfoCommand(bob.agent_id, 'get_world_agents');
-    engine.state.setActiveServerEvent(bob.agent_id, null);
+    engine.state.setActiveServerAnnouncement(bob.agent_id, null);
 
     engine.executeWait(alice.agent_id, { duration: 1 });
 
-    expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_event_id).toBeNull();
+    expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_announcement_id).toBeNull();
     expect(engine.state.getExcludedInfoCommands(bob.agent_id)).toEqual(new Set(['get_world_agents']));
     expect(() => requireInfoCommandReadyAgent(engine, bob.agent_id, 'get_world_agents')).toThrow(
       expect.objectContaining<Partial<WorldError>>({ code: 'info_already_consumed' }),
     );
   });
 
-  it('clears info exclusions and the server-event window when the initiator starts a conversation', async () => {
+  it('clears info exclusions and the server announcement window when the initiator starts a conversation', async () => {
     const { engine, alice, bob } = await setupConversationWorld();
 
-    engine.fireServerEvent('Pre-start interrupt');
+    engine.fireServerAnnouncement('Pre-start interrupt');
     engine.state.addExcludedInfoCommand(alice.agent_id, 'get_map');
-    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).not.toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).not.toBeNull();
 
     engine.startConversation(alice.agent_id, {
       target_agent_id: bob.agent_id,
       message: 'Will you talk?',
     });
 
-    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
     expect(engine.state.getExcludedInfoCommands(alice.agent_id).size).toBe(0);
   });
 
-  it('clears info exclusions and the server-event window for both participants on accept', async () => {
+  it('clears info exclusions and the server announcement window for both participants on accept', async () => {
     const { engine, alice, bob } = await setupConversationWorld();
 
     engine.startConversation(alice.agent_id, {
       target_agent_id: bob.agent_id,
       message: 'Hi Bob',
     });
-    engine.fireServerEvent('Mid-accept interrupt');
+    engine.fireServerAnnouncement('Mid-accept interrupt');
     engine.state.addExcludedInfoCommand(alice.agent_id, 'get_map');
     engine.state.addExcludedInfoCommand(bob.agent_id, 'get_world_agents');
 
     engine.acceptConversation(bob.agent_id, { message: 'Hi Alice' });
 
-    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
-    expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_event_id).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
+    expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_announcement_id).toBeNull();
     expect(engine.state.getExcludedInfoCommands(alice.agent_id).size).toBe(0);
     expect(engine.state.getExcludedInfoCommands(bob.agent_id).size).toBe(0);
   });
 
-  it('clears info exclusions and the server-event window when the joiner joins a conversation', async () => {
+  it('clears info exclusions and the server announcement window when the joiner joins a conversation', async () => {
     const { engine, alice, bob, carol } = await setupGroupConversationWorld({ max_turns: 10 });
 
     const started = engine.startConversation(alice.agent_id, {
@@ -332,16 +332,16 @@ describe('conversation domain', () => {
     engine.acceptConversation(bob.agent_id, { message: 'Hi Alice' });
     vi.advanceTimersByTime(500);
 
-    engine.fireServerEvent('Pre-join interrupt');
+    engine.fireServerAnnouncement('Pre-join interrupt');
     engine.state.addExcludedInfoCommand(carol.agent_id, 'get_perception');
 
     engine.joinConversation(carol.agent_id, { conversation_id: started.conversation_id });
 
-    expect(engine.state.getLoggedIn(carol.agent_id)?.active_server_event_id).toBeNull();
+    expect(engine.state.getLoggedIn(carol.agent_id)?.active_server_announcement_id).toBeNull();
     expect(engine.state.getExcludedInfoCommands(carol.agent_id).size).toBe(0);
   });
 
-  it('clears the speaker info exclusions and server-event window on speak', async () => {
+  it('clears the speaker info exclusions and server announcement window on speak', async () => {
     const { engine, alice, bob } = await setupConversationWorld({ max_turns: 10 });
 
     engine.startConversation(alice.agent_id, {
@@ -351,7 +351,7 @@ describe('conversation domain', () => {
     engine.acceptConversation(bob.agent_id, { message: 'Hi Alice' });
     vi.advanceTimersByTime(500);
 
-    engine.fireServerEvent('Mid-conversation interrupt');
+    engine.fireServerAnnouncement('Mid-conversation interrupt');
     engine.state.addExcludedInfoCommand(alice.agent_id, 'get_map');
 
     engine.speak(alice.agent_id, {
@@ -359,11 +359,11 @@ describe('conversation domain', () => {
       next_speaker_agent_id: bob.agent_id,
     });
 
-    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
     expect(engine.state.getExcludedInfoCommands(alice.agent_id).size).toBe(0);
   });
 
-  it('clears the speaker info exclusions and server-event window on end', async () => {
+  it('clears the speaker info exclusions and server announcement window on end', async () => {
     const { engine, alice, bob } = await setupConversationWorld({ max_turns: 10 });
 
     engine.startConversation(alice.agent_id, {
@@ -373,7 +373,7 @@ describe('conversation domain', () => {
     engine.acceptConversation(bob.agent_id, { message: 'Hi Alice' });
     vi.advanceTimersByTime(500);
 
-    engine.fireServerEvent('Pre-end interrupt');
+    engine.fireServerAnnouncement('Pre-end interrupt');
     engine.state.addExcludedInfoCommand(alice.agent_id, 'get_map');
 
     engine.endConversation(alice.agent_id, {
@@ -381,11 +381,11 @@ describe('conversation domain', () => {
       next_speaker_agent_id: bob.agent_id,
     });
 
-    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
     expect(engine.state.getExcludedInfoCommands(alice.agent_id).size).toBe(0);
   });
 
-  it('clears info exclusions and the server-event window on stay (inactive-check ack)', async () => {
+  it('clears info exclusions and the server announcement window on stay (inactive-check ack)', async () => {
     const { engine, alice, bob, carol } = await setupGroupConversationWorld({
       max_turns: 50,
       inactive_check_turns: 3,
@@ -410,16 +410,16 @@ describe('conversation domain', () => {
     const conversation = engine.state.conversations.get(started.conversation_id);
     expect(conversation?.inactive_check_pending_agent_ids).toContain(carol.agent_id);
 
-    engine.fireServerEvent('Mid-inactive-check interrupt');
+    engine.fireServerAnnouncement('Mid-inactive-check interrupt');
     engine.state.addExcludedInfoCommand(carol.agent_id, 'get_map');
 
     engine.stayInConversation(carol.agent_id);
 
-    expect(engine.state.getLoggedIn(carol.agent_id)?.active_server_event_id).toBeNull();
+    expect(engine.state.getLoggedIn(carol.agent_id)?.active_server_announcement_id).toBeNull();
     expect(engine.state.getExcludedInfoCommands(carol.agent_id).size).toBe(0);
   });
 
-  it('clears info exclusions and the server-event window on leave (inactive-check leave)', async () => {
+  it('clears info exclusions and the server announcement window on leave (inactive-check leave)', async () => {
     const { engine, alice, bob, carol } = await setupGroupConversationWorld({
       max_turns: 50,
       inactive_check_turns: 3,
@@ -444,12 +444,12 @@ describe('conversation domain', () => {
     const conversation = engine.state.conversations.get(started.conversation_id);
     expect(conversation?.inactive_check_pending_agent_ids).toContain(carol.agent_id);
 
-    engine.fireServerEvent('Mid-inactive-check interrupt');
+    engine.fireServerAnnouncement('Mid-inactive-check interrupt');
     engine.state.addExcludedInfoCommand(carol.agent_id, 'get_world_agents');
 
     engine.leaveConversation(carol.agent_id, { message: 'See you later' });
 
-    expect(engine.state.getLoggedIn(carol.agent_id)?.active_server_event_id).toBeNull();
+    expect(engine.state.getLoggedIn(carol.agent_id)?.active_server_announcement_id).toBeNull();
     expect(engine.state.getExcludedInfoCommands(carol.agent_id).size).toBe(0);
   });
 
@@ -652,7 +652,7 @@ describe('conversation domain', () => {
     );
   });
 
-  it('does not reset an agent to idle when endConversation fires after the agent has already moved to a new state via server event window', async () => {
+  it('does not reset an agent to idle when endConversation fires after the agent has already moved to a new state via server announcement window', async () => {
     const { engine, alice, bob } = await setupConversationWorld({ max_turns: 4 });
     engine.state.setNode(alice.agent_id, '3-1');
 
@@ -662,8 +662,8 @@ describe('conversation domain', () => {
     });
     engine.acceptConversation(bob.agent_id, { message: 'Hi' });
 
-    // Fire server event and have bob interrupt into a wait
-    engine.fireServerEvent('Dark clouds gather.');
+    // Fire server announcement and have bob interrupt into a wait
+    engine.fireServerAnnouncement('Dark clouds gather.');
     engine.executeWait(bob.agent_id, { duration: 1 });
 
     // Bob is now in_action (waiting). The old conversation is closing.
@@ -1074,7 +1074,7 @@ describe('conversation domain', () => {
       expect.objectContaining({
         type: 'conversation_leave',
         agent_id: bob.agent_id,
-        reason: 'server_event',
+        reason: 'server_announcement',
         participant_agent_ids: [alice.agent_id, carol.agent_id],
         next_speaker_agent_id: alice.agent_id,
       }),
@@ -1124,7 +1124,7 @@ describe('conversation domain', () => {
       expect.objectContaining({
         type: 'conversation_leave',
         agent_id: carol.agent_id,
-        reason: 'server_event',
+        reason: 'server_announcement',
         participant_agent_ids: [alice.agent_id, bob.agent_id],
       }),
     ]);
@@ -1221,20 +1221,20 @@ describe('conversation domain', () => {
       }
     });
 
-    beginClosingConversation(engine, started.conversation_id, alice.agent_id, 'server_event', bob.agent_id);
+    beginClosingConversation(engine, started.conversation_id, alice.agent_id, 'server_announcement', bob.agent_id);
 
     expect(events).toEqual([
       expect.objectContaining({
         type: 'conversation_leave',
         agent_id: bob.agent_id,
-        reason: 'server_event',
+        reason: 'server_announcement',
         participant_agent_ids: [alice.agent_id, carol.agent_id],
       }),
       expect.objectContaining({
         type: 'conversation_closing',
         current_speaker_agent_id: alice.agent_id,
         participant_agent_ids: [alice.agent_id, carol.agent_id],
-        reason: 'server_event',
+        reason: 'server_announcement',
       }),
     ]);
     unsubscribe();
@@ -1257,7 +1257,7 @@ describe('conversation domain', () => {
     });
     vi.advanceTimersByTime(500);
 
-    beginClosingConversation(engine, started.conversation_id, bob.agent_id, 'server_event');
+    beginClosingConversation(engine, started.conversation_id, bob.agent_id, 'server_announcement');
 
     const events: WorldEvent[] = [];
     const unsubscribe = engine.eventBus.onAny((event) => {
@@ -1279,7 +1279,7 @@ describe('conversation domain', () => {
         type: 'conversation_closing',
         current_speaker_agent_id: carol.agent_id,
         participant_agent_ids: [alice.agent_id, carol.agent_id],
-        reason: 'server_event',
+        reason: 'server_announcement',
       }),
     ]);
     expect(events.some((event) => event.type === 'conversation_turn_started')).toBe(false);
@@ -1311,7 +1311,7 @@ describe('conversation domain', () => {
 
     expect(engine.timerManager.list().filter((timer) => timer.type === 'conversation_inactive_check')).toHaveLength(1);
 
-    beginClosingConversation(engine, started.conversation_id, bob.agent_id, 'server_event', alice.agent_id);
+    beginClosingConversation(engine, started.conversation_id, bob.agent_id, 'server_announcement', alice.agent_id);
 
     const closingConversation = engine.state.conversations.get(started.conversation_id);
     expect(closingConversation).toEqual(expect.objectContaining({
@@ -1535,7 +1535,7 @@ describe('conversation domain', () => {
 
   it('keeps the turn timer when closing speak validation fails in a 3-person conversation', async () => {
     const { engine, alice, bob, started } = await setupThreeParticipantConversationTurn({ max_turns: 10 });
-    beginClosingConversation(engine, started.conversation_id, bob.agent_id, 'server_event');
+    beginClosingConversation(engine, started.conversation_id, bob.agent_id, 'server_announcement');
 
     const events: WorldEvent[] = [];
     const unsubscribe = engine.eventBus.onAny((event) => {

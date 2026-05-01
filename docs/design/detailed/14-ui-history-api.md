@@ -14,7 +14,7 @@ UI 履歴へ残すのは次のイベントだけとする。
 - `wait_started`, `wait_completed`
 - `item_use_started`, `item_use_completed`, `item_use_venue_rejected`
 - 会話系イベント（`conversation_*`）
-- `server_event_fired`
+- `server_announcement_fired`
 
 保存しないイベント:
 

@@ -3,14 +3,16 @@ import type { InfoCommandChoice } from '../../types/choices.js';
 import type { NodeId } from '../../types/data-model.js';
 import { AgentStateStore, type LoginAgentParams } from './agent-state.js';
 import { ConversationStateStore } from './conversation-state.js';
-import { RecentServerEventsStore } from './recent-server-events-state.js';
-import { ServerEventStateStore } from './server-event-state.js';
+import { RecentServerAnnouncementsStore } from './recent-server-announcements-state.js';
+import { ServerAnnouncementStateStore } from './server-announcement-state.js';
+import { ServerEventStore } from './server-event-store.js';
 import { TransferStateStore } from './transfer-state.js';
 
 export class WorldState {
   readonly conversations = new ConversationStateStore();
-  readonly serverEvents = new ServerEventStateStore();
-  readonly recentServerEvents = new RecentServerEventsStore();
+  readonly serverAnnouncements = new ServerAnnouncementStateStore();
+  readonly recentServerAnnouncements = new RecentServerAnnouncementsStore();
+  readonly serverEvents = new ServerEventStore();
   readonly transfers = new TransferStateStore();
   private readonly agents: AgentStateStore;
 
@@ -82,24 +84,24 @@ export class WorldState {
     return this.agents.setPendingTransfer(agentId, transferId);
   }
 
-  addPendingServerEvent(agentId: string, serverEventId: string): LoggedInAgent {
-    return this.agents.addPendingServerEvent(agentId, serverEventId);
+  addPendingServerAnnouncement(agentId: string, serverAnnouncementId: string): LoggedInAgent {
+    return this.agents.addPendingServerAnnouncement(agentId, serverAnnouncementId);
   }
 
-  removePendingServerEvent(agentId: string, serverEventId: string): LoggedInAgent {
-    return this.agents.removePendingServerEvent(agentId, serverEventId);
+  removePendingServerAnnouncement(agentId: string, serverAnnouncementId: string): LoggedInAgent {
+    return this.agents.removePendingServerAnnouncement(agentId, serverAnnouncementId);
   }
 
-  clearPendingServerEvents(agentId: string): LoggedInAgent {
-    return this.agents.clearPendingServerEvents(agentId);
+  clearPendingServerAnnouncements(agentId: string): LoggedInAgent {
+    return this.agents.clearPendingServerAnnouncements(agentId);
   }
 
-  setActiveServerEvent(agentId: string, serverEventId: string | null): LoggedInAgent {
-    return this.agents.setActiveServerEvent(agentId, serverEventId);
+  setActiveServerAnnouncement(agentId: string, serverAnnouncementId: string | null): LoggedInAgent {
+    return this.agents.setActiveServerAnnouncement(agentId, serverAnnouncementId);
   }
 
-  clearActiveServerEvent(agentId: string): LoggedInAgent {
-    return this.agents.clearActiveServerEvent(agentId);
+  clearActiveServerAnnouncement(agentId: string): LoggedInAgent {
+    return this.agents.clearActiveServerAnnouncement(agentId);
   }
 
   setLastAction(agentId: string, actionId: string | null): LoggedInAgent {
@@ -120,6 +122,10 @@ export class WorldState {
 
   clearExcludedInfoCommands(agentId: string): void {
     this.agents.clearExcludedInfoCommands(agentId);
+  }
+
+  clearInfoCommandFromAllAgents(command: InfoCommandChoice): void {
+    this.agents.clearInfoCommandFromAllAgents(command);
   }
 
   getExcludedInfoCommands(agentId: string): ReadonlySet<InfoCommandChoice> {

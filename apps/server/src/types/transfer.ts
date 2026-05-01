@@ -10,7 +10,7 @@ export type TransferRejectReason =
 export type TransferOfferStatus = 'open' | 'settling_accept' | 'settling_refund' | 'refund_failed';
 
 export type TransferCancelReason =
-  | 'server_event'
+  | 'server_announcement'
   | 'sender_logged_out'
   | 'receiver_logged_out'
   | 'conversation_closing'

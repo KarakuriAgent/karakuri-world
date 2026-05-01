@@ -16,6 +16,7 @@ class RecordingDiscordBot {
   readonly renamedThreads = new Map<string, string>();
   readonly archivedThreads: string[] = [];
   sendAgentMessageOverride: ((channelId: string, content: string) => Promise<void>) | null = null;
+  sendWorldLogOverride: ((content: string) => Promise<void>) | null = null;
   createWorldLogThreadOverride: ((content: string, threadName: string) => Promise<string>) | null = null;
   sendToThreadOverride: ((threadId: string, content: string) => Promise<void>) | null = null;
   renameThreadOverride: ((threadId: string, newName: string) => Promise<void>) | null = null;
@@ -31,6 +32,10 @@ class RecordingDiscordBot {
   }
 
   async sendWorldLog(content: string): Promise<void> {
+    if (this.sendWorldLogOverride) {
+      await this.sendWorldLogOverride(content);
+      return;
+    }
     this.worldLogMessages.push(content);
   }
 
@@ -167,6 +172,142 @@ describe('DiscordEventHandler', () => {
           (message) => message.username === 'Alice' && message.content.includes('10分間の待機を開始しました'),
         ),
       ).toBe(true);
+    });
+
+    handler.dispose();
+  });
+
+  it('still notifies agents when server event world-log posting fails', async () => {
+    const errorReports: string[] = [];
+    const { engine } = createTestWorld({
+      engineOptions: {
+        onError: (message) => errorReports.push(message),
+      },
+    });
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = await registerAgent(engine, 'Alice');
+    const bob = await registerAgent(engine, 'Bob');
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.worldLogMessages).toHaveLength(2);
+    });
+    bot.agentMessages.length = 0;
+    bot.worldLogMessages.length = 0;
+    bot.sendWorldLogOverride = async () => {
+      throw new Error('world log unavailable');
+    };
+
+    engine.createServerEvent({ description: '停電中' });
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            channelId: 'channel-Alice',
+            content: expect.stringContaining('サーバーイベントが開始されました。\n停電中'),
+          }),
+          expect.objectContaining({
+            channelId: 'channel-Bob',
+            content: expect.stringContaining('サーバーイベントが開始されました。\n停電中'),
+          }),
+        ]),
+      );
+      expect(errorReports.some((message) => message.includes('server_event_created の world-log 投稿に失敗しました'))).toBe(true);
+    });
+
+    handler.dispose();
+  });
+
+  it('reports failed agent deliveries via reportError but still delivers to remaining agents', async () => {
+    const errorReports: string[] = [];
+    const { engine } = createTestWorld({
+      engineOptions: {
+        onError: (message) => errorReports.push(message),
+      },
+    });
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = await registerAgent(engine, 'Alice');
+    const bob = await registerAgent(engine, 'Bob');
+    const carol = await registerAgent(engine, 'Carol');
+    await engine.loginAgent(alice.agent_id);
+    await engine.loginAgent(bob.agent_id);
+    await engine.loginAgent(carol.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.worldLogMessages.length).toBeGreaterThanOrEqual(3);
+    });
+    bot.agentMessages.length = 0;
+    bot.worldLogMessages.length = 0;
+    bot.sendAgentMessageOverride = async (channelId: string, content: string) => {
+      if (channelId === 'channel-Bob') {
+        throw new Error('bob DM channel deleted');
+      }
+      bot.agentMessages.push({ channelId, content });
+    };
+
+    engine.createServerEvent({ description: '停電中' });
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages.map((message) => message.channelId)).toEqual(
+        expect.arrayContaining(['channel-Alice', 'channel-Carol']),
+      );
+      expect(bot.agentMessages.map((message) => message.channelId)).not.toContain('channel-Bob');
+      const summary = errorReports.find((message) =>
+        message.includes('server_event_created の通知配信に失敗しました'),
+      );
+      expect(summary).toBeDefined();
+      expect(summary).toContain('1 件');
+      expect(summary).toContain(bob.agent_id);
+      expect(summary).toContain('bob DM channel deleted');
+    });
+
+    handler.dispose();
+  });
+
+  it('still notifies agents when server event clear world-log posting fails', async () => {
+    const errorReports: string[] = [];
+    const { engine } = createTestWorld({
+      engineOptions: {
+        onError: (message) => errorReports.push(message),
+      },
+    });
+    const bot = new RecordingDiscordBot();
+    const handler = new DiscordEventHandler(engine, bot as never);
+    handler.register();
+
+    const alice = await registerAgent(engine, 'Alice');
+    await engine.loginAgent(alice.agent_id);
+    await vi.waitFor(() => {
+      expect(bot.worldLogMessages).toHaveLength(1);
+    });
+    const { server_event_id: serverEventId } = engine.createServerEvent({ description: '停電中' });
+    await vi.waitFor(() => {
+      expect(bot.agentMessages.some((message) => message.content.includes('サーバーイベントが開始されました。'))).toBe(true);
+    });
+    bot.agentMessages.length = 0;
+    bot.worldLogMessages.length = 0;
+    bot.sendWorldLogOverride = async () => {
+      throw new Error('world log unavailable');
+    };
+
+    engine.clearServerEvent(serverEventId);
+
+    await vi.waitFor(() => {
+      expect(bot.agentMessages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            channelId: 'channel-Alice',
+            content: expect.stringContaining('サーバーイベントが終了しました。\n停電中'),
+          }),
+        ]),
+      );
+      expect(errorReports.some((message) => message.includes('server_event_cleared の world-log 投稿に失敗しました'))).toBe(true);
     });
 
     handler.dispose();
@@ -933,7 +1074,7 @@ describe('DiscordEventHandler', () => {
       agent_id: alice.agent_id,
       agent_name: alice.agent_name,
       node_id: '3-4',
-      delivered_server_event_ids: [],
+      delivered_server_announcement_ids: [],
     });
 
     await vi.waitFor(() => {
@@ -955,7 +1096,7 @@ describe('DiscordEventHandler', () => {
     handler.dispose();
   });
 
-  it('personalizes server event notifications with each agent name', async () => {
+  it('personalizes server announcement notifications with each agent name', async () => {
     const { engine } = createTestWorld();
     const bot = new RecordingDiscordBot();
     const handler = new DiscordEventHandler(engine, bot as never);
@@ -971,7 +1112,7 @@ describe('DiscordEventHandler', () => {
     bot.agentMessages.length = 0;
     bot.worldLogMessages.length = 0;
 
-    engine.fireServerEvent('Dark clouds gather.');
+    engine.fireServerAnnouncement('Dark clouds gather.');
 
     await vi.waitFor(() => {
       expect(bot.agentMessages).toHaveLength(2);
@@ -983,16 +1124,16 @@ describe('DiscordEventHandler', () => {
     expect(bobMessage).toBeDefined();
     expectWorldContextHeader(aliceMessage!.content, 'Alice');
     expectWorldContextHeader(bobMessage!.content, 'Bob');
-    expect(aliceMessage!.content).toContain('【サーバーイベント】');
+    expect(aliceMessage!.content).toContain('【サーバーアナウンス】');
     expect(aliceMessage!.content).toContain('Dark clouds gather.');
-    expect(bobMessage!.content).toContain('【サーバーイベント】');
+    expect(bobMessage!.content).toContain('【サーバーアナウンス】');
     expect(bobMessage!.content).toContain('Dark clouds gather.');
     expect(aliceMessage!.content).not.toBe(bobMessage!.content);
 
     handler.dispose();
   });
 
-  it('propagates rejected-action suppression to a server-event prompt and clears it on delivery', async () => {
+  it('propagates rejected-action suppression to a server-announcement prompt and clears it on delivery', async () => {
     const baseMap = createTestWorld().config.map;
     const { engine } = createTestWorld({
       config: {
@@ -1039,21 +1180,21 @@ describe('DiscordEventHandler', () => {
     engine.executeAction(alice.agent_id, { action_id: 'expensive-greeting' });
     expect(engine.state.getLoggedIn(alice.agent_id)?.last_rejected_action_id).toBe('expensive-greeting');
 
-    engine.fireServerEvent('Sudden gust!');
+    engine.fireServerAnnouncement('Sudden gust!');
 
     await vi.waitFor(() => {
-      const eventPrompt = bot.agentMessages.find((message) => message.content.includes('【サーバーイベント】'));
+      const eventPrompt = bot.agentMessages.find((message) => message.content.includes('【サーバーアナウンス】'));
       expect(eventPrompt).toBeDefined();
     });
 
-    const eventPrompt = bot.agentMessages.find((message) => message.content.includes('【サーバーイベント】'))!;
+    const eventPrompt = bot.agentMessages.find((message) => message.content.includes('【サーバーアナウンス】'))!;
     expect(eventPrompt.content).not.toContain('expensive-greeting');
     expect(engine.state.getLoggedIn(alice.agent_id)?.last_rejected_action_id).toBeNull();
 
     handler.dispose();
   });
 
-  it('keeps active server events open across info notifications until an executable command closes them', async () => {
+  it('keeps active server announcements open across info notifications until an executable command closes them', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
     const { engine } = createTestWorld();
@@ -1076,7 +1217,7 @@ describe('DiscordEventHandler', () => {
     ];
 
     bot.agentMessages.length = 0;
-    engine.state.setActiveServerEvent(alice.agent_id, 'server-event-1');
+    engine.state.setActiveServerAnnouncement(alice.agent_id, 'server-announcement-1');
 
     for (const [index, infoEvent] of infoEvents.entries()) {
       engine.emitEvent({ type: infoEvent, agent_id: alice.agent_id });
@@ -1084,17 +1225,17 @@ describe('DiscordEventHandler', () => {
       await vi.waitFor(() => {
         expect(bot.agentMessages.length).toBeGreaterThanOrEqual(index + 1);
       });
-      expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBe('server-event-1');
+      expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBe('server-announcement-1');
     }
 
     engine.executeWait(alice.agent_id, { duration: 1 });
-    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
     vi.advanceTimersByTime(600000);
 
     handler.dispose();
   });
 
-  it('clears delayed server events after the movement completion notification', async () => {
+  it('clears delayed server announcements after the movement completion notification', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
 
@@ -1112,9 +1253,9 @@ describe('DiscordEventHandler', () => {
 
     engine.state.setNode(alice.agent_id, '3-1');
     engine.move(alice.agent_id, { target_node_id: '3-4' });
-    const fired = engine.fireServerEvent('Dark clouds gather.');
+    const fired = engine.fireServerAnnouncement('Dark clouds gather.');
 
-    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
 
     vi.advanceTimersByTime(3000);
 
@@ -1122,16 +1263,16 @@ describe('DiscordEventHandler', () => {
       expect(bot.agentMessages).toHaveLength(2);
     });
 
-    expect(bot.agentMessages[0]?.content).toContain('【サーバーイベント】');
+    expect(bot.agentMessages[0]?.content).toContain('【サーバーアナウンス】');
     expect(bot.agentMessages[0]?.content).toContain('Dark clouds gather.');
     expect(bot.agentMessages[1]?.content).toContain('3-4');
-    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
-    expect(fired.server_event_id).toMatch(/^server-event-/);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
+    expect(fired.server_announcement_id).toMatch(/^server-announcement-/);
 
     handler.dispose();
   });
 
-  it('serializes delayed server-event delivery before the arrival notification and keeps the window open until arrival is delivered', async () => {
+  it('serializes delayed server-announcement delivery before the arrival notification and keeps the window open until arrival is delivered', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
 
@@ -1147,38 +1288,38 @@ describe('DiscordEventHandler', () => {
     });
     bot.agentMessages.length = 0;
 
-    const delayedServerEventSend = createDeferred<void>();
+    const delayedServerAnnouncementSend = createDeferred<void>();
     const attemptedMessages: string[] = [];
     bot.sendAgentMessageOverride = async (channelId, content) => {
       attemptedMessages.push(content);
-      if (content.includes('【サーバーイベント】')) {
-        await delayedServerEventSend.promise;
+      if (content.includes('【サーバーアナウンス】')) {
+        await delayedServerAnnouncementSend.promise;
       }
       bot.agentMessages.push({ channelId, content });
     };
 
     engine.state.setNode(alice.agent_id, '3-1');
     engine.move(alice.agent_id, { target_node_id: '3-4' });
-    engine.fireServerEvent('Dark clouds gather.');
+    engine.fireServerAnnouncement('Dark clouds gather.');
 
     vi.advanceTimersByTime(3000);
 
     await vi.waitFor(() => {
       expect(attemptedMessages).toHaveLength(1);
-      expect(attemptedMessages[0]).toContain('【サーバーイベント】');
+      expect(attemptedMessages[0]).toContain('【サーバーアナウンス】');
     });
     expect(bot.agentMessages).toHaveLength(0);
-    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).not.toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).not.toBeNull();
 
-    delayedServerEventSend.resolve();
+    delayedServerAnnouncementSend.resolve();
 
     await vi.waitFor(() => {
       expect(bot.agentMessages).toHaveLength(2);
     });
 
-    expect(bot.agentMessages[0]?.content).toContain('【サーバーイベント】');
+    expect(bot.agentMessages[0]?.content).toContain('【サーバーアナウンス】');
     expect(bot.agentMessages[1]?.content).toContain('3-4');
-    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
 
     handler.dispose();
   });
@@ -1219,7 +1360,7 @@ describe('DiscordEventHandler', () => {
       },
     },
   ])(
-    'keeps the server-event window open until the $title notification is delivered',
+    'keeps the server-announcement window open until the $title notification is delivered',
     async ({ prepare, complete, expectedText, config }) => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
@@ -1237,7 +1378,7 @@ describe('DiscordEventHandler', () => {
     bot.agentMessages.length = 0;
 
     prepare(engine, alice.agent_id);
-    const fired = engine.fireServerEvent('Dark clouds gather.');
+    const fired = engine.fireServerAnnouncement('Dark clouds gather.');
     await vi.waitFor(() => {
       expect(bot.agentMessages).toHaveLength(1);
     });
@@ -1259,7 +1400,7 @@ describe('DiscordEventHandler', () => {
       expect(attemptedMessages.some((message) => message.includes(expectedText))).toBe(true);
     });
     expect(bot.agentMessages).toHaveLength(0);
-    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBe(fired.server_event_id);
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBe(fired.server_announcement_id);
 
     delayedFollowUpSend.resolve();
 
@@ -1267,13 +1408,13 @@ describe('DiscordEventHandler', () => {
       expect(bot.agentMessages).toHaveLength(1);
     });
     expect(bot.agentMessages[0]?.content).toContain(expectedText);
-    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
 
     handler.dispose();
     },
   );
 
-  it('keeps a conversation follow-up server-event window open until the prompt is delivered', async () => {
+  it('keeps a conversation follow-up server-announcement window open until the prompt is delivered', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
 
@@ -1315,9 +1456,9 @@ describe('DiscordEventHandler', () => {
     });
 
     bot.agentMessages.length = 0;
-    engine.fireServerEvent('Dark clouds gather.');
+    engine.fireServerAnnouncement('Dark clouds gather.');
     await vi.waitFor(() => {
-      expect(bot.agentMessages.filter((message) => message.content.includes('【サーバーイベント】'))).toHaveLength(2);
+      expect(bot.agentMessages.filter((message) => message.content.includes('【サーバーアナウンス】'))).toHaveLength(2);
     });
 
     bot.agentMessages.length = 0;
@@ -1341,8 +1482,8 @@ describe('DiscordEventHandler', () => {
       ).toBe(true);
     });
     expect(bot.agentMessages).toHaveLength(0);
-    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).not.toBeNull();
-    expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_event_id).not.toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).not.toBeNull();
+    expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_announcement_id).not.toBeNull();
 
     delayedPromptSend.resolve();
 
@@ -1352,8 +1493,8 @@ describe('DiscordEventHandler', () => {
 
     expect(bot.agentMessages[0]).toMatchObject({ channelId: 'channel-Alice' });
     expect(bot.agentMessages[0]?.content).toContain('「やあ、Alice！」');
-    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
-    expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_event_id).not.toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
+    expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_announcement_id).not.toBeNull();
 
     handler.dispose();
   });
@@ -1362,7 +1503,7 @@ describe('DiscordEventHandler', () => {
     ['initiator', 'Alice', 'channel-Alice', 'Bob'],
     ['target', 'Bob', 'channel-Bob', 'Alice'],
   ] as const)(
-    'notifies both agents when a pending conversation is interrupted by a server event via the %s',
+    'notifies both agents when a pending conversation is interrupted by a server announcement via the %s',
     async (_role, interrupterName, interrupterChannelId, counterpartName) => {
       const { engine } = createTestWorld();
       const bot = new RecordingDiscordBot();
@@ -1389,9 +1530,9 @@ describe('DiscordEventHandler', () => {
       });
 
       bot.agentMessages.length = 0;
-      engine.fireServerEvent('Dark clouds gather.');
+      engine.fireServerAnnouncement('Dark clouds gather.');
       await vi.waitFor(() => {
-        expect(bot.agentMessages.filter((message) => message.content.includes('【サーバーイベント】'))).toHaveLength(2);
+        expect(bot.agentMessages.filter((message) => message.content.includes('【サーバーアナウンス】'))).toHaveLength(2);
       });
 
       bot.agentMessages.length = 0;
@@ -1403,19 +1544,19 @@ describe('DiscordEventHandler', () => {
       });
 
       expect(bot.agentMessages.map((message) => message.channelId).sort()).toEqual(['channel-Alice', 'channel-Bob']);
-      expect(bot.agentMessages.every((message) => message.content.includes('サーバーイベントにより中断されました。'))).toBe(true);
+      expect(bot.agentMessages.every((message) => message.content.includes('サーバーアナウンスにより中断されました。'))).toBe(true);
       expect(bot.agentMessages.every((message) => !message.content.includes('ログアウトしました。'))).toBe(true);
       expect(bot.agentMessages.find((message) => message.channelId === interrupterChannelId)?.content).toContain(
-        `${counterpartName} との会話開始はサーバーイベントにより中断されました。`,
+        `${counterpartName} との会話開始はサーバーアナウンスにより中断されました。`,
       );
-      expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
-      expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_event_id).toBeNull();
+      expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
+      expect(engine.state.getLoggedIn(bob.agent_id)?.active_server_announcement_id).toBeNull();
 
       handler.dispose();
     },
   );
 
-  it('sends the server-event closing prompt to the farewell speaker', async () => {
+  it('sends the server-announcement closing prompt to the farewell speaker', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
 
@@ -1456,9 +1597,9 @@ describe('DiscordEventHandler', () => {
       expect(bot.threadMessages.get('thread-1')).toEqual(['「こんにちは。」', '「やあ、Alice！」']);
     });
 
-    engine.fireServerEvent('Dark clouds gather.');
+    engine.fireServerAnnouncement('Dark clouds gather.');
     await vi.waitFor(() => {
-      expect(bot.agentMessages.filter((message) => message.content.includes('【サーバーイベント】'))).toHaveLength(2);
+      expect(bot.agentMessages.filter((message) => message.content.includes('【サーバーアナウンス】'))).toHaveLength(2);
     });
 
     bot.agentMessages.length = 0;
@@ -1469,7 +1610,7 @@ describe('DiscordEventHandler', () => {
         bot.agentMessages.some(
           (message) =>
             message.channelId === 'channel-Alice'
-            && message.content.includes('サーバーイベントにより会話が終了します。'),
+            && message.content.includes('サーバーアナウンスにより会話が終了します。'),
         ),
       ).toBe(true);
     });
@@ -1478,15 +1619,15 @@ describe('DiscordEventHandler', () => {
       bot.agentMessages.some(
         (message) =>
           message.channelId === 'channel-Bob'
-          && message.content.includes('サーバーイベントにより会話が終了します。'),
+          && message.content.includes('サーバーアナウンスにより会話が終了します。'),
       ),
     ).toBe(false);
-    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_event_id).toBeNull();
+    expect(engine.state.getLoggedIn(alice.agent_id)?.active_server_announcement_id).toBeNull();
 
     handler.dispose();
   });
 
-  it('removes the interrupting participant from server-event closing prompts', async () => {
+  it('removes the interrupting participant from server-announcement closing prompts', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
 
@@ -1544,9 +1685,9 @@ describe('DiscordEventHandler', () => {
     });
 
     bot.agentMessages.length = 0;
-    engine.fireServerEvent('Dark clouds gather.');
+    engine.fireServerAnnouncement('Dark clouds gather.');
     await vi.waitFor(() => {
-      expect(bot.agentMessages.filter((message) => message.content.includes('【サーバーイベント】'))).toHaveLength(3);
+      expect(bot.agentMessages.filter((message) => message.content.includes('【サーバーアナウンス】'))).toHaveLength(3);
     });
 
     bot.agentMessages.length = 0;
@@ -1555,7 +1696,7 @@ describe('DiscordEventHandler', () => {
     await vi.waitFor(() => {
       expect(
         bot.agentMessages.some(
-          (message) => message.channelId === 'channel-Alice' && message.content.includes('サーバーイベントにより会話が終了します。'),
+          (message) => message.channelId === 'channel-Alice' && message.content.includes('サーバーアナウンスにより会話が終了します。'),
         ),
       ).toBe(true);
     });
@@ -1569,7 +1710,7 @@ describe('DiscordEventHandler', () => {
     handler.dispose();
   });
 
-  it('sends the server-event closing prompt to the replacement speaker after logout during closing', async () => {
+  it('sends the server-announcement closing prompt to the replacement speaker after logout during closing', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
 
@@ -1626,11 +1767,11 @@ describe('DiscordEventHandler', () => {
 
     bot.agentMessages.length = 0;
     const conversationId = [...engine.state.conversations.list()][0]!.conversation_id;
-    beginClosingConversation(engine, conversationId, alice.agent_id, 'server_event');
+    beginClosingConversation(engine, conversationId, alice.agent_id, 'server_announcement');
     await vi.waitFor(() => {
       expect(
         bot.agentMessages.some(
-          (message) => message.channelId === 'channel-Alice' && message.content.includes('サーバーイベントにより会話が終了します。'),
+          (message) => message.channelId === 'channel-Alice' && message.content.includes('サーバーアナウンスにより会話が終了します。'),
         ),
       ).toBe(true);
     });
@@ -1641,7 +1782,7 @@ describe('DiscordEventHandler', () => {
     await vi.waitFor(() => {
       expect(
         bot.agentMessages.some(
-          (message) => message.channelId === 'channel-Bob' && message.content.includes('サーバーイベントにより会話が終了します。'),
+          (message) => message.channelId === 'channel-Bob' && message.content.includes('サーバーアナウンスにより会話が終了します。'),
         ),
       ).toBe(true);
     });
@@ -1654,7 +1795,7 @@ describe('DiscordEventHandler', () => {
     handler.dispose();
   });
 
-  it('does not send duplicate action prompts when a server-event closing turn advances in a group conversation', async () => {
+  it('does not send duplicate action prompts when a server-announcement closing turn advances in a group conversation', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
 
@@ -1714,13 +1855,13 @@ describe('DiscordEventHandler', () => {
       engine,
       [...engine.state.conversations.list()][0]!.conversation_id,
       alice.agent_id,
-      'server_event',
+      'server_announcement',
       carol.agent_id,
     );
     await vi.waitFor(() => {
       expect(
         bot.agentMessages.some(
-          (message) => message.channelId === 'channel-Alice' && message.content.includes('サーバーイベントにより会話が終了します。'),
+          (message) => message.channelId === 'channel-Alice' && message.content.includes('サーバーアナウンスにより会話が終了します。'),
         ),
       ).toBe(true);
     });
@@ -1741,7 +1882,7 @@ describe('DiscordEventHandler', () => {
       expect(bobMessages.some((message) =>
         message.includes('Alice: 「Bob、最後をお願い。」')
         && !message.includes('選択肢:'))).toBe(true);
-      expect(bobMessages.some((message) => message.includes('サーバーイベントにより会話が終了します。'))).toBe(true);
+      expect(bobMessages.some((message) => message.includes('サーバーアナウンスにより会話が終了します。'))).toBe(true);
     });
 
     handler.dispose();

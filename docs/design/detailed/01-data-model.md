@@ -185,7 +185,7 @@ type ActionConfig = FixedDurationActionConfig | RangeDurationActionConfig;
 
 - `cost_money` / `required_items`: 開始時に消費
 - `reward_money` / `reward_items`: 完了時に付与
-- 開始後に会話着信受諾・サーバーイベント割り込み・logout で中断された場合、開始時消費分は返却しない
+- 開始後に会話着信受諾・サーバーアナウンス割り込み・logout で中断された場合、開始時消費分は返却しない
 - `reward_items` の付与は `EconomyConfig.max_inventory_slots` と各 `ItemConfig.max_stack` の制約を受け、入りきらない分は `items_dropped` として扱う
 
 ## 6. サーバー設定

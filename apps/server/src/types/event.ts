@@ -1,6 +1,7 @@
 import type { AgentItem, AgentState } from './agent.js';
 import type { ConversationClosureReason, ConversationRejectionReason, PendingJoinCancelReason } from './conversation.js';
 import type { ItemType, NodeId } from './data-model.js';
+import type { ServerEvent } from './server-event.js';
 import type { TransferCancelReason, TransferMode, TransferRejectReason } from './transfer.js';
 
 export type EventType =
@@ -34,13 +35,16 @@ export type EventType =
   | 'transfer_timeout'
   | 'transfer_cancelled'
   | 'transfer_escrow_lost'
-  | 'server_event_fired'
+  | 'server_announcement_fired'
+  | 'server_event_created'
+  | 'server_event_cleared'
   | 'idle_reminder_fired'
   | 'map_info_requested'
   | 'world_agents_info_requested'
   | 'status_info_requested'
   | 'nearby_agents_info_requested'
   | 'active_conversations_info_requested'
+  | 'server_events_info_requested'
   | 'perception_requested'
   | 'available_actions_requested';
 
@@ -83,7 +87,7 @@ export interface MovementCompletedEvent extends EventBase {
   agent_id: string;
   agent_name: string;
   node_id: NodeId;
-  delivered_server_event_ids: string[];
+  delivered_server_announcement_ids: string[];
 }
 
 export interface ActionStartedEvent extends EventBase {
@@ -207,7 +211,7 @@ export interface ConversationLeaveEvent extends EventBase {
   conversation_id: string;
   agent_id: string;
   agent_name: string;
-  reason: 'voluntary' | 'inactive' | 'logged_out' | 'server_event';
+  reason: 'voluntary' | 'inactive' | 'logged_out' | 'server_announcement';
   participant_agent_ids: string[];
   message?: string;
   next_speaker_agent_id?: string;
@@ -242,7 +246,7 @@ export interface ConversationClosingEvent extends EventBase {
   initiator_agent_id: string;
   participant_agent_ids: string[];
   current_speaker_agent_id: string;
-  reason: Extract<ConversationClosureReason, 'ended_by_agent' | 'max_turns' | 'server_event'>;
+  reason: Extract<ConversationClosureReason, 'ended_by_agent' | 'max_turns' | 'server_announcement'>;
 }
 
 export interface ConversationEndedEvent extends EventBase {
@@ -319,13 +323,23 @@ export interface TransferEscrowLostEvent extends TransferEventBase {
   dropped_item?: { item_id: string; quantity: number } | null;
 }
 
-export interface ServerEventFiredEvent extends EventBase {
-  type: 'server_event_fired';
-  server_event_id: string;
+export interface ServerAnnouncementFiredEvent extends EventBase {
+  type: 'server_announcement_fired';
+  server_announcement_id: string;
   description: string;
   delivered_agent_ids: string[];
   pending_agent_ids: string[];
   delayed: boolean;
+}
+
+export interface ServerEventCreatedEvent extends EventBase {
+  type: 'server_event_created';
+  server_event: ServerEvent;
+}
+
+export interface ServerEventClearedEvent extends EventBase {
+  type: 'server_event_cleared';
+  server_event: ServerEvent;
 }
 
 export interface IdleReminderFiredEvent extends EventBase {
@@ -357,6 +371,11 @@ export interface NearbyAgentsInfoRequestedEvent extends EventBase {
 
 export interface ActiveConversationsInfoRequestedEvent extends EventBase {
   type: 'active_conversations_info_requested';
+  agent_id: string;
+}
+
+export interface ServerEventsInfoRequestedEvent extends EventBase {
+  type: 'server_events_info_requested';
   agent_id: string;
 }
 
@@ -401,12 +420,15 @@ export type WorldEvent =
   | TransferTimeoutEvent
   | TransferCancelledEvent
   | TransferEscrowLostEvent
-  | ServerEventFiredEvent
+  | ServerAnnouncementFiredEvent
+  | ServerEventCreatedEvent
+  | ServerEventClearedEvent
   | IdleReminderFiredEvent
   | MapInfoRequestedEvent
   | WorldAgentsInfoRequestedEvent
   | StatusInfoRequestedEvent
   | NearbyAgentsInfoRequestedEvent
   | ActiveConversationsInfoRequestedEvent
+  | ServerEventsInfoRequestedEvent
   | PerceptionRequestedEvent
   | AvailableActionsRequestedEvent;

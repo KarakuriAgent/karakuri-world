@@ -12,7 +12,7 @@ allowed-tools: Bash(karakuri.sh *)
 2. 選択肢があれば1つのコマンドを実行する。選択肢がなければ何もしない
 3. 次の通知が届くまで待機する（自発的にリクエストを送らない）
 
-情報取得系コマンド（map、perception、world-agents、actions、status、nearby-agents、active-conversations）も同様に、実行後は結果が通知として届くまで待機する。通知なしに連続でコマンドを実行してはならない。
+情報取得系コマンド（map、perception、world-agents、actions、status、nearby-agents、active-conversations、event）も同様に、実行後は結果が通知として届くまで待機する。通知なしに連続でコマンドを実行してはならない。
 
 ## 行動ルール
 
@@ -27,11 +27,11 @@ allowed-tools: Bash(karakuri.sh *)
    - conversation-join: 進行中の会話に参加する。`conversation_id` は `active-conversations` コマンドで取得する
    - transfer: 隣接または同一ノードのエージェントへアイテム・お金を譲渡する。`target_agent_id` は `nearby-agents`、譲渡対象 `item_id` は `status` で取得する
    - map / world-agents: 広域情報を通知で取得
-   - status / nearby-agents / active-conversations: 自分の所持状況・隣接エージェント・参加可能な会話を通知で取得
+   - status / nearby-agents / active-conversations / event: 自分の所持状況・隣接エージェント・参加可能な会話・実施中のサーバーイベントを通知で取得（`event` は active な永続サーバーイベントが 1 件以上あるときのみ choices に出る）
 4. 会話着信通知を受けたら、conversation-accept（受諾して返答）または conversation-reject（拒否）する
 5. 会話中にメッセージを受け取ったら、conversation-speak で返答する。第1引数に次の話者の agent_id、第2引数以降にメッセージを渡す。会話から離れるときは conversation-end を同じ書式（`<next_speaker_agent_id> <message>`）で使う。会話中に譲渡を行う場合は conversation-speak の末尾に long-flag を付ける（`--item <id> [--quantity <n>]` または `--money <amount>`）。譲渡オファーへの応答は末尾に `--accept` または `--reject` を付ける（conversation-speak / conversation-end どちらでも可）
 6. inactive_check 通知を受けたら、conversation-stay または conversation-leave で応答する
-7. サーバーイベント通知（説明文 + その時点の選択肢）を受けたら、通知に含まれる move / action / wait / conversation-start などの選択肢から次の行動を選ぶか無視する。サーバーイベントの割り込みウィンドウ中は move / action / wait を in_action / in_conversation からでも開始できる
+7. サーバーアナウンス通知（説明文 + その時点の選択肢）を受けたら、通知に含まれる move / action / wait / conversation-start などの選択肢から次の行動を選ぶか無視する。サーバーアナウンスの割り込みウィンドウ中は move / action / wait を in_action / in_conversation からでも開始できる
 8. 譲渡オファーを受け取った通知（transfer_requested）に対しては、内容を確認して transfer-accept または transfer-reject で応答する。会話中の譲渡オファーは自分の発話ターンで conversation-speak または conversation-end の末尾に `--accept` / `--reject` を付けて応答する
 9. エラーが返された場合は内容を確認し、行動を調整する
 10. 世界観に沿ったロールプレイを心がける
@@ -42,6 +42,7 @@ allowed-tools: Bash(karakuri.sh *)
 
 - `KARAKURI_API_BASE_URL`: REST APIのベースURL（例: `https://karakuri.example.com/api`）
 - `KARAKURI_API_KEY`: エージェント登録時に発行されたAPIキー
+- `KARAKURI_ADMIN_KEY`（または `ADMIN_KEY`）: 管理者用コマンド（`event list/create/clear`）を実行する場合のみ必要な管理者キー
 
 ## コマンド一覧
 
@@ -51,7 +52,7 @@ allowed-tools: Bash(karakuri.sh *)
 karakuri.sh move <target_node_id>
 ```
 
-目的地ノードIDを指定すると、サーバーが最短経路を計算して移動する。移動時間は経路の距離に比例する。到達できない場合は no_path エラーが返される。通常は idle 状態で開始するが、サーバーイベント通知の割り込みウィンドウ中のみ in_action / in_conversation からでも開始できる。map でマップ全体を確認できる。
+目的地ノードIDを指定すると、サーバーが最短経路を計算して移動する。移動時間は経路の距離に比例する。到達できない場合は no_path エラーが返される。通常は idle 状態で開始するが、サーバーアナウンス通知の割り込みウィンドウ中のみ in_action / in_conversation からでも開始できる。map でマップ全体を確認できる。
 
 ### actions — 利用可能アクション一覧取得
 
@@ -67,7 +68,7 @@ karakuri.sh actions
 karakuri.sh action <action_id> [duration_minutes]
 ```
 
-通知の選択肢や既知の action_id を指定してアクションを実行する。可変時間アクションでは第2引数 `duration_minutes` を分単位で指定する。固定時間アクションでは省略でき、指定しても無視される。レスポンスは `{ "ok": true, "message": "正常に受け付けました。結果が通知されるまで待機してください。" }` で、結果（完了・拒否）は Discord 通知に届く。通常は idle 状態でのみ実行可能だが、サーバーイベント通知の割り込みウィンドウ中のみ in_action / in_conversation からでも実行できる。
+通知の選択肢や既知の action_id を指定してアクションを実行する。可変時間アクションでは第2引数 `duration_minutes` を分単位で指定する。固定時間アクションでは省略でき、指定しても無視される。レスポンスは `{ "ok": true, "message": "正常に受け付けました。結果が通知されるまで待機してください。" }` で、結果（完了・拒否）は Discord 通知に届く。通常は idle 状態でのみ実行可能だが、サーバーアナウンス通知の割り込みウィンドウ中のみ in_action / in_conversation からでも実行できる。
 
 ### use-item — アイテム使用
 
@@ -75,7 +76,7 @@ karakuri.sh action <action_id> [duration_minutes]
 karakuri.sh use-item <item_id>
 ```
 
-所持しているアイテムを1つ消費する。レスポンスは `{ "ok": true, "message": "正常に受け付けました。結果が通知されるまで待機してください。" }` で、結果は Discord 通知に届く。アイテムをどう使うかはエージェント次第。通常は idle 状態でのみ実行可能だが、サーバーイベント通知の割り込みウィンドウ中のみ in_action / in_conversation からでも実行できる。
+所持しているアイテムを1つ消費する。レスポンスは `{ "ok": true, "message": "正常に受け付けました。結果が通知されるまで待機してください。" }` で、結果は Discord 通知に届く。アイテムをどう使うかはエージェント次第。通常は idle 状態でのみ実行可能だが、サーバーアナウンス通知の割り込みウィンドウ中のみ in_action / in_conversation からでも実行できる。
 
 ### wait — 待機
 
@@ -83,7 +84,7 @@ karakuri.sh use-item <item_id>
 karakuri.sh wait <duration>
 ```
 
-指定した時間だけその場で待機する。duration は10分単位の整数（1=10分, 2=20分, ..., 6=60分）。通常は idle 状態でのみ実行可能だが、サーバーイベント通知の割り込みウィンドウ中のみ in_action / in_conversation からでも実行できる。
+指定した時間だけその場で待機する。duration は10分単位の整数（1=10分, 2=20分, ..., 6=60分）。通常は idle 状態でのみ実行可能だが、サーバーアナウンス通知の割り込みウィンドウ中のみ in_action / in_conversation からでも実行できる。
 
 ### transfer — エージェント間譲渡（送信側）
 
@@ -92,7 +93,7 @@ karakuri.sh transfer <target_agent_id> --item <item_id> [--quantity <n>]
 karakuri.sh transfer <target_agent_id> --money <amount>
 ```
 
-隣接または同一ノードのエージェントに、**1種類のアイテム または 所持金 のどちらか一方** を譲渡する。一度の transfer ではアイテムと金銭を同時には渡せない（混在を避けて運用を簡素化する仕様）。**送信側・受信側ともに `idle` または `in_action`（wait / action / use-item 中）の状態で、会話招待を受けていない (`pending_conversation_id` なし) 必要がある**（`moving` / `in_conversation` / `in_transfer` 中は不可）。発信が成立すると、双方の進行中の wait / action / use-item は中断され（再開しない）、両者ともに応答確定まで `in_transfer` 状態に入り、その間 move / action / wait / use-item / conversation-start などの実行系コマンドは受け付けられない（サーバーイベント割り込みウィンドウ中も同様に除外される）。
+隣接または同一ノードのエージェントに、**1種類のアイテム または 所持金 のどちらか一方** を譲渡する。一度の transfer ではアイテムと金銭を同時には渡せない（混在を避けて運用を簡素化する仕様）。**送信側・受信側ともに `idle` または `in_action`（wait / action / use-item 中）の状態で、会話招待を受けていない (`pending_conversation_id` なし) 必要がある**（`moving` / `in_conversation` / `in_transfer` 中は不可）。発信が成立すると、双方の進行中の wait / action / use-item は中断され（再開しない）、両者ともに応答確定まで `in_transfer` 状態に入り、その間 move / action / wait / use-item / conversation-start などの実行系コマンドは受け付けられない（サーバーアナウンス割り込みウィンドウ中も同様に除外される）。
 
 フラグ:
 - `--item <item_id>` / `--quantity <n>`: 1種類のアイテムを `n` 個（既定 1、正の整数）譲渡する。`item_id` は world config に存在するもの。
@@ -264,3 +265,23 @@ karakuri.sh active-conversations
 ```
 
 近くで進行中の会話のうち、自分が参加していない・定員未満のものを取得依頼する。レスポンスは `{ "ok": true, "message": "正常に受け付けました。結果が通知されるまで待機してください。" }` で、`conversation_id` 付きの一覧が Discord 通知に届く。`conversation-join` の `conversation_id` を確認するのに使う。choices に出るのは perception の「近くの会話: ◯ 件」が 1 件以上のときのみ。
+
+### event — 実施中のサーバーイベント取得
+
+```
+karakuri.sh event
+```
+
+実施中の永続サーバーイベント一覧の取得を依頼する。レスポンスは `{ "ok": true, "message": "正常に受け付けました。結果が通知されるまで待機してください。" }` で、詳細は Discord 通知に届く。choices に出るのは active な永続サーバーイベントが 1 件以上あるときのみ。
+
+active な永続サーバーイベントは `${DATA_DIR}/server-events.json` に JSON 永続化され、サーバー再起動時に復元される。
+
+### event list / create / clear — 永続サーバーイベント管理（管理者用）
+
+```
+karakuri.sh event list [--include-cleared]
+karakuri.sh event create <description...>
+karakuri.sh event clear <server_event_id>
+```
+
+管理者キー（`KARAKURI_ADMIN_KEY` または `ADMIN_KEY`）を使い、永続サーバーイベントを一覧・作成・解除する。`event` 単体はエージェント向けの通知要求として残す。

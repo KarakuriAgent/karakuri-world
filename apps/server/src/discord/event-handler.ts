@@ -8,7 +8,7 @@ import {
   listJoinableActiveConversations,
   listStandaloneTransferCandidates,
 } from '../domain/info-commands.js';
-import { clearActiveServerEvent } from '../domain/server-events.js';
+import { clearActiveServerAnnouncement } from '../domain/server-announcements.js';
 import { getAgentCurrentNode } from '../domain/movement.js';
 import type { WorldEngine } from '../engine/world-engine.js';
 import { WorldError } from '../types/api.js';
@@ -21,6 +21,7 @@ import {
   formatActionCompletedMessage,
   formatActionRejectedMessage,
   formatActiveConversationsInfoMessage,
+  appendActiveServerEventHint,
   formatAvailableActionsInfoMessage,
   formatAgentLoggedInMessage,
   formatAgentLoggedOutMessage,
@@ -38,7 +39,7 @@ import {
   formatConversationRequestedMessage,
   formatInConversationPendingTransferLine,
   formatInConversationTransferOutcomeLine,
-  formatConversationServerEventClosingPromptMessage,
+  formatConversationServerAnnouncementClosingPromptMessage,
   formatConversationThreadName,
   formatConversationTurnClosingPromptMessage,
   formatConversationTurnPromptMessage,
@@ -60,7 +61,8 @@ import {
   formatMovementCompletedMessage,
   formatNearbyAgentsInfoMessage,
   formatPerceptionInfoMessage,
-  formatServerEventMessage,
+  formatServerAnnouncementMessage,
+  formatServerEventsInfoMessage,
   formatStatusInfoMessage,
   formatWaitCompletedMessage,
   formatWorldAgentsInfoMessage,
@@ -84,7 +86,9 @@ import {
   formatWorldLogLoggedIn,
   formatWorldLogLoggedOut,
   formatWorldLogMovement,
-  formatWorldLogServerEvent,
+  formatWorldLogServerAnnouncement,
+  formatWorldLogServerEventCleared,
+  formatWorldLogServerEventCreated,
   formatWorldLogWait,
   type ConversationParticipantInfo,
   type TransferOptionsHint,
@@ -297,8 +301,14 @@ export class DiscordEventHandler {
       case 'transfer_escrow_lost':
         await this.handleTransferEscrowLost(event);
         return;
-      case 'server_event_fired':
-        await this.handleServerEventFired(event);
+      case 'server_announcement_fired':
+        await this.handleServerAnnouncementFired(event);
+        return;
+      case 'server_event_created':
+        await this.handleServerEventCreated(event);
+        return;
+      case 'server_event_cleared':
+        await this.handleServerEventCleared(event);
         return;
       case 'movement_started':
         await this.handleMovementStarted(event.agent_id, event.to_node_id, event.arrives_at);
@@ -321,6 +331,9 @@ export class DiscordEventHandler {
       case 'active_conversations_info_requested':
         await this.handleActiveConversationsInfoRequested(event.agent_id);
         return;
+      case 'server_events_info_requested':
+        await this.handleServerEventsInfoRequested(event.agent_id);
+        return;
       case 'perception_requested':
         await this.handlePerceptionRequested(event.agent_id);
         return;
@@ -334,7 +347,7 @@ export class DiscordEventHandler {
     const suppressionSnapshot = this.captureChoicesPromptSuppressions(timer.agent_id);
     let consumedRejectedActionId: string | null = null;
     let consumedUsedItemId: string | null = null;
-    await this.sendToAgentClearingServerEventBuilt(timer.agent_id, () => {
+    await this.sendToAgentClearingServerAnnouncementBuilt(timer.agent_id, () => {
       const agent = this.engine.state.getLoggedIn(timer.agent_id);
       if (!agent || agent.pending_conversation_id) {
         return null;
@@ -388,7 +401,7 @@ export class DiscordEventHandler {
         nextSpeakerAgentId
         && listenerAgentId === nextSpeakerAgentId
         && conversation.status === 'closing'
-        && conversation.closing_reason === 'server_event'
+        && conversation.closing_reason === 'server_announcement'
         && conversation.current_speaker_agent_id === nextSpeakerAgentId
       ) {
         await this.sendConversationFollowUp(
@@ -560,7 +573,7 @@ export class DiscordEventHandler {
     const label = this.engine.config.map.nodes[toNodeId]?.label;
     const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
     let consumedRejectedActionId: string | null = null;
-    await this.sendToAgentClearingServerEventBuilt(agentId, () => {
+    await this.sendToAgentClearingServerAnnouncementBuilt(agentId, () => {
       const perceptionText = this.getPerceptionText(agentId);
       if (!perceptionText) {
         return null;
@@ -607,7 +620,7 @@ export class DiscordEventHandler {
   private async handleActionCompleted(event: Extract<WorldEvent, { type: 'action_completed' }>): Promise<void> {
     const suppressionSnapshot = this.captureChoicesPromptSuppressions(event.agent_id);
     let consumedRejectedActionId: string | null = null;
-    await this.sendToAgentClearingServerEventBuilt(event.agent_id, () => {
+    await this.sendToAgentClearingServerAnnouncementBuilt(event.agent_id, () => {
       const perceptionText = this.getPerceptionText(event.agent_id);
       if (!perceptionText) {
         return null;
@@ -636,7 +649,7 @@ export class DiscordEventHandler {
   ): Promise<void> {
     const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
     let consumedRejectedActionId: string | null = null;
-    await this.sendToAgentClearingServerEventBuilt(
+    await this.sendToAgentClearingServerAnnouncementBuilt(
       agentId,
       () => {
         const perceptionText = this.getPerceptionText(agentId);
@@ -674,7 +687,7 @@ export class DiscordEventHandler {
   private async handleWaitCompleted(agentId: string, durationMs: number): Promise<void> {
     const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
     let consumedRejectedActionId: string | null = null;
-    await this.sendToAgentClearingServerEventBuilt(agentId, () => {
+    await this.sendToAgentClearingServerAnnouncementBuilt(agentId, () => {
       const perceptionText = this.getPerceptionText(agentId);
       if (!perceptionText) {
         return null;
@@ -701,7 +714,7 @@ export class DiscordEventHandler {
   private async handleItemUseCompleted(agentId: string, itemName: string, itemType: ItemType): Promise<void> {
     const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
     let consumedRejectedActionId: string | null = null;
-    await this.sendToAgentClearingServerEventBuilt(agentId, () => {
+    await this.sendToAgentClearingServerAnnouncementBuilt(agentId, () => {
       const perceptionText = this.getPerceptionText(agentId);
       if (!perceptionText) {
         return null;
@@ -725,7 +738,7 @@ export class DiscordEventHandler {
   private async handleItemUseVenueRejected(agentId: string, itemName: string, venueHints: string[]): Promise<void> {
     const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
     let consumedRejectedActionId: string | null = null;
-    await this.sendToAgentClearingServerEventBuilt(agentId, () => {
+    await this.sendToAgentClearingServerAnnouncementBuilt(agentId, () => {
       const perception = this.buildPerceptionTextForAgent(agentId, suppressionSnapshot.usedItemId);
       if (perception.text) {
         const choicesPrompt = this.getChoicesPrompt(agentId, undefined, suppressionSnapshot);
@@ -791,7 +804,7 @@ export class DiscordEventHandler {
     reason: ConversationRejectionReason,
   ): Promise<void> {
     await this.sendConversationRejectedNotification(initiatorAgentId, targetName, reason);
-    if (reason === 'server_event') {
+    if (reason === 'server_announcement') {
       await this.sendConversationRejectedNotification(targetAgentId, initiatorName, reason);
     }
   }
@@ -846,13 +859,13 @@ export class DiscordEventHandler {
   }
 
   private async handleConversationClosing(event: Extract<WorldEvent, { type: 'conversation_closing' }>): Promise<void> {
-    if (event.reason !== 'server_event') {
+    if (event.reason !== 'server_announcement') {
       return;
     }
 
-    await this.sendToAgentClearingServerEvent(
+    await this.sendToAgentClearingServerAnnouncement(
       event.current_speaker_agent_id,
-      formatConversationServerEventClosingPromptMessage(
+      formatConversationServerAnnouncementClosingPromptMessage(
         this.getWorldContext(event.current_speaker_agent_id),
         this.skillName,
         this.getParticipantInfos(event.participant_agent_ids),
@@ -1085,7 +1098,7 @@ export class DiscordEventHandler {
     }
   }
 
-  private async handleServerEventFired(event: Extract<WorldEvent, { type: 'server_event_fired' }>): Promise<void> {
+  private async handleServerAnnouncementFired(event: Extract<WorldEvent, { type: 'server_announcement_fired' }>): Promise<void> {
     for (const agentId of event.delivered_agent_ids) {
       const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
       let consumedRejectedActionId: string | null = null;
@@ -1094,7 +1107,7 @@ export class DiscordEventHandler {
         () => {
           const choicesPrompt = this.getChoicesPrompt(agentId, { forceShowActions: true }, suppressionSnapshot);
           consumedRejectedActionId = choicesPrompt.consumedRejectedActionId;
-          return formatServerEventMessage(
+          return formatServerAnnouncementMessage(
             this.getWorldContext(agentId),
             event.description,
             this.skillName,
@@ -1106,8 +1119,65 @@ export class DiscordEventHandler {
     }
 
     if (!event.delayed) {
-      await this.bot.sendWorldLog(formatWorldLogServerEvent(event.description));
+      await this.bot.sendWorldLog(formatWorldLogServerAnnouncement(event.description));
     }
+  }
+
+  private async handleServerEventCreated(event: Extract<WorldEvent, { type: 'server_event_created' }>): Promise<void> {
+    await this.sendServerEventWorldLog(
+      'server_event_created',
+      formatWorldLogServerEventCreated(event.server_event.description),
+    );
+    const agentIds = this.engine.state.listLoggedIn().map((agent) => agent.agent_id);
+    const results = await Promise.allSettled(
+      agentIds.map((agentId) =>
+        this.sendToAgent(agentId, `サーバーイベントが開始されました。\n${event.server_event.description}`),
+      ),
+    );
+    this.reportFailedServerEventDeliveries('server_event_created', agentIds, results);
+  }
+
+  private async handleServerEventCleared(event: Extract<WorldEvent, { type: 'server_event_cleared' }>): Promise<void> {
+    await this.sendServerEventWorldLog(
+      'server_event_cleared',
+      formatWorldLogServerEventCleared(event.server_event.description),
+    );
+    const agentIds = this.engine.state.listLoggedIn().map((agent) => agent.agent_id);
+    const results = await Promise.allSettled(
+      agentIds.map((agentId) =>
+        this.sendToAgent(agentId, `サーバーイベントが終了しました。\n${event.server_event.description}`),
+      ),
+    );
+    this.reportFailedServerEventDeliveries('server_event_cleared', agentIds, results);
+  }
+
+  private async sendServerEventWorldLog(kind: string, content: string): Promise<void> {
+    try {
+      await this.bot.sendWorldLog(content);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to send ${kind} world log.`, error);
+      this.engine.reportError(`${kind} の world-log 投稿に失敗しました: ${message}`);
+    }
+  }
+
+  private reportFailedServerEventDeliveries(kind: string, agentIds: string[], results: PromiseSettledResult<void>[]): void {
+    const failures = results
+      .map((result, index) => (result.status === 'rejected' ? { agentId: agentIds[index], reason: result.reason } : null))
+      .filter((failure): failure is { agentId: string; reason: unknown } => failure !== null);
+    if (failures.length === 0) {
+      return;
+    }
+    for (const failure of failures) {
+      console.error(`Failed to deliver ${kind} to agent ${failure.agentId}.`, failure.reason);
+    }
+    const summary = failures
+      .map((failure) => {
+        const reasonMessage = failure.reason instanceof Error ? failure.reason.message : String(failure.reason);
+        return `${failure.agentId} (${reasonMessage})`;
+      })
+      .join(', ');
+    this.engine.reportError(`${kind} の通知配信に失敗しました (${failures.length} 件): ${summary}`);
   }
 
   private buildPerceptionTextForAgent(agentId: string, hiddenItemId: string | null): { text: string; consumedUsedItemId: string | null } {
@@ -1360,6 +1430,23 @@ export class DiscordEventHandler {
     }, () => this.clearChoicesPromptSuppressionsIfCurrent(agentId, consumedRejectedActionId, null));
   }
 
+  private async handleServerEventsInfoRequested(agentId: string): Promise<void> {
+    if (!this.engine.state.getLoggedIn(agentId)) {
+      return;
+    }
+    const lines = this.engine.state.serverEvents.listActive().map(
+      (event) => `- ${event.server_event_id}: ${event.description}`,
+    );
+    const eventsText = lines.length > 0 ? `実施中のサーバーイベント:\n${lines.join('\n')}` : '実施中のサーバーイベントはありません。';
+    const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
+    let consumedRejectedActionId: string | null = null;
+    await this.sendToAgentBuilt(agentId, () => {
+      const choicesPrompt = this.getChoicesPrompt(agentId, { excludeInfoCommands: ['get_event'] }, suppressionSnapshot);
+      consumedRejectedActionId = choicesPrompt.consumedRejectedActionId;
+      return formatServerEventsInfoMessage(this.getWorldContext(agentId), eventsText, this.skillName, choicesPrompt.choicesText);
+    }, () => this.clearChoicesPromptSuppressionsIfCurrent(agentId, consumedRejectedActionId, null));
+  }
+
   private async handlePerceptionRequested(agentId: string): Promise<void> {
     if (!this.engine.state.getLoggedIn(agentId)) {
       return;
@@ -1435,7 +1522,7 @@ export class DiscordEventHandler {
 
   /**
    * standalone モードの譲渡決着後、両者は idle に戻る。次の行動を選べるよう
-   * sendToAgentClearingServerEventBuilt 経由で perception + 選択肢付き prompt を送る。
+   * sendToAgentClearingServerAnnouncementBuilt 経由で perception + 選択肢付き prompt を送る。
    * in_conversation モードは会話フローが次ターンを案内するので、現状の info-only 通知を維持。
    */
   private async sendStandaloneTransferSettlementPrompt(
@@ -1444,7 +1531,7 @@ export class DiscordEventHandler {
   ): Promise<void> {
     const suppressionSnapshot = this.captureChoicesPromptSuppressions(agentId);
     let consumedRejectedActionId: string | null = null;
-    await this.sendToAgentClearingServerEventBuilt(agentId, () => {
+    await this.sendToAgentClearingServerAnnouncementBuilt(agentId, () => {
       const perceptionText = this.getPerceptionText(agentId);
       if (!perceptionText) {
         return null;
@@ -1737,8 +1824,8 @@ export class DiscordEventHandler {
     await this.sendToAgentBuilt(agentId, () => content);
   }
 
-  private async sendToAgentClearingServerEvent(agentId: string, content: string): Promise<void> {
-    await this.sendToAgentClearingServerEventBuilt(agentId, () => content);
+  private async sendToAgentClearingServerAnnouncement(agentId: string, content: string): Promise<void> {
+    await this.sendToAgentClearingServerAnnouncementBuilt(agentId, () => content);
   }
 
   private async sendToAgentBuilt(
@@ -1757,7 +1844,7 @@ export class DiscordEventHandler {
     });
   }
 
-  private async sendToAgentClearingServerEventBuilt(
+  private async sendToAgentClearingServerAnnouncementBuilt(
     agentId: string,
     buildContent: () => string | null,
     onDelivered?: () => void,
@@ -1772,7 +1859,7 @@ export class DiscordEventHandler {
         await this.sendToAgentNow(agentId, content);
         onDelivered?.();
       } finally {
-        clearActiveServerEvent(this.engine, agentId);
+        clearActiveServerAnnouncement(this.engine, agentId);
       }
     });
   }
@@ -1816,8 +1903,8 @@ export class DiscordEventHandler {
     buildContent: () => string | null,
     onDelivered?: () => void,
   ): Promise<void> {
-    if (this.engine.state.getLoggedIn(agentId)?.active_server_event_id != null) {
-      await this.sendToAgentClearingServerEventBuilt(agentId, buildContent, onDelivered);
+    if (this.engine.state.getLoggedIn(agentId)?.active_server_announcement_id != null) {
+      await this.sendToAgentClearingServerAnnouncementBuilt(agentId, buildContent, onDelivered);
       return;
     }
 
@@ -1844,7 +1931,7 @@ export class DiscordEventHandler {
       return;
     }
 
-    await this.bot.sendAgentMessage(loggedInAgent.discord_channel_id, content);
+    await this.bot.sendAgentMessage(loggedInAgent.discord_channel_id, appendActiveServerEventHint(content, this.engine));
   }
 
   private consumeForcedConversationPartners(agentId: string): ForcedConversationPartner[] {

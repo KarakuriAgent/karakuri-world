@@ -49,11 +49,17 @@ export interface SpectatorMapSnapshot {
   npcs: SpectatorNpcConfig[];
 }
 
-export interface SpectatorRecentServerEvent {
-  server_event_id: string;
+export interface SpectatorRecentServerAnnouncement {
+  server_announcement_id: string;
   description: string;
   occurred_at: number;
   is_active: boolean;
+}
+
+export interface SpectatorActiveServerEvent {
+  server_event_id: string;
+  description: string;
+  created_at: number;
 }
 
 export type SpectatorAgentActivity =
@@ -120,7 +126,8 @@ export interface SpectatorSnapshot {
   agents: SpectatorAgentSnapshot[];
   known_agents: SpectatorKnownAgent[];
   conversations: SpectatorConversationSnapshot[];
-  recent_server_events: SpectatorRecentServerEvent[];
+  active_server_events?: SpectatorActiveServerEvent[];
+  recent_server_announcements: SpectatorRecentServerAnnouncement[];
   generated_at: number;
   published_at: number;
   last_publish_error_at?: number;
@@ -128,7 +135,8 @@ export interface SpectatorSnapshot {
 
 export interface BuildSpectatorSnapshotInput {
   world_snapshot: WorldSnapshot<WorldSnapshotAgentInput, WorldSnapshotConversationInput>;
-  recent_server_events: SpectatorRecentServerEvent[];
+  active_server_events?: SpectatorActiveServerEvent[];
+  recent_server_announcements: SpectatorRecentServerAnnouncement[];
   published_at: number;
   last_publish_error_at?: number;
 }
@@ -287,7 +295,8 @@ function toSpectatorKnownAgent(agent: { agent_id: string; agent_name: string; di
 
 export function buildSpectatorSnapshot({
   world_snapshot,
-  recent_server_events,
+  active_server_events = [],
+  recent_server_announcements,
   published_at,
   last_publish_error_at,
 }: BuildSpectatorSnapshotInput): SpectatorSnapshot {
@@ -305,7 +314,8 @@ export function buildSpectatorSnapshot({
     agents: world_snapshot.agents.map((agent) => toSpectatorAgentSnapshot(world_snapshot, agent)),
     known_agents: world_snapshot.known_agents.map(toSpectatorKnownAgent),
     conversations: world_snapshot.conversations.map((conversation) => toSpectatorConversationSnapshot(conversation)),
-    recent_server_events: recent_server_events.map((event) => ({ ...event })),
+    active_server_events: active_server_events.map((event) => ({ ...event })),
+    recent_server_announcements: recent_server_announcements.map((event) => ({ ...event })),
     generated_at: world_snapshot.generated_at,
     published_at,
     ...(last_publish_error_at !== undefined ? { last_publish_error_at } : {}),

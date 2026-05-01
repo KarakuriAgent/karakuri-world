@@ -6,7 +6,8 @@ shopt -s inherit_errexit
 #
 # Required environment variables:
 #   KARAKURI_API_BASE_URL  REST API base URL (e.g. https://karakuri.example.com/api)
-#   KARAKURI_API_KEY       API key issued at agent registration
+#   KARAKURI_API_KEY       API key issued at agent registration (agent commands)
+#   KARAKURI_ADMIN_KEY     Admin key for admin commands (or ADMIN_KEY)
 #
 # Requires: curl, jq
 
@@ -45,6 +46,10 @@ Commands:
   status                                         Request own status (money / items / current node) via notification
   nearby-agents                                  Request nearby agents (conversation / transfer candidates) via notification
   active-conversations                           Request joinable active conversations via notification
+  event                                          Request active persistent server events via notification
+  event list [--include-cleared]                 List persistent server events (admin)
+  event create <description...>                  Create a persistent server event (admin)
+  event clear <server_event_id>                  Clear a persistent server event (admin)
 EOF
 }
 
@@ -62,13 +67,25 @@ if [ -z "${KARAKURI_API_BASE_URL:-}" ]; then
   echo "Error: KARAKURI_API_BASE_URL is not set" >&2
   exit 1
 fi
-if [ -z "${KARAKURI_API_KEY:-}" ]; then
-  echo "Error: KARAKURI_API_KEY is not set" >&2
-  exit 1
-fi
 
 BASE_URL="${KARAKURI_API_BASE_URL%/}"
-AUTH_HEADER="Authorization: Bearer ${KARAKURI_API_KEY}"
+AUTH_HEADER="Authorization: Bearer ${KARAKURI_API_KEY:-}"
+ADMIN_KEY_VALUE="${KARAKURI_ADMIN_KEY:-${ADMIN_KEY:-}}"
+ADMIN_HEADER="X-Admin-Key: ${ADMIN_KEY_VALUE}"
+
+require_agent_api_key() {
+  if [ -z "${KARAKURI_API_KEY:-}" ]; then
+    echo "Error: KARAKURI_API_KEY is not set" >&2
+    exit 1
+  fi
+}
+
+require_admin_key() {
+  if [ -z "${ADMIN_KEY_VALUE}" ]; then
+    echo "Error: KARAKURI_ADMIN_KEY (or ADMIN_KEY) is not set" >&2
+    exit 1
+  fi
+}
 
 require_positive_int() {
   # Args: <flag_label> <value>
@@ -118,7 +135,23 @@ do_request() {
 }
 
 do_get() {
+  require_agent_api_key
   do_request -H "${AUTH_HEADER}" "${BASE_URL}$1"
+}
+
+do_admin_get() {
+  require_admin_key
+  do_request -H "${ADMIN_HEADER}" "${BASE_URL}$1"
+}
+
+do_admin_post() {
+  require_admin_key
+  do_request -X POST -H "${ADMIN_HEADER}" -H "Content-Type: application/json" -d "$2" "${BASE_URL}$1"
+}
+
+do_admin_delete() {
+  require_admin_key
+  do_request -X DELETE -H "${ADMIN_HEADER}" "${BASE_URL}$1"
 }
 
 do_notification_get() {
@@ -126,6 +159,7 @@ do_notification_get() {
 }
 
 do_post() {
+  require_agent_api_key
   do_request -X POST -H "${AUTH_HEADER}" -H "Content-Type: application/json" -d "$2" "${BASE_URL}$1"
 }
 
@@ -382,6 +416,44 @@ case "${command}" in
     ;;
   active-conversations)
     do_notification_get "/agents/active-conversations"
+    ;;
+  event|get-event)
+    if [ $# -eq 0 ]; then
+      do_notification_get "/agents/event"
+      exit 0
+    fi
+    event_subcommand="$1"
+    shift
+    case "${event_subcommand}" in
+      list)
+        if [ $# -gt 1 ]; then
+          echo "Usage: karakuri.sh event list [--include-cleared]" >&2
+          exit 1
+        fi
+        if [ $# -eq 1 ]; then
+          if [ "$1" != "--include-cleared" ]; then
+            echo "Usage: karakuri.sh event list [--include-cleared]" >&2
+            exit 1
+          fi
+          do_admin_get "/admin/server-events?include_cleared=true"
+        else
+          do_admin_get "/admin/server-events"
+        fi
+        ;;
+      create)
+        [ $# -lt 1 ] && { echo "Usage: karakuri.sh event create <description>" >&2; exit 1; }
+        do_admin_post "/admin/server-events" "$(json_obj description "${*:1}")"
+        ;;
+      clear)
+        [ $# -eq 1 ] || { echo "Usage: karakuri.sh event clear <server_event_id>" >&2; exit 1; }
+        do_admin_delete "/admin/server-events/$1"
+        ;;
+      *)
+        echo "Error: Unknown event subcommand '${event_subcommand}'" >&2
+        echo "Usage: karakuri.sh event [list [--include-cleared] | create <description> | clear <server_event_id>]" >&2
+        exit 1
+        ;;
+    esac
     ;;
   *)
     echo "Error: Unknown command '${command}'" >&2

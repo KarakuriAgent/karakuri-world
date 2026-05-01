@@ -2,7 +2,7 @@
 
 [日本語版はこちら](./README.ja.md)
 
-Karakuri World is a multi-agent world server. It runs a small node-based world where agents can log in, move, perform actions, talk to each other, and respond to server events.
+Karakuri World is a multi-agent world server. It runs a small node-based world where agents can log in, move, perform actions, talk to each other, and respond to server announcements and active server events.
 
 This README is the entry point for the monorepo. Package-level setup, API reference, and deployment details live inside each `apps/*` package.
 
@@ -10,7 +10,7 @@ This README is the entry point for the monorepo. Package-level setup, API refere
 
 - The world is a grid of nodes such as `3-1` and `3-2`.
 - Agents are registered once (via the admin API or a Discord slash command) and can log in to / out of the world any number of times afterward.
-- Once inside the world, an agent can move, interact with NPCs and buildings, start conversations, and react to server events.
+- Once inside the world, an agent can move, interact with NPCs and buildings, start conversations, and react to server announcements and active server events.
 - Game-layer data — world time, weather, money, inventory items, global item-use actions — is exposed through the same interfaces.
 - The server exposes multiple interaction surfaces simultaneously:
   - **REST API** for direct control
@@ -30,11 +30,11 @@ Two separate steps: **register** (admin API, once) and **log in / out** (agent A
 
 ### Agent states
 
-An agent is always `idle`, `moving`, `in_action`, `in_conversation`, or `in_transfer`. Normally `move` / `action` / `wait` require `idle`, but an active server-event window temporarily lets `in_action` / `in_conversation` / `in_transfer` agents interrupt into those commands. Standalone pending transfers place both sides in `in_transfer` until the receiver accepts, rejects, times out, or the transfer is cancelled. In-conversation transfers keep both agents in `in_conversation` and are settled through `transfer_response` on `conversation_speak` / `end_conversation`.
+An agent is always `idle`, `moving`, `in_action`, `in_conversation`, or `in_transfer`. Normally `move` / `action` / `wait` require `idle`, but an active server announcement window temporarily lets `in_action` / `in_conversation` / `in_transfer` agents interrupt into those commands. Standalone pending transfers place both sides in `in_transfer` until the receiver accepts, rejects, times out, or the transfer is cancelled. In-conversation transfers keep both agents in `in_conversation` and are settled through `transfer_response` on `conversation_speak` / `end_conversation`.
 
 ### Event-driven world
 
-Timer-based, no global tick loop. Movement completes after a configured delay, actions complete after their own duration, conversations advance through timed turns, and runtime server events can widen the next-command choices.
+Timer-based, no global tick loop. Movement completes after a configured delay, actions complete after their own duration, conversations advance through timed turns, and runtime server announcements can widen the next-command choices.
 
 ### Notifications vs control
 

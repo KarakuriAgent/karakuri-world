@@ -83,27 +83,27 @@ export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): 
     {
       name: 'move',
       description:
-        '指定した目的地ノードへ移動する。サーバーがBFSで最短経路を計算し、経路のマス数に応じた移動時間で一括移動する。通常はidle状態でのみ実行可能だが、アクティブなサーバーイベント通知の割り込みウィンドウ中のみ in_action / in_conversation からも実行できる。',
+        '指定した目的地ノードへ移動する。サーバーがBFSで最短経路を計算し、経路のマス数に応じた移動時間で一括移動する。通常はidle状態でのみ実行可能だが、アクティブなサーバーアナウンス通知の割り込みウィンドウ中のみ in_action / in_conversation からも実行できる。',
       inputSchema: moveSchema,
       execute: wrapTool(moveSchema, async (arguments_) => engine.move(agentId, arguments_)),
     },
     {
       name: 'action',
       description:
-        'アクションを実行する。所持金や必要アイテムが不足していても選択肢に表示されるが、実行結果は通知で届く。可変時間アクションでは duration_minutes を指定する。レスポンスは常に notification-accepted。通常はidle状態でのみ実行可能だが、アクティブなサーバーイベント通知の割り込みウィンドウ中のみ in_action / in_conversation からも実行できる。',
+        'アクションを実行する。所持金や必要アイテムが不足していても選択肢に表示されるが、実行結果は通知で届く。可変時間アクションでは duration_minutes を指定する。レスポンスは常に notification-accepted。通常はidle状態でのみ実行可能だが、アクティブなサーバーアナウンス通知の割り込みウィンドウ中のみ in_action / in_conversation からも実行できる。',
       inputSchema: actionSchema,
       execute: wrapTool(actionSchema, async (arguments_) => engine.executeAction(agentId, arguments_)),
     },
     {
       name: 'use_item',
       description:
-        '所持しているアイテムを使用する。アイテムを1つ消費する。アイテムをどう使うかはエージェント次第。通常はidle状態でのみ実行可能だが、アクティブなサーバーイベント通知の割り込みウィンドウ中のみ in_action / in_conversation からも実行できる。',
+        '所持しているアイテムを使用する。アイテムを1つ消費する。アイテムをどう使うかはエージェント次第。通常はidle状態でのみ実行可能だが、アクティブなサーバーアナウンス通知の割り込みウィンドウ中のみ in_action / in_conversation からも実行できる。',
       inputSchema: z.object({ item_id: z.string().min(1) }).strict(),
       execute: wrapTool(z.object({ item_id: z.string().min(1) }).strict(), async (arguments_) => engine.useItem(agentId, arguments_)),
     },
     {
       name: 'wait',
-      description: 'その場で待機する。duration は 10分単位の整数（1=10分, 2=20分, ..., 6=60分）。通常はidle状態でのみ実行可能だが、アクティブなサーバーイベント通知の割り込みウィンドウ中のみ in_action / in_conversation からも実行できる。',
+      description: 'その場で待機する。duration は 10分単位の整数（1=10分, 2=20分, ..., 6=60分）。通常はidle状態でのみ実行可能だが、アクティブなサーバーアナウンス通知の割り込みウィンドウ中のみ in_action / in_conversation からも実行できる。',
       inputSchema: z.object({ duration: z.number().int().min(1).max(6) }).strict(),
       execute: wrapTool(z.object({ duration: z.number().int().min(1).max(6) }).strict(), async (arguments_) => engine.executeWait(agentId, arguments_)),
     },
@@ -175,45 +175,51 @@ export function createMcpToolDefinitions(engine: WorldEngine, agentId: string): 
     },
     {
       name: 'get_available_actions',
-      description: '現在位置で実行可能なアクションを取得する。通常は idle かサーバーイベントウィンドウ中のみ実行可能で、結果は通知で届く。',
+      description: '現在位置で実行可能なアクションを取得する。通常は idle かサーバーアナウンスウィンドウ中のみ実行可能で、結果は通知で届く。',
       inputSchema: emptySchema,
       execute: wrapTool(emptySchema, async () => emitInfoRequest(engine, agentId, 'get_available_actions')),
     },
     {
       name: 'get_perception',
-      description: '周囲の情報を取得する。通常は idle かサーバーイベントウィンドウ中のみ実行可能で、結果は通知で届く。',
+      description: '周囲の情報を取得する。通常は idle かサーバーアナウンスウィンドウ中のみ実行可能で、結果は通知で届く。',
       inputSchema: emptySchema,
       execute: wrapTool(emptySchema, async () => emitInfoRequest(engine, agentId, 'get_perception')),
     },
     {
       name: 'get_map',
-      description: 'マップ全体の情報を取得する。通常は idle かサーバーイベントウィンドウ中のみ実行可能で、結果は通知で届く。',
+      description: 'マップ全体の情報を取得する。通常は idle かサーバーアナウンスウィンドウ中のみ実行可能で、結果は通知で届く。',
       inputSchema: emptySchema,
       execute: wrapTool(emptySchema, async () => emitInfoRequest(engine, agentId, 'get_map')),
     },
     {
       name: 'get_world_agents',
-      description: '全エージェントの位置と状態を取得する。通常は idle かサーバーイベントウィンドウ中のみ実行可能で、結果は通知で届く。',
+      description: '全エージェントの位置と状態を取得する。通常は idle かサーバーアナウンスウィンドウ中のみ実行可能で、結果は通知で届く。',
       inputSchema: emptySchema,
       execute: wrapTool(emptySchema, async () => emitInfoRequest(engine, agentId, 'get_world_agents')),
     },
     {
       name: 'get_status',
-      description: '自分の所持金・所持品・現在地を取得する。通常は idle かサーバーイベントウィンドウ中のみ実行可能で、結果は通知で届く。',
+      description: '自分の所持金・所持品・現在地を取得する。通常は idle かサーバーアナウンスウィンドウ中のみ実行可能で、結果は通知で届く。',
       inputSchema: emptySchema,
       execute: wrapTool(emptySchema, async () => emitInfoRequest(engine, agentId, 'get_status')),
     },
     {
       name: 'get_nearby_agents',
-      description: '隣接エージェントの一覧を用途別候補として取得する。通常は idle かサーバーイベントウィンドウ中のみ実行可能で、結果は通知で届く。',
+      description: '隣接エージェントの一覧を用途別候補として取得する。通常は idle かサーバーアナウンスウィンドウ中のみ実行可能で、結果は通知で届く。',
       inputSchema: emptySchema,
       execute: wrapTool(emptySchema, async () => emitInfoRequest(engine, agentId, 'get_nearby_agents')),
     },
     {
       name: 'get_active_conversations',
-      description: '参加可能な進行中の会話一覧を取得する。通常は idle かサーバーイベントウィンドウ中のみ実行可能で、結果は通知で届く。',
+      description: '参加可能な進行中の会話一覧を取得する。通常は idle かサーバーアナウンスウィンドウ中のみ実行可能で、結果は通知で届く。',
       inputSchema: emptySchema,
       execute: wrapTool(emptySchema, async () => emitInfoRequest(engine, agentId, 'get_active_conversations')),
+    },
+    {
+      name: 'get_event',
+      description: '実施中の永続サーバーイベント一覧を取得する。結果は通知で届く。',
+      inputSchema: emptySchema,
+      execute: wrapTool(emptySchema, async () => emitInfoRequest(engine, agentId, 'get_event')),
     },
   ];
 }

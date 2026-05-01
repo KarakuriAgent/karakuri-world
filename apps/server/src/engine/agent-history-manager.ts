@@ -36,7 +36,7 @@ export type PersistedHistoryDetail =
   | { type: 'transfer_timeout' }
   | { type: 'transfer_cancelled' }
   | { type: 'transfer_escrow_lost' }
-  | { type: 'server_event_fired' };
+  | { type: 'server_announcement_fired' };
 
 export interface PersistedHistoryEntry {
   event_id: string;
@@ -76,6 +76,9 @@ type NonSupportedHistoryEventType =
   | 'status_info_requested'
   | 'nearby_agents_info_requested'
   | 'active_conversations_info_requested'
+  | 'server_events_info_requested'
+  | 'server_event_created'
+  | 'server_event_cleared'
   | 'perception_requested'
   | 'available_actions_requested'
   | 'conversation_accepted'
@@ -167,6 +170,9 @@ function isSupportedHistoryEvent(event: WorldEvent): event is Extract<WorldEvent
     case 'status_info_requested':
     case 'nearby_agents_info_requested':
     case 'active_conversations_info_requested':
+    case 'server_events_info_requested':
+    case 'server_event_created':
+    case 'server_event_cleared':
     case 'perception_requested':
     case 'available_actions_requested':
     case 'conversation_accepted':
@@ -221,7 +227,7 @@ function resolveHistoryAgentIds(
     case 'transfer_cancelled':
     case 'transfer_escrow_lost':
       return dedupeAgentIds([event.from_agent_id, event.to_agent_id]);
-    case 'server_event_fired':
+    case 'server_announcement_fired':
       return dedupeAgentIds([...event.delivered_agent_ids, ...event.pending_agent_ids]);
     default: {
       const exhaustive: never = event;
@@ -299,8 +305,8 @@ function buildSummary(event: Extract<WorldEvent, { type: SupportedHistoryEventTy
       return { emoji: '⚠️', title: '譲渡取消', text: `${event.to_agent_name} への譲渡が取り消された。` };
     case 'transfer_escrow_lost':
       return { emoji: '🚨', title: '譲渡返却失敗', text: `${event.to_agent_name} との譲渡で返却処理に失敗した。` };
-    case 'server_event_fired':
-      return { emoji: '📣', title: 'サーバーイベント発生', text: event.description };
+    case 'server_announcement_fired':
+      return { emoji: '📣', title: 'サーバーアナウンス発生', text: event.description };
     default: {
       const exhaustive: never = event;
       return exhaustive;
